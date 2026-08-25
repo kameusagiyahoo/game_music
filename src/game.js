@@ -1,0 +1,277 @@
+const ICONS = ["☀", "☾", "✦", "❖", "♜", "⚚"];
+const GAME_TIME = 45;
+const TENSION_TIME = 10;
+
+const board = document.querySelector("#board");
+const startButton = document.querySelector("#startButton");
+const retryButton = document.querySelector("#retryButton");
+const soundButton = document.querySelector("#soundButton");
+const resultOverlay = document.querySelector("#resultOverlay");
+
+const timeValue = document.querySelector("#timeValue");
+const movesValue = document.querySelector("#movesValue");
+const pairsValue = document.querySelector("#pairsValue");
+const bestValue = document.querySelector("#bestValue");
+const gameMessage = document.querySelector("#gameMessage");
+const hintText = document.querySelector("#hintText");
+
+const resultTitle = document.querySelector("#resultTitle");
+const resultMessage = document.querySelector("#resultMessage");
+const scoreValue = document.querySelector("#scoreValue");
+const resultTime = document.querySelector("#resultTime");
+const resultMoves = document.querySelector("#resultMoves");
+
+let state = "ready";
+let deck = [];
+let firstCard = null;
+let secondCard = null;
+let lockBoard = false;
+let moves = 0;
+let pairs = 0;
+let remaining = GAME_TIME;
+let startedAt = 0;
+let timerId = null;
+let soundEnabled = true;
+let audioContext = null;
+
+const best = Number(localStorage.getItem("mystic-match-best") || 0);
+bestValue.textContent = best ? best.toLocaleString("ja-JP") : "—";
+
+function shuffle(items) {
+  const array = [...items];
+  for (let i = array.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
+function ensureAudio() {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioContext.state === "suspended") audioContext.resume();
+}
+
+function tone(frequency, duration = 0.08, gain = 0.035, delay = 0) {
+  if (!soundEnabled) return;
+  ensureAudio();
+
+  const now = audioContext.currentTime + delay;
+  const oscillator = audioContext.createOscillator();
+  const volume = audioContext.createGain();
+
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(frequency, now);
+  volume.gain.setValueAtTime(0.0001, now);
+  volume.gain.exponentialRampToValueAtTime(gain, now + 0.01);
+  volume.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+  oscillator.connect(volume);
+  volume.connect(audioContext.destination);
+  oscillator.start(now);
+  oscillator.stop(now + duration + 0.02);
+}
+
+function sfx(name) {
+  if (name === "flip") tone(420, 0.045, 0.02);
+  if (name === "match") {
+    tone(660, 0.11, 0.03);
+    tone(880, 0.14, 0.025, 0.07);
+  }
+  if (name === "miss") tone(210, 0.12, 0.025);
+  if (name === "win") {
+    tone(523.25, 0.18, 0.03);
+    tone(659.25, 0.18, 0.03, 0.12);
+    tone(783.99, 0.28, 0.035, 0.24);
+  }
+  if (name === "lose") {
+    tone(330, 0.16, 0.025);
+    tone(247, 0.28, 0.025, 0.14);
+  }
+}
+
+function renderBoard() {
+  board.innerHTML = "";
+  deck.forEach((item, index) => {
+    const button = document.createElement("button");
+    button.className = "card";
+    button.type = "button";
+    button.dataset.index = String(index);
+    button.setAttribute("aria-label", `カード ${index + 1}`);
+    button.innerHTML = `
+      <span class="card-inner">
+        <span class="card-face card-back" aria-hidden="true"></span>
+        <span class="card-face card-front" aria-hidden="true">${item.icon}</span>
+      </span>
+    `;
+    button.addEventListener("click", () => flipCard(button));
+    board.appendChild(button);
+  });
+}
+
+function setMessage(title, body, kicker = "MEMORY GAME") {
+  gameMessage.innerHTML = `
+    <span class="message-kicker">${kicker}</span>
+    <strong>${title}</strong>
+    <span>${body}</span>
+  `;
+}
+
+function updateStatus() {
+  timeValue.textContent = remaining.toFixed(1);
+  movesValue.textContent = String(moves);
+  pairsValue.textContent = String(pairs);
+}
+
+function resetGame() {
+  clearInterval(timerId);
+  state = "ready";
+  document.body.classList.remove("is-tension");
+  resultOverlay.hidden = true;
+  firstCard = null;
+  secondCard = null;
+  lockBoard = false;
+  moves = 0;
+  pairs = 0;
+  remaining = GAME_TIME;
+  deck = shuffle(ICONS.flatMap((icon) => [{ icon, matched: false }, { icon, matched: false }]));
+  renderBoard();
+  updateStatus();
+  setMessage("同じ紋章を見つけよう", "45秒以内に6組すべて揃えればクリア。");
+  hintText.textContent = "カードの位置を覚えて、できるだけ少ない手数で揃えよう。";
+  startButton.textContent = "ゲーム開始";
+  startButton.disabled = false;
+}
+
+function startGame() {
+  ensureAudio();
+  resetGame();
+  state = "playing";
+  startedAt = performance.now();
+  startButton.disabled = true;
+  startButton.textContent = "プレイ中";
+  setMessage("記憶を頼りに揃えよう", "2枚めくると判定されます。", "PLAYING");
+
+  timerId = window.setInterval(() => {
+    const elapsed = (performance.now() - startedAt) / 1000;
+    remaining = Math.max(0, GAME_TIME - elapsed);
+
+    if (remaining <= TENSION_TIME && state === "playing") {
+      state = "tension";
+      document.body.classList.add("is-tension");
+      setMessage("残り10秒", "ここからが勝負。素早く揃えよう。", "TENSION");
+    }
+
+    if (remaining <= 0) {
+      remaining = 0;
+      updateStatus();
+      endGame(false);
+      return;
+    }
+
+    updateStatus();
+  }, 50);
+}
+
+function flipCard(card) {
+  if (!['playing', 'tension'].includes(state) || lockBoard) return;
+  const index = Number(card.dataset.index);
+  const item = deck[index];
+  if (item.matched || card === firstCard || card.classList.contains("is-flipped")) return;
+
+  card.classList.add("is-flipped");
+  sfx("flip");
+
+  if (!firstCard) {
+    firstCard = card;
+    return;
+  }
+
+  secondCard = card;
+  moves += 1;
+  movesValue.textContent = String(moves);
+  lockBoard = true;
+
+  const firstIndex = Number(firstCard.dataset.index);
+  const secondIndex = Number(secondCard.dataset.index);
+
+  if (deck[firstIndex].icon === deck[secondIndex].icon) {
+    deck[firstIndex].matched = true;
+    deck[secondIndex].matched = true;
+    firstCard.classList.add("is-matched");
+    secondCard.classList.add("is-matched");
+    firstCard.disabled = true;
+    secondCard.disabled = true;
+    pairs += 1;
+    pairsValue.textContent = String(pairs);
+    sfx("match");
+
+    firstCard = null;
+    secondCard = null;
+    lockBoard = false;
+
+    if (pairs === ICONS.length) endGame(true);
+    return;
+  }
+
+  sfx("miss");
+  window.setTimeout(() => {
+    firstCard?.classList.remove("is-flipped");
+    secondCard?.classList.remove("is-flipped");
+    firstCard = null;
+    secondCard = null;
+    lockBoard = false;
+  }, 650);
+}
+
+function calculateScore(clear) {
+  if (!clear) return pairs * 100;
+  const timeBonus = Math.round(remaining * 30);
+  const moveBonus = Math.max(0, 900 - Math.max(0, moves - 6) * 55);
+  return 1000 + timeBonus + moveBonus;
+}
+
+function endGame(clear) {
+  if (state === "result") return;
+  clearInterval(timerId);
+  state = "result";
+  document.body.classList.remove("is-tension");
+  lockBoard = true;
+
+  const score = calculateScore(clear);
+  const elapsed = Math.min(GAME_TIME, (performance.now() - startedAt) / 1000);
+  const previousBest = Number(localStorage.getItem("mystic-match-best") || 0);
+
+  if (score > previousBest) {
+    localStorage.setItem("mystic-match-best", String(score));
+    bestValue.textContent = score.toLocaleString("ja-JP");
+  }
+
+  resultTitle.textContent = clear ? "CLEAR!" : "TIME UP";
+  resultMessage.textContent = clear
+    ? (score > previousBest ? "ベストスコア更新。記憶と判断の精度が上がっています。" : "6組すべて揃いました。さらに少ない手数を狙えます。")
+    : `${pairs}組まで揃いました。位置を覚えて再挑戦しよう。`;
+  scoreValue.textContent = score.toLocaleString("ja-JP");
+  resultTime.textContent = `${elapsed.toFixed(1)}s`;
+  resultMoves.textContent = String(moves);
+  resultOverlay.hidden = false;
+  startButton.disabled = false;
+  startButton.textContent = "ゲーム開始";
+  sfx(clear ? "win" : "lose");
+}
+
+soundButton.addEventListener("click", () => {
+  soundEnabled = !soundEnabled;
+  soundButton.setAttribute("aria-pressed", String(soundEnabled));
+  soundButton.textContent = soundEnabled ? "♪" : "×";
+  if (soundEnabled) {
+    ensureAudio();
+    tone(660, 0.06, 0.02);
+  }
+});
+
+startButton.addEventListener("click", startGame);
+retryButton.addEventListener("click", startGame);
+
+resetGame();
