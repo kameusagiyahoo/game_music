@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#151515" />
+  <title>Mystic Match</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">GAME MUSIC LAB / 01</p>
+        <h1>Mystic Match</h1>
+      </div>
+      <button id="soundButton" class="icon-button" type="button" aria-label="サウンド切り替え" aria-pressed="true">♪</button>
+    </header>
+
+    <section class="status-panel" aria-label="ゲーム状況">
+      <div class="status-item">
+        <span class="status-label">TIME</span>
+        <strong id="timeValue">45.0</strong>
+      </div>
+      <div class="status-item">
+        <span class="status-label">MOVES</span>
+        <strong id="movesValue">0</strong>
+      </div>
+      <div class="status-item">
+        <span class="status-label">PAIRS</span>
+        <strong><span id="pairsValue">0</span>/6</strong>
+      </div>
+      <div class="status-item">
+        <span class="status-label">BEST</span>
+        <strong id="bestValue">—</strong>
+      </div>
+    </section>
+
+    <section class="game-area">
+      <div id="gameMessage" class="game-message" role="status">
+        <span class="message-kicker">MEMORY GAME</span>
+        <strong>同じ紋章を見つけよう</strong>
+        <span>45秒以内に6組すべて揃えればクリア。</span>
+      </div>
+
+      <div id="board" class="board" aria-label="カード盤面"></div>
+    </section>
+
+    <footer class="controls">
+      <button id="startButton" class="primary-button" type="button">ゲーム開始</button>
+      <p id="hintText" class="hint">カードの位置を覚えて、できるだけ少ない手数で揃えよう。</p>
+    </footer>
+  </main>
+
+  <div id="resultOverlay" class="overlay" hidden>
+    <section class="result-card" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+      <p id="resultKicker" class="eyebrow">RESULT</p>
+      <h2 id="resultTitle">CLEAR!</h2>
+      <p id="resultMessage" class="result-message"></p>
+      <div class="result-score">
+        <span>SCORE</span>
+        <strong id="scoreValue">0</strong>
+      </div>
+      <div class="result-stats">
+        <div><span>TIME</span><strong id="resultTime">0.0s</strong></div>
+        <div><span>MOVES</span><strong id="resultMoves">0</strong></div>
+      </div>
+      <button id="retryButton" class="primary-button" type="button">もう一度</button>
+    </section>
+  </div>
+
+  <script type="module" src="src/game.js"></script>
+</body>
+</html>
