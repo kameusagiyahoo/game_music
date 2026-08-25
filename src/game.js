@@ -1,3 +1,5 @@
+import { MusicManager } from "./music-manager.js";
+
 const ICONS = ["☀", "☾", "✦", "❖", "♜", "⚚"];
 const GAME_TIME = 45;
 const TENSION_TIME = 10;
@@ -14,6 +16,7 @@ const pairsValue = document.querySelector("#pairsValue");
 const bestValue = document.querySelector("#bestValue");
 const gameMessage = document.querySelector("#gameMessage");
 const hintText = document.querySelector("#hintText");
+const musicState = document.querySelector("#musicState");
 
 const resultTitle = document.querySelector("#resultTitle");
 const resultMessage = document.querySelector("#resultMessage");
@@ -32,7 +35,12 @@ let remaining = GAME_TIME;
 let startedAt = 0;
 let timerId = null;
 let soundEnabled = true;
-let audioContext = null;
+
+const music = new MusicManager({
+  onModeChange(label) {
+    if (musicState) musicState.textContent = label;
+  },
+});
 
 const best = Number(localStorage.getItem("mystic-match-best") || 0);
 bestValue.textContent = best ? best.toLocaleString("ja-JP") : "—";
@@ -44,51 +52,6 @@ function shuffle(items) {
     [array[i], array[j]] = [array[j], array[i]];
   }
   return array;
-}
-
-function ensureAudio() {
-  if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (audioContext.state === "suspended") audioContext.resume();
-}
-
-function tone(frequency, duration = 0.08, gain = 0.035, delay = 0) {
-  if (!soundEnabled) return;
-  ensureAudio();
-
-  const now = audioContext.currentTime + delay;
-  const oscillator = audioContext.createOscillator();
-  const volume = audioContext.createGain();
-
-  oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(frequency, now);
-  volume.gain.setValueAtTime(0.0001, now);
-  volume.gain.exponentialRampToValueAtTime(gain, now + 0.01);
-  volume.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-
-  oscillator.connect(volume);
-  volume.connect(audioContext.destination);
-  oscillator.start(now);
-  oscillator.stop(now + duration + 0.02);
-}
-
-function sfx(name) {
-  if (name === "flip") tone(420, 0.045, 0.02);
-  if (name === "match") {
-    tone(660, 0.11, 0.03);
-    tone(880, 0.14, 0.025, 0.07);
-  }
-  if (name === "miss") tone(210, 0.12, 0.025);
-  if (name === "win") {
-    tone(523.25, 0.18, 0.03);
-    tone(659.25, 0.18, 0.03, 0.12);
-    tone(783.99, 0.28, 0.035, 0.24);
-  }
-  if (name === "lose") {
-    tone(330, 0.16, 0.025);
-    tone(247, 0.28, 0.025, 0.14);
-  }
 }
 
 function renderBoard() {
@@ -126,6 +89,7 @@ function updateStatus() {
 
 function resetGame() {
   clearInterval(timerId);
+  music.stop();
   state = "ready";
   document.body.classList.remove("is-tension");
   resultOverlay.hidden = true;
@@ -144,9 +108,9 @@ function resetGame() {
   startButton.disabled = false;
 }
 
-function startGame() {
-  ensureAudio();
+async function startGame() {
   resetGame();
+  await music.play("normal");
   state = "playing";
   startedAt = performance.now();
   startButton.disabled = true;
@@ -160,7 +124,8 @@ function startGame() {
     if (remaining <= TENSION_TIME && state === "playing") {
       state = "tension";
       document.body.classList.add("is-tension");
-      setMessage("残り10秒", "ここからが勝負。素早く揃えよう。", "TENSION");
+      setMessage("残り10秒", "BGMも加速。ここからが勝負。", "TENSION");
+      music.setMode("tension");
     }
 
     if (remaining <= 0) {
@@ -175,13 +140,13 @@ function startGame() {
 }
 
 function flipCard(card) {
-  if (!['playing', 'tension'].includes(state) || lockBoard) return;
+  if (!["playing", "tension"].includes(state) || lockBoard) return;
   const index = Number(card.dataset.index);
   const item = deck[index];
   if (item.matched || card === firstCard || card.classList.contains("is-flipped")) return;
 
   card.classList.add("is-flipped");
-  sfx("flip");
+  music.sfx("flip");
 
   if (!firstCard) {
     firstCard = card;
@@ -205,7 +170,7 @@ function flipCard(card) {
     secondCard.disabled = true;
     pairs += 1;
     pairsValue.textContent = String(pairs);
-    sfx("match");
+    music.sfx("match");
 
     firstCard = null;
     secondCard = null;
@@ -215,7 +180,7 @@ function flipCard(card) {
     return;
   }
 
-  sfx("miss");
+  music.sfx("miss");
   window.setTimeout(() => {
     firstCard?.classList.remove("is-flipped");
     secondCard?.classList.remove("is-flipped");
@@ -238,6 +203,7 @@ function endGame(clear) {
   state = "result";
   document.body.classList.remove("is-tension");
   lockBoard = true;
+  music.setMode("result");
 
   const score = calculateScore(clear);
   const elapsed = Math.min(GAME_TIME, (performance.now() - startedAt) / 1000);
@@ -258,17 +224,15 @@ function endGame(clear) {
   resultOverlay.hidden = false;
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
-  sfx(clear ? "win" : "lose");
+  music.sfx(clear ? "win" : "lose");
 }
 
-soundButton.addEventListener("click", () => {
+soundButton.addEventListener("click", async () => {
   soundEnabled = !soundEnabled;
   soundButton.setAttribute("aria-pressed", String(soundEnabled));
   soundButton.textContent = soundEnabled ? "♪" : "×";
-  if (soundEnabled) {
-    ensureAudio();
-    tone(660, 0.06, 0.02);
-  }
+  await music.setEnabled(soundEnabled);
+  if (soundEnabled) music.sfx("toggle");
 });
 
 startButton.addEventListener("click", startGame);
