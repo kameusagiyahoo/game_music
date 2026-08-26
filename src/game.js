@@ -1,5 +1,13 @@
 import { MusicManager } from "./music-manager.js";
-import { fantasyPack } from "./music-packs/fantasy.js";
+import {
+  GAME_IDS,
+  MUSIC_ENGINES,
+  getMusicSettings,
+  saveMusicSettings,
+  resolveMusicPack,
+  configureMusicManager,
+  applyMusicSettingsToControls,
+} from "./music-registry.js";
 
 const ICONS = ["☀", "☾", "✦", "❖", "♜", "⚚"];
 const GAME_TIME = 45;
@@ -42,10 +50,14 @@ let startedAt = 0;
 let timerId = null;
 let masterSoundEnabled = true;
 
+const sharedSettings = getMusicSettings();
+const packEntry = resolveMusicPack(GAME_IDS.MYSTIC_MATCH, MUSIC_ENGINES.PROCEDURAL);
 const music = new MusicManager({
-  pack: fantasyPack,
+  pack: packEntry.pack,
   onModeChange(label) { musicState.textContent = label; },
 });
+configureMusicManager(music, sharedSettings);
+applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
 
 const best = Number(localStorage.getItem("mystic-match-best") || 0);
 bestValue.textContent = best ? best.toLocaleString("ja-JP") : "—";
@@ -98,7 +110,7 @@ function resetGame() {
   deck = shuffle(ICONS.flatMap((icon) => [{ icon, matched: false }, { icon, matched: false }]));
   renderBoard();
   updateStatus();
-  setMessage("同じ紋章を見つけよう", "45秒以内に6組すべて揃えればクリア。");
+  setMessage("同じ紋章を見つけよう", `45秒以内に6組すべて揃えればクリア。Music Pack: ${packEntry.name}`);
   hintText.textContent = "カードの位置を覚えて、できるだけ少ない手数で揃えよう。";
   startButton.textContent = "ゲーム開始";
   startButton.disabled = false;
@@ -225,15 +237,23 @@ soundButton.addEventListener("click", async () => {
   if (masterSoundEnabled && sfxToggle.checked) music.sfx("toggle");
 });
 
-bgmToggle.addEventListener("change", applyAudioState);
-sfxToggle.addEventListener("change", applyAudioState);
+bgmToggle.addEventListener("change", async () => {
+  saveMusicSettings({ bgmEnabled: bgmToggle.checked });
+  await applyAudioState();
+});
+sfxToggle.addEventListener("change", async () => {
+  saveMusicSettings({ sfxEnabled: sfxToggle.checked });
+  await applyAudioState();
+});
 bgmVolume.addEventListener("input", () => {
   bgmVolumeValue.textContent = bgmVolume.value;
   music.setMusicVolume(Number(bgmVolume.value) / 100);
+  saveMusicSettings({ bgmVolume: Number(bgmVolume.value) / 100 });
 });
 sfxVolume.addEventListener("input", () => {
   sfxVolumeValue.textContent = sfxVolume.value;
   music.setSfxVolume(Number(sfxVolume.value) / 100);
+  saveMusicSettings({ sfxVolume: Number(sfxVolume.value) / 100 });
 });
 
 startButton.addEventListener("click", startGame);
