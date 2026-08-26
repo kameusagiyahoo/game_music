@@ -1,0 +1,35 @@
+.game-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(27,27,24,.58);
+  font-size: 12px;
+}
+.game-nav-current { color: var(--text); font-weight: 800; }
+.game-nav a { color: var(--accent); text-decoration: none; font-weight: 750; }
+
+.audio-panel {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(27,27,24,.72);
+  display: grid;
+  gap: 10px;
+}
+.now-playing { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.now-playing span { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .13em; }
+.now-playing strong { min-width: 0; text-align: right; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.audio-row { display: grid; grid-template-columns: 54px 1fr 28px; gap: 8px; align-items: center; }
+.audio-row label { font-size: 12px; font-weight: 700; }
+.audio-row input[type="range"] { width: 100%; accent-color: var(--accent); }
+.audio-row output { color: var(--muted); text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; }
+.audio-row input[type="checkbox"] { accent-color: var(--accent); }
+
+@media (max-height: 760px) {
+  .audio-panel { padding-block: 8px; gap: 6px; }
+  .game-nav { padding-block: 7px; }
+}
