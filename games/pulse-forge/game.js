@@ -284,11 +284,18 @@ function endGame() {
   activePad = -1;
   clearPads();
   music.cancelPendingLayerMix();
+
+  const cleared = energy >= 60;
   void (async () => {
-    await music.setLayerPreset("result", { seconds: 0.3 });
-    await music.transitionTo("result");
+    try {
+      await music.setLayerPreset("result", { seconds: 0.30 });
+      await music.transitionTo("result");
+      await music.playStinger(cleared ? "victory" : "gameover", { duck: 0.26, attack: 0.06, release: 0.32 });
+    } catch (error) {
+      console.error("stinger playback failed", error);
+      music.sfx(cleared ? "win" : "lose");
+    }
   })();
-  music.sfx(energy >= 60 ? "win" : "lose");
   updateStatus();
 
   const previousBest = Number(localStorage.getItem("pulse-forge-best") || 0);
