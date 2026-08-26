@@ -18,16 +18,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Generate synchronized WAV stems
+      - name: Generate synchronized WAV stems and stingers
         run: python tools/generate_pulse_stems.py
       - name: Commit generated audio
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add assets/stems/pulse/*.wav
+          if compgen -G "assets/stingers/pulse/*.wav" > /dev/null; then
+            git add assets/stingers/pulse/*.wav
+          fi
           if git diff --cached --quiet; then
-            echo "WAV stems already up to date"
+            echo "WAV audio already up to date"
           else
-            git commit -m "Generate synchronized Pulse WAV stems"
+            git commit -m "Generate Pulse WAV stems and stingers"
             git push
           fi
