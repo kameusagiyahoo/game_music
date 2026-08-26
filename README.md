@@ -31,95 +31,92 @@ URL: https://kameusagiyahoo.github.io/game_music/games/orbit-rush/
 
 音楽の拍に同期して4方向の炉心を叩く40秒のリズム / 反射ゲーム。
 
-- Pulse Music Pack
-- Web Audioの音楽クロックをゲーム側でも利用
+- 5本の実WAVステムを同一AudioContext時刻で完全同期スタート
+- `drums.wav / bass.wav / chords.wav / melody.wav / sparkle.wav`
+- 4小節 / 112 BPM / 22.05 kHz / mono WAV
 - PERFECT / GOOD / MISS判定
 - プレイ精度からEnergyを算出
-- 5本の同期ステムを常時同じ位置で進行
 - Energy 40%でBUILD MIX、75%でOVERDRIVE MIXを予約
 - 次の小節頭でステムGainだけを変更
-- BPMと小節位置を維持したまま音の厚みが変化
+- WAV自体は止めず、全ステムの再生位置を維持
 - DRUMS / BASS / CHORDS / MELODY / SPARKLEのライブメーター表示
 - BAR / BEAT / NEXT BAR MIXを画面表示
 
 URL: https://kameusagiyahoo.github.io/game_music/games/pulse-forge/
 
-## Music Engine v3
+## Music Engine v4 — Real WAV Stem Transport
 
 ```text
 Game Logic
-    ↓ performance / state
-MusicManager
+    ↓ Energy / state
+WavStemMusicManager
     ↓
-Shared Music Clock
-    ├── DRUMS stem
-    ├── BASS stem
-    ├── CHORDS stem
-    ├── MELODY stem
-    └── SPARKLE stem
+AudioContext shared start time
+    ├── drums.wav   ─ Gain Bus
+    ├── bass.wav    ─ Gain Bus
+    ├── chords.wav  ─ Gain Bus
+    ├── melody.wav  ─ Gain Bus
+    └── sparkle.wav ─ Gain Bus
             ↓
-      Quantized Layer Mixer
+     Quantized Layer Mixer
             ↓ next bar
         Music Root
 ```
 
-`src/music-manager.js` はゲーム固有の曲を持ちません。曲データとステム配合は `src/music-packs/` に分離しています。
+5本のWAVはすべて同じテンポ・長さ・開始位置で生成し、`AudioBufferSourceNode.start(startAt)` の同一 `startAt` を使って同時再生します。
 
-現段階のstemsはWAVファイルではなくWeb Audioでリアルタイム生成する「procedural stems」です。全レイヤーが同じ16ステップクロックを共有するため、音量0のレイヤーも演奏位置は失いません。
+音量0のステムも停止しません。裏で同じ位置をループし続けるため、BUILDやOVERDRIVEでGainを上げた瞬間も現在の小節位置から自然に参加します。
 
-### v1機能
+### v1
 
-- `play(mode)`
-- `transitionTo(mode, seconds)`
-- Music Pack差し替え
-- クロスフェード
-- BGM / SE 個別ON/OFF
-- BGM / SE 個別音量
-- 共通SE
-- iPhone Safari向けWeb Audio再生
+- Music Pack分離
+- BGMクロスフェード
+- BGM / SE ON/OFF・音量
 
-### v2追加機能
+### v2
 
-- `transitionTo(mode, { quantize: "bar", crossfadeBeats: 2 })`
-- 次の小節境界までMode Transitionを予約
-- `onSync()` でBAR / BEAT / subdivisionをゲーム側へ通知
+- 小節境界へのQuantized Transition
+- `onSync()` によるBAR / BEAT通知
 
-### v3追加機能
+### v3
 
-- DRUMS / BASS / CHORDS / MELODY / SPARKLEの独立Gain Bus
-- `setLayerMix()`
-- `setLayerPreset()`
-- `setLayerPreset(name, { quantize: "bar", fadeBeats: 1 })`
-- Layer Mixの予約 / キャンセル
-- `onLayerChange()` で現在Mixと次のMixをUIへ通知
-- Music Pack側に `layerPresets` を定義
-- 同じ小節位置を維持したままレイヤーを追加・削除
-- procedural kick / hi-hat stem
+- 5系統の独立Layer Bus
+- `setLayerMix()` / `setLayerPreset()`
+- 次小節からLayer Mixを適用
+- Live Stem Mixer UI
 
-Pulse Forgeのプリセット例:
+### v4
+
+- procedural stemsから実WAV stemsへ移行
+- `src/wav-stem-manager.js`
+- 5つのAudioBufferを同一時刻でスタート
+- WAV再生位置を維持したままGainのみ変更
+- AudioContext時間を基準にゲームのBeat Clockも同期
+- 初回ロード後はブラウザキャッシュを利用
+- GitHub ActionsでWAVを再生成可能
+
+## WAV generation pipeline
 
 ```text
-FOCUS
-Drums    22%
-Bass     42%
-Chords   68%
-Melody   48%
-Sparkle   0%
-
-BUILD
-Drums    56%
-Bass     74%
-Chords   82%
-Melody   78%
-Sparkle  28%
-
-OVERDRIVE
-Drums   100%
-Bass    100%
-Chords   92%
-Melody  100%
-Sparkle  78%
+tools/generate_pulse_stems.py
+        ↓
+GitHub Actions
+        ↓
+assets/stems/pulse/
+├── drums.wav
+├── bass.wav
+├── chords.wav
+├── melody.wav
+└── sparkle.wav
+        ↓
+GitHub Pages
+        ↓
+WavStemMusicManager
 ```
+
+Workflow: `.github/workflows/generate-pulse-stems.yml`
+
+曲生成条件をコードとして保存しているため、音楽内容を変更しても同じフォーマットの同期WAVを再生成できます。
 
 ## Structure
 
@@ -130,25 +127,30 @@ ui-enhancements.css
 src/
 ├── game.js
 ├── music-manager.js
+├── wav-stem-manager.js
 └── music-packs/
     ├── fantasy.js
     ├── neon.js
     └── pulse.js
+assets/
+└── stems/
+    └── pulse/
+        ├── drums.wav
+        ├── bass.wav
+        ├── chords.wav
+        ├── melody.wav
+        └── sparkle.wav
+tools/
+└── generate_pulse_stems.py
 games/
 ├── orbit-rush/
-│   ├── index.html
-│   ├── game.js
-│   └── styles.css
 └── pulse-forge/
-    ├── index.html
-    ├── game.js
-    └── styles.css
 ```
 
 ## Next candidates
 
-- procedural stemsを実WAV stemsへ差し替え
-- AudioBufferによる複数WAVの完全同期再生
+- 高音質ステム（44.1 kHz stereo）への差し替え
+- WAV / OGG / AACの自動フォーマット選択
 - Victory / Game Over専用Stinger
 - Music Pack選択画面
 - Music Debug / Mixer画面
