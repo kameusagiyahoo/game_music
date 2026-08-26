@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#17110d" />
+  <title>Pulse Forge</title>
+  <link rel="stylesheet" href="../../styles.css" />
+  <link rel="stylesheet" href="../../ui-enhancements.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell forge-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">GAME MUSIC LAB / 03</p>
+        <h1>Pulse Forge</h1>
+      </div>
+      <button id="soundButton" class="icon-button" type="button" aria-label="サウンド一括切り替え" aria-pressed="true">♪</button>
+    </header>
+
+    <nav class="game-nav" aria-label="ゲーム選択">
+      <a href="../../">01 Mystic</a>
+      <a href="../orbit-rush/">02 Orbit</a>
+      <span class="game-nav-current">03 Pulse Forge</span>
+    </nav>
+
+    <section class="status-panel" aria-label="ゲーム状況">
+      <div class="status-item"><span class="status-label">TIME</span><strong id="timeValue">40.0</strong></div>
+      <div class="status-item"><span class="status-label">SCORE</span><strong id="scoreValue">0</strong></div>
+      <div class="status-item"><span class="status-label">COMBO</span><strong id="comboValue">0</strong></div>
+      <div class="status-item"><span class="status-label">ENERGY</span><strong><span id="energyValue">20</span>%</strong></div>
+    </section>
+
+    <section class="sync-panel" aria-label="Adaptive Music同期状況">
+      <div>
+        <span class="sync-label">MUSIC</span>
+        <strong id="musicState">READY · music stopped</strong>
+      </div>
+      <div>
+        <span class="sync-label">SYNC</span>
+        <strong id="syncState">BAR — / BEAT —</strong>
+      </div>
+      <div>
+        <span class="sync-label">NEXT BAR</span>
+        <strong id="pendingState">—</strong>
+      </div>
+    </section>
+
+    <section class="audio-panel" aria-label="音楽設定">
+      <div class="audio-row">
+        <label><input id="bgmToggle" type="checkbox" checked /> BGM</label>
+        <input id="bgmVolume" type="range" min="0" max="100" value="80" aria-label="BGM音量" />
+        <output id="bgmVolumeValue">80</output>
+      </div>
+      <div class="audio-row">
+        <label><input id="sfxToggle" type="checkbox" checked /> SE</label>
+        <input id="sfxVolume" type="range" min="0" max="100" value="76" aria-label="SE音量" />
+        <output id="sfxVolumeValue">76</output>
+      </div>
+    </section>
+
+    <section class="game-area forge-area">
+      <div id="gameMessage" class="game-message" role="status">
+        <span class="message-kicker">RHYTHM / ADAPTIVE MUSIC</span>
+        <strong>光った炉心をビートに合わせて叩く</strong>
+        <span>精度が上がるほど音楽レイヤーが増えます。</span>
+      </div>
+
+      <div class="forge-stage" aria-label="4方向リズムパッド">
+        <div id="beatRing" class="beat-ring" aria-hidden="true"></div>
+        <button class="forge-pad pad-north" data-pad="0" type="button" aria-label="上の炉心"><span>▲</span></button>
+        <button class="forge-pad pad-east" data-pad="1" type="button" aria-label="右の炉心"><span>◆</span></button>
+        <button class="forge-pad pad-south" data-pad="2" type="button" aria-label="下の炉心"><span>▼</span></button>
+        <button class="forge-pad pad-west" data-pad="3" type="button" aria-label="左の炉心"><span>●</span></button>
+        <div class="forge-core">
+          <span>ENERGY</span>
+          <strong id="coreEnergy">20</strong>
+          <small id="judgement">READY</small>
+        </div>
+      </div>
+    </section>
+
+    <footer class="controls">
+      <button id="startButton" class="primary-button" type="button">ゲーム開始</button>
+      <p class="hint">PERFECTでエネルギー上昇。40%でBUILD、75%でOVERDRIVEを次の小節から予約します。</p>
+    </footer>
+  </main>
+
+  <div id="resultOverlay" class="overlay" hidden>
+    <section class="result-card" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+      <p class="eyebrow">RESULT</p>
+      <h2 id="resultTitle">FORGED!</h2>
+      <p id="resultMessage" class="result-message"></p>
+      <div class="result-score"><span>SCORE</span><strong id="finalScore">0</strong></div>
+      <div class="result-stats">
+        <div><span>PERFECT</span><strong id="perfectValue">0</strong></div>
+        <div><span>MAX COMBO</span><strong id="maxComboValue">0</strong></div>
+      </div>
+      <button id="retryButton" class="primary-button" type="button">もう一度</button>
+    </section>
+  </div>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>
