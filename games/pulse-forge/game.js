@@ -22,6 +22,7 @@ const musicState = $("#musicState");
 const syncState = $("#syncState");
 const pendingState = $("#pendingState");
 const beatRing = $("#beatRing");
+const stemPreset = $("#stemPreset");
 const bgmToggle = $("#bgmToggle");
 const sfxToggle = $("#sfxToggle");
 const bgmVolume = $("#bgmVolume");
@@ -34,6 +35,21 @@ const finalScore = $("#finalScore");
 const perfectValue = $("#perfectValue");
 const maxComboValue = $("#maxComboValue");
 const pads = [...document.querySelectorAll(".forge-pad")];
+
+const stemUi = {
+  drums: { bar: $("#stemDrums"), value: $("#stemDrumsValue") },
+  bass: { bar: $("#stemBass"), value: $("#stemBassValue") },
+  chords: { bar: $("#stemChords"), value: $("#stemChordsValue") },
+  melody: { bar: $("#stemMelody"), value: $("#stemMelodyValue") },
+  sparkle: { bar: $("#stemSparkle"), value: $("#stemSparkleValue") },
+};
+
+const PRESET_NAMES = {
+  focus: "FOCUS",
+  build: "BUILD",
+  overdrive: "OVERDRIVE",
+  result: "RESULT",
+};
 
 let state = "ready";
 let remaining = GAME_TIME;
@@ -49,28 +65,38 @@ let previousPad = -1;
 let beatStartedAt = 0;
 let beatResolved = true;
 let lastBeatKey = "";
-let currentMusicMode = "normal";
-let pendingMusicMode = null;
+let currentLayerPreset = "focus";
+let pendingLayerPreset = null;
 let masterSoundEnabled = true;
 
-const MODE_NAMES = {
-  normal: "FOCUS",
-  build: "BUILD",
-  overdrive: "OVERDRIVE",
-  result: "RESULT",
-};
+function renderStemMix(mix, preset = currentLayerPreset) {
+  Object.entries(stemUi).forEach(([name, ui]) => {
+    const percent = Math.round((mix?.[name] ?? 0) * 100);
+    ui.bar.style.width = `${percent}%`;
+    ui.value.textContent = String(percent);
+  });
+  stemPreset.textContent = PRESET_NAMES[preset] || String(preset || "CUSTOM").toUpperCase();
+}
 
 const music = new MusicManager({
   pack: pulsePack,
-  onModeChange(label, meta = {}) {
+  onModeChange(label) {
     musicState.textContent = label;
-    if (meta.mode && meta.mode !== "ready") currentMusicMode = meta.mode;
-    pendingMusicMode = meta.pendingMode || null;
+  },
+  onLayerChange(info = {}) {
+    if (info.preset) currentLayerPreset = info.preset;
+    pendingLayerPreset = info.pendingPreset || null;
+    renderStemMix(info.mix || pulsePack.layerPresets.focus, currentLayerPreset);
+    pendingState.textContent = pendingLayerPreset
+      ? `${PRESET_NAMES[pendingLayerPreset] || pendingLayerPreset} MIX 予約中`
+      : "—";
   },
   onSync(info) {
     syncState.textContent = info.mode === "ready" ? "BAR — / BEAT —" : `BAR ${info.bar} / BEAT ${info.beat}`;
-    pendingMusicMode = info.pendingMode || null;
-    pendingState.textContent = pendingMusicMode ? `${MODE_NAMES[pendingMusicMode] || pendingMusicMode} 予約中` : "—";
+    pendingLayerPreset = info.pendingLayerPreset || pendingLayerPreset;
+    pendingState.textContent = pendingLayerPreset
+      ? `${PRESET_NAMES[pendingLayerPreset] || pendingLayerPreset} MIX 予約中`
+      : "—";
 
     if (state !== "playing" || info.subdivision !== 0) return;
     const key = `${info.bar}-${info.beat}`;
@@ -82,7 +108,7 @@ const music = new MusicManager({
 music.setMusicVolume(0.80);
 music.setSfxVolume(0.76);
 
-function setMessage(title, body, kicker = "RHYTHM / ADAPTIVE MUSIC") {
+function setMessage(title, body, kicker = "RHYTHM / STEM MIXER") {
   gameMessage.innerHTML = `<span class="message-kicker">${kicker}</span><strong>${title}</strong><span>${body}</span>`;
 }
 
@@ -120,22 +146,22 @@ function beginBeat() {
   beatRing.classList.add("is-pulse");
 }
 
-function desiredMode() {
+function desiredPreset() {
   if (energy >= 75) return "overdrive";
   if (energy >= 40) return "build";
-  return "normal";
+  return "focus";
 }
 
-function updateAdaptiveMode() {
-  const desired = desiredMode();
+function updateAdaptiveMix() {
+  const desired = desiredPreset();
 
-  if (desired === currentMusicMode) {
-    if (pendingMusicMode && pendingMusicMode !== desired) music.cancelPendingTransition();
+  if (desired === currentLayerPreset) {
+    if (pendingLayerPreset && pendingLayerPreset !== desired) music.cancelPendingLayerMix();
     return;
   }
 
-  if (pendingMusicMode !== desired) {
-    music.transitionTo(desired, { quantize: "bar", crossfadeBeats: 2 });
+  if (pendingLayerPreset !== desired) {
+    music.setLayerPreset(desired, { quantize: "bar", fadeBeats: 1 });
   }
 }
 
@@ -169,7 +195,7 @@ function applyHit(kind, pad) {
 
   activePad = -1;
   updateStatus();
-  updateAdaptiveMode();
+  updateAdaptiveMix();
 }
 
 function applyMiss(playSound = true, pad = null) {
@@ -182,7 +208,7 @@ function applyMiss(playSound = true, pad = null) {
   if (playSound) music.sfx("miss");
   activePad = -1;
   updateStatus();
-  updateAdaptiveMode();
+  updateAdaptiveMix();
 }
 
 function tapPad(index, pad) {
@@ -214,16 +240,17 @@ function resetGame() {
   previousPad = -1;
   beatResolved = true;
   lastBeatKey = "";
-  currentMusicMode = "normal";
-  pendingMusicMode = null;
+  currentLayerPreset = "focus";
+  pendingLayerPreset = null;
   resultOverlay.hidden = true;
   clearPads();
   updateStatus();
+  renderStemMix(pulsePack.layerPresets.focus, "focus");
   judgement.textContent = "READY";
   judgement.className = "";
   syncState.textContent = "BAR — / BEAT —";
   pendingState.textContent = "—";
-  setMessage("光った炉心をビートに合わせて叩く", "精度が上がるほど音楽レイヤーが増えます。");
+  setMessage("光った炉心をビートに合わせて叩く", "精度が上がるほど、同じ演奏位置のまま音楽ステムが厚くなります。");
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
 }
@@ -235,7 +262,7 @@ async function startGame() {
   startedAt = performance.now();
   startButton.disabled = true;
   startButton.textContent = "鍛造中";
-  setMessage("ビートに同期せよ", "光ったパッドを素早く叩いてエネルギーを上げよう。", "PLAYING / BAR SYNC");
+  setMessage("ビートに同期せよ", "Energyを上げると、次の小節から新しいステムが参加します。", "PLAYING / STEM SYNC");
 
   timerId = window.setInterval(() => {
     const elapsed = (performance.now() - startedAt) / 1000;
@@ -253,8 +280,11 @@ function endGame() {
   beatResolved = true;
   activePad = -1;
   clearPads();
-  music.cancelPendingTransition();
-  music.transitionTo("result", 0.7);
+  music.cancelPendingLayerMix();
+  void (async () => {
+    await music.setLayerPreset("result", { seconds: 0.3 });
+    await music.transitionTo("result", 0.7);
+  })();
   music.sfx(energy >= 60 ? "win" : "lose");
   updateStatus();
 
