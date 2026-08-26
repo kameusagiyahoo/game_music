@@ -42,9 +42,21 @@
         <strong id="syncState">BAR — / BEAT —</strong>
       </div>
       <div>
-        <span class="sync-label">NEXT BAR</span>
+        <span class="sync-label">NEXT BAR MIX</span>
         <strong id="pendingState">—</strong>
       </div>
+    </section>
+
+    <section class="stem-panel" aria-label="同期ステムミキサー">
+      <div class="stem-heading">
+        <span>LIVE STEM MIX</span>
+        <strong id="stemPreset">FOCUS</strong>
+      </div>
+      <div class="stem-row" data-stem="drums"><span>DRUMS</span><div class="stem-track"><i id="stemDrums"></i></div><output id="stemDrumsValue">22</output></div>
+      <div class="stem-row" data-stem="bass"><span>BASS</span><div class="stem-track"><i id="stemBass"></i></div><output id="stemBassValue">42</output></div>
+      <div class="stem-row" data-stem="chords"><span>CHORDS</span><div class="stem-track"><i id="stemChords"></i></div><output id="stemChordsValue">68</output></div>
+      <div class="stem-row" data-stem="melody"><span>MELODY</span><div class="stem-track"><i id="stemMelody"></i></div><output id="stemMelodyValue">48</output></div>
+      <div class="stem-row" data-stem="sparkle"><span>SPARKLE</span><div class="stem-track"><i id="stemSparkle"></i></div><output id="stemSparkleValue">0</output></div>
     </section>
 
     <section class="audio-panel" aria-label="音楽設定">
@@ -62,9 +74,9 @@
 
     <section class="game-area forge-area">
       <div id="gameMessage" class="game-message" role="status">
-        <span class="message-kicker">RHYTHM / ADAPTIVE MUSIC</span>
+        <span class="message-kicker">RHYTHM / STEM MIXER</span>
         <strong>光った炉心をビートに合わせて叩く</strong>
-        <span>精度が上がるほど音楽レイヤーが増えます。</span>
+        <span>演奏位置を維持したまま、精度に応じて音の層が増えます。</span>
       </div>
 
       <div class="forge-stage" aria-label="4方向リズムパッド">
@@ -83,7 +95,7 @@
 
     <footer class="controls">
       <button id="startButton" class="primary-button" type="button">ゲーム開始</button>
-      <p class="hint">PERFECTでエネルギー上昇。40%でBUILD、75%でOVERDRIVEを次の小節から予約します。</p>
+      <p class="hint">40%でBUILD MIX、75%でOVERDRIVE MIXを予約。次の小節頭でDrums / Bass / Chords / Melody / Sparkleの音量だけが変化します。</p>
     </footer>
   </main>
 
