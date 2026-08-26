@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#121416" />
+  <title>Music Settings</title>
+  <link rel="stylesheet" href="../../styles.css" />
+  <link rel="stylesheet" href="../../ui-enhancements.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell settings-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">GAME MUSIC LAB / GLOBAL</p>
+        <h1>Music Settings</h1>
+      </div>
+      <a class="settings-back" href="../../">GAME 01</a>
+    </header>
+
+    <nav class="game-nav" aria-label="ゲーム選択">
+      <a href="../../">01 Mystic</a>
+      <a href="../../games/orbit-rush/">02 Orbit</a>
+      <a href="../../games/pulse-forge/">03 Pulse</a>
+      <a href="../../games/rune-relay/">04 Rune</a>
+      <span class="game-nav-current">⚙ Settings</span>
+    </nav>
+
+    <section class="settings-card">
+      <div class="settings-heading">
+        <div>
+          <span class="settings-kicker">GLOBAL AUDIO</span>
+          <h2>全ゲーム共通の音量</h2>
+        </div>
+        <strong id="saveState">SAVED</strong>
+      </div>
+
+      <div class="setting-row">
+        <label><input id="bgmToggle" type="checkbox" /> BGM</label>
+        <input id="bgmVolume" type="range" min="0" max="100" aria-label="BGM音量" />
+        <output id="bgmVolumeValue">80</output>
+      </div>
+      <div class="setting-row">
+        <label><input id="sfxToggle" type="checkbox" /> SE</label>
+        <input id="sfxVolume" type="range" min="0" max="100" aria-label="SE音量" />
+        <output id="sfxVolumeValue">74</output>
+      </div>
+      <p class="settings-note">ここで変更すると、次に開いたGame 01〜04のBGM / SE設定へ反映されます。</p>
+    </section>
+
+    <section class="settings-card">
+      <div class="settings-heading">
+        <div>
+          <span class="settings-kicker">PROCEDURAL ENGINE</span>
+          <h2>共通Music Pack</h2>
+        </div>
+        <strong id="proceduralSummary">AUTO</strong>
+      </div>
+      <p class="settings-note">Game 01 / 02 / 04で使用します。「ゲーム推奨」は各ゲーム本来のPackを使います。</p>
+      <div id="proceduralPacks" class="registry-grid"></div>
+    </section>
+
+    <section class="settings-card">
+      <div class="settings-heading">
+        <div>
+          <span class="settings-kicker">WAV STEM ENGINE</span>
+          <h2>同期WAV Pack</h2>
+        </div>
+        <strong>GAME 03</strong>
+      </div>
+      <div id="wavPacks" class="registry-grid"></div>
+      <p class="settings-note">現在のWAV Stem対応PackはPulseのみです。将来WAV版Fantasyなどを追加すると、この一覧に自動で増えます。</p>
+    </section>
+
+    <section class="settings-card registry-info">
+      <span class="settings-kicker">REGISTRY STATUS</span>
+      <div class="registry-stats">
+        <div><span>PACKS</span><strong id="packCount">0</strong></div>
+        <div><span>PROCEDURAL</span><strong id="proceduralCount">0</strong></div>
+        <div><span>WAV STEM</span><strong id="wavCount">0</strong></div>
+      </div>
+      <button id="resetButton" class="secondary-button" type="button">共通設定を初期化</button>
+    </section>
+  </main>
+
+  <script type="module" src="settings.js"></script>
+</body>
+</html>
