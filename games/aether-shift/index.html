@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#101318" />
+  <title>Aether Shift</title>
+  <link rel="stylesheet" href="../../styles.css" />
+  <link rel="stylesheet" href="../../ui-enhancements.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell shift-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">GAME MUSIC LAB / 05</p>
+        <h1>Aether Shift</h1>
+      </div>
+      <button id="soundButton" class="icon-button" type="button" aria-label="サウンド一括切り替え" aria-pressed="true">♪</button>
+    </header>
+
+    <nav class="game-nav" aria-label="ゲーム選択">
+      <a href="../../">01 Mystic</a>
+      <a href="../orbit-rush/">02 Orbit</a>
+      <a href="../pulse-forge/">03 Pulse</a>
+      <a href="../rune-relay/">04 Rune</a>
+      <span class="game-nav-current">05 Aether</span>
+      <a href="../../settings/music/">⚙ Settings</a>
+    </nav>
+
+    <section class="status-panel shift-status" aria-label="ゲーム状況">
+      <div class="status-item"><span class="status-label">TIME</span><strong id="timeValue">8.0</strong></div>
+      <div class="status-item"><span class="status-label">WAVE</span><strong><span id="waveValue">1</span>/4</strong></div>
+      <div class="status-item"><span class="status-label">SCORE</span><strong id="scoreValue">0</strong></div>
+      <div class="status-item"><span class="status-label">FLOW</span><strong><span id="flowValue">20</span>%</strong></div>
+    </section>
+
+    <section class="runtime-panel" aria-label="Music Runtime">
+      <div class="runtime-primary">
+        <span>ACTIVE MUSIC PACK</span>
+        <strong id="currentPack">Clockwork Grove</strong>
+      </div>
+      <div><span>ENGINE</span><strong id="engineState">PROCEDURAL</strong></div>
+      <div><span>NEXT WAVE</span><strong id="pendingPack">—</strong></div>
+      <div><span>MUSIC</span><strong id="musicState">READY</strong></div>
+      <div><span>SYNC</span><strong id="syncState">BAR — / BEAT —</strong></div>
+    </section>
+
+    <section class="pack-panel" aria-label="Music Pack">
+      <div class="pack-heading">
+        <div><span>RUNTIME RESOLVER</span><strong>PACKを選ぶだけ</strong></div>
+        <div><span>RULE</span><strong>SHIFT ON NEXT WAVE</strong></div>
+      </div>
+      <div id="packButtons" class="pack-buttons"></div>
+    </section>
+
+    <section class="game-area shift-area">
+      <div id="gameMessage" class="game-message" role="status">
+        <span class="message-kicker">REACTION / ENGINE HOT-SWAP</span>
+        <strong>光ったノードを追いかける</strong>
+        <span>4ウェーブの間にMusic Packを切り替え、再生Engineの自動交換を試します。</span>
+      </div>
+      <div id="shiftGrid" class="shift-grid" aria-label="Aether nodes"></div>
+      <div class="flow-meter" aria-label="Flow">
+        <span>FLOW</span>
+        <div><i id="flowBar"></i></div>
+        <strong id="hitState">HITS 0 / MISS 0</strong>
+      </div>
+    </section>
+
+    <section class="audio-panel" aria-label="音量設定">
+      <div class="audio-row">
+        <label><input id="bgmToggle" type="checkbox" checked /> BGM</label>
+        <input id="bgmVolume" type="range" min="0" max="100" value="80" aria-label="BGM音量" />
+        <output id="bgmVolumeValue">80</output>
+      </div>
+      <div class="audio-row">
+        <label><input id="sfxToggle" type="checkbox" checked /> SE</label>
+        <input id="sfxVolume" type="range" min="0" max="100" value="74" aria-label="SE音量" />
+        <output id="sfxVolumeValue">74</output>
+      </div>
+    </section>
+
+    <footer class="controls">
+      <button id="startButton" class="primary-button" type="button">ゲーム開始</button>
+      <p class="hint">Pack変更は次ウェーブで適用。Fantasy / Neon / Clockwork / Pulse WAVを自由に行き来できます。</p>
+    </footer>
+  </main>
+
+  <div id="resultOverlay" class="overlay" hidden>
+    <section class="result-card" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+      <p class="eyebrow">AETHER RESULT</p>
+      <h2 id="resultTitle">SHIFT COMPLETE</h2>
+      <p id="resultMessage" class="result-message"></p>
+      <div class="result-score"><span>SCORE</span><strong id="finalScore">0</strong></div>
+      <div class="result-stats">
+        <div><span>HITS</span><strong id="finalHits">0</strong></div>
+        <div><span>ENGINE</span><strong id="finalEngine">—</strong></div>
+      </div>
+      <button id="retryButton" class="primary-button" type="button">もう一度</button>
+    </section>
+  </div>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>
