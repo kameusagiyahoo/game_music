@@ -14,25 +14,35 @@
         <p class="eyebrow">GAME MUSIC LAB / 01</p>
         <h1>Mystic Match</h1>
       </div>
-      <button id="soundButton" class="icon-button" type="button" aria-label="サウンド切り替え" aria-pressed="true">♪</button>
+      <button id="soundButton" class="icon-button" type="button" aria-label="サウンド一括切り替え" aria-pressed="true">♪</button>
     </header>
 
+    <nav class="game-nav" aria-label="ゲーム選択">
+      <span class="game-nav-current">01 Mystic Match</span>
+      <a href="games/orbit-rush/">02 Orbit Rush →</a>
+    </nav>
+
     <section class="status-panel" aria-label="ゲーム状況">
-      <div class="status-item">
-        <span class="status-label">TIME</span>
-        <strong id="timeValue">45.0</strong>
+      <div class="status-item"><span class="status-label">TIME</span><strong id="timeValue">45.0</strong></div>
+      <div class="status-item"><span class="status-label">MOVES</span><strong id="movesValue">0</strong></div>
+      <div class="status-item"><span class="status-label">PAIRS</span><strong><span id="pairsValue">0</span>/6</strong></div>
+      <div class="status-item"><span class="status-label">BEST</span><strong id="bestValue">—</strong></div>
+    </section>
+
+    <section class="audio-panel" aria-label="音楽設定">
+      <div class="now-playing">
+        <span>NOW PLAYING</span>
+        <strong id="musicState">READY · music stopped</strong>
       </div>
-      <div class="status-item">
-        <span class="status-label">MOVES</span>
-        <strong id="movesValue">0</strong>
+      <div class="audio-row">
+        <label><input id="bgmToggle" type="checkbox" checked /> BGM</label>
+        <input id="bgmVolume" type="range" min="0" max="100" value="82" aria-label="BGM音量" />
+        <output id="bgmVolumeValue">82</output>
       </div>
-      <div class="status-item">
-        <span class="status-label">PAIRS</span>
-        <strong><span id="pairsValue">0</span>/6</strong>
-      </div>
-      <div class="status-item">
-        <span class="status-label">BEST</span>
-        <strong id="bestValue">—</strong>
+      <div class="audio-row">
+        <label><input id="sfxToggle" type="checkbox" checked /> SE</label>
+        <input id="sfxVolume" type="range" min="0" max="100" value="72" aria-label="SE音量" />
+        <output id="sfxVolumeValue">72</output>
       </div>
     </section>
 
@@ -42,7 +52,6 @@
         <strong>同じ紋章を見つけよう</strong>
         <span>45秒以内に6組すべて揃えればクリア。</span>
       </div>
-
       <div id="board" class="board" aria-label="カード盤面"></div>
     </section>
 
@@ -54,13 +63,10 @@
 
   <div id="resultOverlay" class="overlay" hidden>
     <section class="result-card" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
-      <p id="resultKicker" class="eyebrow">RESULT</p>
+      <p class="eyebrow">RESULT</p>
       <h2 id="resultTitle">CLEAR!</h2>
       <p id="resultMessage" class="result-message"></p>
-      <div class="result-score">
-        <span>SCORE</span>
-        <strong id="scoreValue">0</strong>
-      </div>
+      <div class="result-score"><span>SCORE</span><strong id="scoreValue">0</strong></div>
       <div class="result-stats">
         <div><span>TIME</span><strong id="resultTime">0.0s</strong></div>
         <div><span>MOVES</span><strong id="resultMoves">0</strong></div>
