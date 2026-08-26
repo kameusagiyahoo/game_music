@@ -15,6 +15,7 @@ export const GAME_IDS = Object.freeze({
   ORBIT_RUSH: "orbit-rush",
   PULSE_FORGE: "pulse-forge",
   RUNE_RELAY: "rune-relay",
+  AETHER_SHIFT: "aether-shift",
 });
 
 const registry = Object.freeze({
@@ -57,6 +58,7 @@ export const GAME_DEFAULT_PACKS = Object.freeze({
   [GAME_IDS.ORBIT_RUSH]: "neon",
   [GAME_IDS.PULSE_FORGE]: "pulse",
   [GAME_IDS.RUNE_RELAY]: "fantasy",
+  [GAME_IDS.AETHER_SHIFT]: "clockwork",
 });
 
 export const DEFAULT_MUSIC_SETTINGS = Object.freeze({
