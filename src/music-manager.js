@@ -7,11 +7,12 @@ const STEMS = ["drums", "bass", "chords", "melody", "sparkle"];
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value)));
 
 export class MusicManager {
-  constructor({ pack, onModeChange, onSync, onLayerChange } = {}) {
+  constructor({ pack, onModeChange, onSync, onLayerChange, onPackChange } = {}) {
     this.pack = pack;
     this.onModeChange = onModeChange || (() => {});
     this.onSync = onSync || (() => {});
     this.onLayerChange = onLayerChange || (() => {});
+    this.onPackChange = onPackChange || (() => {});
     this.context = null;
     this.master = null;
     this.musicRoot = null;
@@ -24,6 +25,7 @@ export class MusicManager {
     this.step = 0;
     this.timer = null;
     this.pendingTransition = null;
+    this.pendingPackSwitch = null;
     this.pendingLayerMix = null;
     this.pendingLayerPreset = null;
     this.layerPreset = null;
@@ -37,6 +39,48 @@ export class MusicManager {
   setPack(pack) {
     this.pack = pack;
     if (!this.pack?.modes?.[this.mode]) this.mode = "normal";
+    this.layerPreset = this.pack?.defaultLayerPreset || null;
+    this.layerMix = this.#initialMix(this.mode);
+    this.pendingPackSwitch = null;
+    this.#announcePack();
+    if (this.context && this.layerBuses) this.#applyLayerMix(this.layerMix, 0.05, this.layerPreset);
+  }
+
+  async switchPack(pack, options = {}) {
+    if (!pack?.modes) throw new Error("Invalid Music Pack");
+    await this.init();
+    const config = { quantize: "bar", crossfadeBeats: 2, mode: this.mode, ...options };
+    const targetMode = pack.modes?.[config.mode] ? config.mode : (pack.modes?.normal ? "normal" : Object.keys(pack.modes)[0]);
+    if (!targetMode) throw new Error("Music Pack has no playable modes");
+
+    if (config.quantize === "bar" && this.running) {
+      this.pendingPackSwitch = {
+        pack,
+        mode: targetMode,
+        crossfadeBeats: Math.max(0.25, Number(config.crossfadeBeats ?? 2)),
+      };
+      this.#announcePack();
+      this.#sync();
+      return;
+    }
+
+    const seconds = Number(config.seconds ?? this.#beatsToSeconds(config.crossfadeBeats ?? 2));
+    this.#applyPackSwitch(pack, targetMode, seconds, !this.running);
+  }
+
+  cancelPendingPackSwitch() {
+    this.pendingPackSwitch = null;
+    this.#announcePack();
+    this.#sync();
+  }
+
+  getPackInfo() {
+    return {
+      id: this.pack?.id || "unknown",
+      name: this.pack?.name || "Unknown Pack",
+      pendingId: this.pendingPackSwitch?.pack?.id || null,
+      pendingName: this.pendingPackSwitch?.pack?.name || null,
+    };
   }
 
   async init() {
@@ -78,12 +122,14 @@ export class MusicManager {
     this.mode = mode;
     this.step = 0;
     this.pendingTransition = null;
+    this.pendingPackSwitch = null;
     this.pendingLayerMix = null;
     this.pendingLayerPreset = null;
     this.layerPreset = this.pack?.defaultLayerPreset || null;
     this.layerMix = this.#initialMix(mode);
     this.#replaceMusicBus(false);
     this.#announce();
+    this.#announcePack();
     this.#announceLayers();
     this.#restartClock(true);
   }
@@ -155,13 +201,15 @@ export class MusicManager {
   stop() {
     this.running = false;
     this.pendingTransition = null;
+    this.pendingPackSwitch = null;
     this.pendingLayerMix = null;
     this.pendingLayerPreset = null;
     if (this.timer) window.clearTimeout(this.timer);
     this.timer = null;
     this.step = 0;
     if (this.activeMusicBus && this.context) this.#ramp(this.activeMusicBus.gain, 0.0001, 0.12);
-    this.onModeChange("READY · music stopped", { mode: "ready", pendingMode: null });
+    this.onModeChange("READY · music stopped", { mode: "ready", pendingMode: null, packId: this.pack?.id || null });
+    this.#announcePack();
     this.#announceLayers();
     this.#sync();
   }
@@ -247,6 +295,18 @@ export class MusicManager {
     this.onModeChange(this.pack?.modes?.[this.mode]?.label || this.mode, {
       mode: this.mode,
       pendingMode: this.pendingTransition?.mode || null,
+      packId: this.pack?.id || null,
+      packName: this.pack?.name || null,
+      pendingPackId: this.pendingPackSwitch?.pack?.id || null,
+    });
+  }
+
+  #announcePack() {
+    this.onPackChange({
+      id: this.pack?.id || "unknown",
+      name: this.pack?.name || "Unknown Pack",
+      pendingId: this.pendingPackSwitch?.pack?.id || null,
+      pendingName: this.pendingPackSwitch?.pack?.name || null,
     });
   }
 
@@ -269,6 +329,10 @@ export class MusicManager {
       subdivision: barStep % STEPS_PER_BEAT,
       mode: this.mode,
       pendingMode: this.pendingTransition?.mode || null,
+      packId: this.pack?.id || null,
+      packName: this.pack?.name || null,
+      pendingPackId: this.pendingPackSwitch?.pack?.id || null,
+      pendingPackName: this.pendingPackSwitch?.pack?.name || null,
       layerPreset: this.layerPreset,
       pendingLayerPreset: this.pendingLayerPreset,
       layerMix: { ...this.layerMix },
@@ -293,8 +357,36 @@ export class MusicManager {
     }
   }
 
+  #applyPackSwitch(pack, mode, seconds, resetClock) {
+    const oldBus = this.activeMusicBus;
+    this.pack = pack;
+    this.mode = pack?.modes?.[mode] ? mode : "normal";
+    this.pendingPackSwitch = null;
+    this.pendingTransition = null;
+    this.layerPreset = this.pack?.defaultLayerPreset || null;
+    this.layerMix = this.#initialMix(this.mode);
+    if (resetClock) this.step = 0;
+    this.#replaceMusicBus(true, seconds);
+    this.#announcePack();
+    this.#announce();
+    this.#announceLayers();
+    this.#sync();
+
+    if (resetClock && this.running) this.#restartClock(true);
+
+    if (oldBus) {
+      window.setTimeout(() => {
+        try { oldBus.disconnect(); } catch (_) {}
+      }, Math.ceil(seconds * 1000) + 140);
+    }
+  }
+
   #applyPendingAtBar() {
-    if (this.pendingTransition) {
+    if (this.pendingPackSwitch) {
+      const { pack, mode, crossfadeBeats } = this.pendingPackSwitch;
+      const seconds = this.#beatsToSeconds(crossfadeBeats);
+      this.#applyPackSwitch(pack, mode, seconds, false);
+    } else if (this.pendingTransition) {
       const { mode, crossfadeBeats } = this.pendingTransition;
       const seconds = this.#beatsToSeconds(crossfadeBeats);
       this.#applyTransition(mode, seconds, false);
@@ -371,7 +463,7 @@ export class MusicManager {
     if (this.context.state === "suspended") this.context.resume().catch(() => {});
 
     const barStep = this.step % STEPS_PER_BAR;
-    if (barStep === 0 && (this.pendingTransition || this.pendingLayerMix)) this.#applyPendingAtBar();
+    if (barStep === 0 && (this.pendingPackSwitch || this.pendingTransition || this.pendingLayerMix)) this.#applyPendingAtBar();
 
     const patternStep = this.step % 16;
     this.#scheduleStep(patternStep, this.context.currentTime + 0.012);
