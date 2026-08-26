@@ -1,4 +1,5 @@
 const stemUrl = (name) => new URL(`../../assets/stems/pulse/${name}.wav`, import.meta.url).href;
+const stingerUrl = (name) => new URL(`../../assets/stingers/pulse/${name}.wav`, import.meta.url).href;
 
 export const pulsePack = {
   id: "pulse",
@@ -15,6 +16,13 @@ export const pulsePack = {
       chords: stemUrl("chords"),
       melody: stemUrl("melody"),
       sparkle: stemUrl("sparkle"),
+    },
+  },
+
+  stingers: {
+    files: {
+      victory: stingerUrl("victory"),
+      gameover: stingerUrl("gameover"),
     },
   },
 
