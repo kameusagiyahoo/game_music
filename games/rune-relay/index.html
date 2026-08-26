@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111315" />
+  <title>Rune Relay</title>
+  <link rel="stylesheet" href="../../styles.css" />
+  <link rel="stylesheet" href="../../ui-enhancements.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell relay-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">GAME MUSIC LAB / 04</p>
+        <h1>Rune Relay</h1>
+      </div>
+      <button id="soundButton" class="icon-button" type="button" aria-label="サウンド切り替え" aria-pressed="true">♪</button>
+    </header>
+
+    <nav class="game-nav" aria-label="ゲーム選択">
+      <a href="../../">01 Mystic</a>
+      <a href="../orbit-rush/">02 Orbit</a>
+      <a href="../pulse-forge/">03 Pulse</a>
+      <span class="game-nav-current">04 Rune Relay</span>
+      <a href="../../debug/mixer/">Mixer</a>
+    </nav>
+
+    <section class="status-panel relay-status" aria-label="ゲーム状況">
+      <div class="status-item"><span class="status-label">TIME</span><strong id="timeValue">45.0</strong></div>
+      <div class="status-item"><span class="status-label">ROUND</span><strong id="roundValue">1</strong></div>
+      <div class="status-item"><span class="status-label">SCORE</span><strong id="scoreValue">0</strong></div>
+      <div class="status-item"><span class="status-label">STREAK</span><strong id="streakValue">0</strong></div>
+    </section>
+
+    <section class="pack-panel" aria-label="Music Pack選択">
+      <div class="pack-heading">
+        <div><span>MUSIC PACK</span><strong id="currentPack">Fantasy Table</strong></div>
+        <div><span>NEXT BAR</span><strong id="pendingPack">—</strong></div>
+      </div>
+      <div class="pack-buttons">
+        <button type="button" class="pack-button" data-pack="fantasy"><strong>Fantasy</strong><span>やさしい幻想</span></button>
+        <button type="button" class="pack-button" data-pack="neon"><strong>Neon</strong><span>高速シンセ</span></button>
+        <button type="button" class="pack-button" data-pack="clockwork"><strong>Clockwork</strong><span>機械仕掛け</span></button>
+      </div>
+    </section>
+
+    <section class="sync-panel" aria-label="音楽同期状況">
+      <div><span class="sync-label">MUSIC</span><strong id="musicState">READY · music stopped</strong></div>
+      <div><span class="sync-label">SYNC</span><strong id="syncState">BAR — / BEAT —</strong></div>
+      <div><span class="sync-label">RULE</span><strong>NEXT BAR PACK SWITCH</strong></div>
+    </section>
+
+    <section class="game-area relay-area">
+      <div id="gameMessage" class="game-message" role="status">
+        <span class="message-kicker">MEMORY / PACK SWITCH</span>
+        <strong>光った順番を覚える</strong>
+        <span>同じ順番で4つのルーンをタップしてください。</span>
+      </div>
+
+      <div class="rune-grid" aria-label="ルーン入力パッド">
+        <button class="rune-pad rune-0" data-pad="0" type="button" aria-label="月のルーン"><span>☾</span><small>MOON</small></button>
+        <button class="rune-pad rune-1" data-pad="1" type="button" aria-label="星のルーン"><span>✦</span><small>STAR</small></button>
+        <button class="rune-pad rune-2" data-pad="2" type="button" aria-label="炎のルーン"><span>◇</span><small>EMBER</small></button>
+        <button class="rune-pad rune-3" data-pad="3" type="button" aria-label="葉のルーン"><span>❧</span><small>LEAF</small></button>
+      </div>
+
+      <div class="sequence-meter">
+        <span>SEQUENCE LENGTH</span>
+        <strong id="sequenceLength">2</strong>
+        <div class="sequence-dots" id="sequenceDots" aria-hidden="true"></div>
+      </div>
+    </section>
+
+    <section class="audio-panel" aria-label="音量設定">
+      <div class="audio-row">
+        <label><input id="bgmToggle" type="checkbox" checked /> BGM</label>
+        <input id="bgmVolume" type="range" min="0" max="100" value="82" aria-label="BGM音量" />
+        <output id="bgmVolumeValue">82</output>
+      </div>
+      <div class="audio-row">
+        <label><input id="sfxToggle" type="checkbox" checked /> SE</label>
+        <input id="sfxVolume" type="range" min="0" max="100" value="72" aria-label="SE音量" />
+        <output id="sfxVolumeValue">72</output>
+      </div>
+    </section>
+
+    <footer class="controls">
+      <button id="startButton" class="primary-button" type="button">ゲーム開始</button>
+      <p class="hint">Music Packはプレイ中も変更できます。切替予約後、次の小節頭でBGMだけが新しいPackへ移行します。</p>
+    </footer>
+  </main>
+
+  <div id="resultOverlay" class="overlay" hidden>
+    <section class="result-card" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+      <p class="eyebrow">RELAY RESULT</p>
+      <h2 id="resultTitle">RELAY COMPLETE</h2>
+      <p id="resultMessage" class="result-message"></p>
+      <div class="result-score"><span>SCORE</span><strong id="finalScore">0</strong></div>
+      <div class="result-stats">
+        <div><span>ROUND</span><strong id="finalRound">1</strong></div>
+        <div><span>PACK</span><strong id="finalPack">—</strong></div>
+      </div>
+      <button id="retryButton" class="primary-button" type="button">もう一度</button>
+    </section>
+  </div>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>
