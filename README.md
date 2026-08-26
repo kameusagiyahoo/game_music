@@ -69,17 +69,6 @@ URL: https://kameusagiyahoo.github.io/game_music/settings/music/
 
 設定は `game-music-global-settings-v1` としてlocalStorageへ保存します。
 
-`ゲーム推奨` の場合は以下を使用します。
-
-```text
-Game 01 Mystic Match -> Fantasy Table
-Game 02 Orbit Rush   -> Neon Orbit
-Game 03 Pulse Forge  -> Pulse Forge WAV
-Game 04 Rune Relay   -> Fantasy Table
-```
-
-Game 04でFantasy / Neon / Clockworkを直接選ぶと、そのPackがprocedural engineの共通既定値になり、次にGame 01 / 02を開いたときも同じPackを使用します。
-
 ## Music Pack Registry
 
 `src/music-registry.js` がMusic Packと共通設定のSource of Truthです。
@@ -94,44 +83,82 @@ Music Registry
 │
 └─ wav-stem
    └─ Pulse Forge WAV
+```
 
-Global Settings
-├─ proceduralPackId
-├─ wavStemPackId
-├─ bgmEnabled
-├─ sfxEnabled
-├─ bgmVolume
-└─ sfxVolume
+## Music Asset Resolver
+
+`src/music-asset-resolver.js` がRegistryと再生Engineの間を仲介します。
+
+ゲームや検証画面はPack IDまたはGame IDだけを渡し、Resolverが適切なManagerを生成します。
+
+```text
+Game / Tool
+    |
+    | packId or gameId
+    v
+Music Asset Resolver
+    |
+    +--> Registry entry: engine = procedural
+    |        -> MusicManager
+    |
+    +--> Registry entry: engine = wav-stem
+             -> WavStemMusicManager
 ```
 
 主なAPI:
 
 ```js
-listMusicPacks({ engine });
-getMusicSettings();
-saveMusicSettings(patch);
-resetMusicSettings();
-resolveMusicPack(gameId, engine);
-configureMusicManager(manager, settings);
-applyMusicSettingsToControls(controls, settings);
+resolveMusicAsset({ gameId, packId, engine });
+createMusicRuntime({ gameId, packId, callbacks, settings });
+getRuntimeDescriptor(runtime);
 ```
 
-## Music Engine v7
+`createMusicRuntime()` の戻り値:
 
-現在は2系統の再生エンジンを同じRegistryから管理しています。
+```js
+{
+  entry,
+  engine,
+  manager,
+  settings,
+  capabilities
+}
+```
+
+Capabilitiesには、Pack切替・Layer Mix・WAV Stem・Stingerなど、そのEngineが扱える機能を持たせています。
+
+## Asset Resolver Lab
+
+Packの再生方式を意識せず、4つの登録Packを同じ画面から試せる検証ページです。
+
+- Fantasy -> proceduralを自動選択
+- Neon -> proceduralを自動選択
+- Clockwork -> proceduralを自動選択
+- Pulse WAV -> wav-stemを自動選択
+- Engine capabilitiesを表示
+- PackごとのModeを自動生成
+- WAV PackではStem Mix preset / Stingerも自動表示
+- 共通BGM / SE設定をそのまま利用
+
+URL: https://kameusagiyahoo.github.io/game_music/debug/resolver/
+
+## Music Engine v8
 
 ```text
-                   Music Registry
-                  /              \
-       procedural                  wav-stem
-           |                          |
-     MusicManager              WavStemMusicManager
-      /    |    \                     |
- Fantasy Neon Clockwork           Pulse WAV
-           |                          |
-     Game 01/02/04                 Game 03
-                  \              /
-                   Global Settings
+                       Music Registry
+                    /                  \
+          procedural                    wav-stem
+              \                         /
+               \                       /
+                Music Asset Resolver
+                         |
+              createMusicRuntime()
+                         |
+              +----------+----------+
+              |                     |
+        MusicManager        WavStemMusicManager
+              |                     |
+       generated audio          WAV assets
 ```
 
 ### v1
@@ -169,9 +196,16 @@ applyMusicSettingsToControls(controls, settings);
 - Packをengine種別で一元登録
 - Gameごとの推奨PackをRegistryで管理
 - 全ゲーム共通のBGM / SE設定
-- procedural Packのグローバル選択
-- Game 04のPack UIをRegistry自動生成へ変更
 - `/settings/music/` 共通Settings画面
+
+### v8
+- `src/music-asset-resolver.js`
+- Pack IDからEngineを自動判定
+- Game IDから既定Engineを自動判定
+- `createMusicRuntime()` でManager生成を共通化
+- EngineごとのCapabilities定義
+- `/debug/resolver/` Asset Resolver Lab
+- procedural / WAVを同じ選択UIから再生可能
 
 ## Music Debug / Mixer
 
@@ -215,6 +249,7 @@ src/
 ├── music-manager.js
 ├── wav-stem-manager.js
 ├── music-registry.js
+├── music-asset-resolver.js
 └── music-packs/
     ├── fantasy.js
     ├── neon.js
@@ -222,11 +257,9 @@ src/
     └── pulse.js
 settings/
 └── music/
-    ├── index.html
-    ├── settings.js
-    └── styles.css
 debug/
-└── mixer/
+├── mixer/
+└── resolver/
 games/
 ├── orbit-rush/
 ├── pulse-forge/
@@ -238,9 +271,9 @@ assets/
 
 ## Next candidates
 
-- Packごとの `procedural / WAV / OGG / AAC` 自動選択
+- Resolverを使うGame 05追加
 - procedural PackのWAV Stem版生成
+- WAV / OGG / AACのブラウザ対応Format Resolver
 - Stingerを小節頭 / beat頭へQuantize
 - Transition専用Whoosh / Fill
 - 44.1 kHz stereo stemsへの差し替え
-- Game 05追加
