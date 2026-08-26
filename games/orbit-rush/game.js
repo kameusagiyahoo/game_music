@@ -1,5 +1,13 @@
 import { MusicManager } from "../../src/music-manager.js";
-import { neonPack } from "../../src/music-packs/neon.js";
+import {
+  GAME_IDS,
+  MUSIC_ENGINES,
+  getMusicSettings,
+  saveMusicSettings,
+  resolveMusicPack,
+  configureMusicManager,
+  applyMusicSettingsToControls,
+} from "../../src/music-registry.js";
 
 const GAME_TIME = 30;
 const TENSION_TIME = 8;
@@ -41,12 +49,14 @@ let startedAt = 0;
 let timerId = null;
 let masterSoundEnabled = true;
 
+const sharedSettings = getMusicSettings();
+const packEntry = resolveMusicPack(GAME_IDS.ORBIT_RUSH, MUSIC_ENGINES.PROCEDURAL);
 const music = new MusicManager({
-  pack: neonPack,
+  pack: packEntry.pack,
   onModeChange(label) { musicState.textContent = label; },
 });
-music.setMusicVolume(0.78);
-music.setSfxVolume(0.76);
+configureMusicManager(music, sharedSettings);
+applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
 
 const best = Number(localStorage.getItem("orbit-rush-best") || 0);
 bestValue.textContent = best ? best.toLocaleString("ja-JP") : "—";
@@ -102,7 +112,7 @@ function resetGame() {
   resultOverlay.hidden = true;
   renderPads();
   updateStatus();
-  setMessage("光った軌道をタップ", "30秒間、ターゲットを追い続けよう。");
+  setMessage("光った軌道をタップ", `30秒間、ターゲットを追い続けよう。Music Pack: ${packEntry.name}`);
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
 }
@@ -198,15 +208,23 @@ soundButton.addEventListener("click", async () => {
   await applyAudioState();
   if (masterSoundEnabled && sfxToggle.checked) music.sfx("toggle");
 });
-bgmToggle.addEventListener("change", applyAudioState);
-sfxToggle.addEventListener("change", applyAudioState);
+bgmToggle.addEventListener("change", async () => {
+  saveMusicSettings({ bgmEnabled: bgmToggle.checked });
+  await applyAudioState();
+});
+sfxToggle.addEventListener("change", async () => {
+  saveMusicSettings({ sfxEnabled: sfxToggle.checked });
+  await applyAudioState();
+});
 bgmVolume.addEventListener("input", () => {
   bgmVolumeValue.textContent = bgmVolume.value;
   music.setMusicVolume(Number(bgmVolume.value) / 100);
+  saveMusicSettings({ bgmVolume: Number(bgmVolume.value) / 100 });
 });
 sfxVolume.addEventListener("input", () => {
   sfxVolumeValue.textContent = sfxVolume.value;
   music.setSfxVolume(Number(sfxVolume.value) / 100);
+  saveMusicSettings({ sfxVolume: Number(sfxVolume.value) / 100 });
 });
 
 startButton.addEventListener("click", startGame);
