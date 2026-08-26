@@ -1,4 +1,4 @@
-import { MusicManager } from "../../src/music-manager.js";
+import { WavStemMusicManager } from "../../src/wav-stem-manager.js";
 import { pulsePack } from "../../src/music-packs/pulse.js";
 
 const GAME_TIME = 40;
@@ -78,7 +78,7 @@ function renderStemMix(mix, preset = currentLayerPreset) {
   stemPreset.textContent = PRESET_NAMES[preset] || String(preset || "CUSTOM").toUpperCase();
 }
 
-const music = new MusicManager({
+const music = new WavStemMusicManager({
   pack: pulsePack,
   onModeChange(label) {
     musicState.textContent = label;
@@ -108,7 +108,7 @@ const music = new MusicManager({
 music.setMusicVolume(0.80);
 music.setSfxVolume(0.76);
 
-function setMessage(title, body, kicker = "RHYTHM / STEM MIXER") {
+function setMessage(title, body, kicker = "RHYTHM / WAV STEM MIXER") {
   gameMessage.innerHTML = `<span class="message-kicker">${kicker}</span><strong>${title}</strong><span>${body}</span>`;
 }
 
@@ -134,13 +134,11 @@ function choosePad() {
 
 function beginBeat() {
   if (!beatResolved && activePad >= 0) applyMiss(false);
-
   clearPads();
   activePad = choosePad();
   beatResolved = false;
   beatStartedAt = performance.now();
   pads[activePad]?.classList.add("is-active");
-
   beatRing.classList.remove("is-pulse");
   void beatRing.offsetWidth;
   beatRing.classList.add("is-pulse");
@@ -154,12 +152,10 @@ function desiredPreset() {
 
 function updateAdaptiveMix() {
   const desired = desiredPreset();
-
   if (desired === currentLayerPreset) {
     if (pendingLayerPreset && pendingLayerPreset !== desired) music.cancelPendingLayerMix();
     return;
   }
-
   if (pendingLayerPreset !== desired) {
     music.setLayerPreset(desired, { quantize: "bar", fadeBeats: 1 });
   }
@@ -213,13 +209,11 @@ function applyMiss(playSound = true, pad = null) {
 
 function tapPad(index, pad) {
   if (state !== "playing" || beatResolved) return;
-
   if (index !== activePad) {
     pads[activePad]?.classList.remove("is-active");
     applyMiss(true, pad);
     return;
   }
-
   const delta = performance.now() - beatStartedAt;
   if (delta <= PERFECT_MS) applyHit("perfect", pad);
   else if (delta <= GOOD_MS) applyHit("good", pad);
@@ -250,19 +244,28 @@ function resetGame() {
   judgement.className = "";
   syncState.textContent = "BAR — / BEAT —";
   pendingState.textContent = "—";
-  setMessage("光った炉心をビートに合わせて叩く", "精度が上がるほど、同じ演奏位置のまま音楽ステムが厚くなります。");
+  setMessage("光った炉心をビートに合わせて叩く", "5本のWAVステムが同じ再生位置を共有し、Energyに応じて音量だけ変化します。");
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
 }
 
 async function startGame() {
   resetGame();
-  await music.play("normal");
+  startButton.disabled = true;
+  startButton.textContent = "WAV読込中…";
+  try {
+    await music.play("normal");
+  } catch (error) {
+    console.error(error);
+    startButton.disabled = false;
+    startButton.textContent = "ゲーム開始";
+    setMessage("WAVの読み込みに失敗", "GitHub Pagesの反映後に再読み込みしてください。", "AUDIO LOAD ERROR");
+    return;
+  }
   state = "playing";
   startedAt = performance.now();
-  startButton.disabled = true;
   startButton.textContent = "鍛造中";
-  setMessage("ビートに同期せよ", "Energyを上げると、次の小節から新しいステムが参加します。", "PLAYING / STEM SYNC");
+  setMessage("ビートに同期せよ", "Energyを上げると、次の小節から実WAVステムのMixが変化します。", "PLAYING / WAV STEM SYNC");
 
   timerId = window.setInterval(() => {
     const elapsed = (performance.now() - startedAt) / 1000;
@@ -283,14 +286,13 @@ function endGame() {
   music.cancelPendingLayerMix();
   void (async () => {
     await music.setLayerPreset("result", { seconds: 0.3 });
-    await music.transitionTo("result", 0.7);
+    await music.transitionTo("result");
   })();
   music.sfx(energy >= 60 ? "win" : "lose");
   updateStatus();
 
   const previousBest = Number(localStorage.getItem("pulse-forge-best") || 0);
   if (score > previousBest) localStorage.setItem("pulse-forge-best", String(score));
-
   resultTitle.textContent = score > previousBest ? "NEW FORGE!" : "FORGED!";
   resultMessage.textContent = `最終エネルギー${Math.round(energy)}%。PERFECT ${perfects}回、最大${maxCombo}コンボ。`;
   finalScore.textContent = score.toLocaleString("ja-JP");
