@@ -1,11 +1,8 @@
-import { WavStemMusicManager } from "../../src/wav-stem-manager.js";
+import { createMusicRuntime } from "../../src/music-asset-resolver.js";
 import {
   GAME_IDS,
-  MUSIC_ENGINES,
   getMusicSettings,
   saveMusicSettings,
-  resolveMusicPack,
-  configureMusicManager,
   applyMusicSettingsToControls,
 } from "../../src/music-registry.js";
 
@@ -87,36 +84,40 @@ function renderStemMix(mix, preset = currentLayerPreset) {
 }
 
 const sharedSettings = getMusicSettings();
-const packEntry = resolveMusicPack(GAME_IDS.PULSE_FORGE, MUSIC_ENGINES.WAV_STEM);
-const pulsePack = packEntry.pack;
-const music = new WavStemMusicManager({
-  pack: pulsePack,
-  onModeChange(label) {
-    musicState.textContent = label;
-  },
-  onLayerChange(info = {}) {
-    if (info.preset) currentLayerPreset = info.preset;
-    pendingLayerPreset = info.pendingPreset || null;
-    renderStemMix(info.mix || pulsePack.layerPresets.focus, currentLayerPreset);
-    pendingState.textContent = pendingLayerPreset
-      ? `${PRESET_NAMES[pendingLayerPreset] || pendingLayerPreset} MIX 予約中`
-      : "—";
-  },
-  onSync(info) {
-    syncState.textContent = info.mode === "ready" ? "BAR — / BEAT —" : `BAR ${info.bar} / BEAT ${info.beat}`;
-    pendingLayerPreset = info.pendingLayerPreset || pendingLayerPreset;
-    pendingState.textContent = pendingLayerPreset
-      ? `${PRESET_NAMES[pendingLayerPreset] || pendingLayerPreset} MIX 予約中`
-      : "—";
+let pulsePack = null;
+const runtime = createMusicRuntime({
+  gameId: GAME_IDS.PULSE_FORGE,
+  callbacks: {
+    onModeChange(label) {
+      musicState.textContent = label;
+    },
+    onLayerChange(info = {}) {
+      if (info.preset) currentLayerPreset = info.preset;
+      pendingLayerPreset = info.pendingPreset || null;
+      renderStemMix(info.mix || pulsePack?.layerPresets?.focus, currentLayerPreset);
+      pendingState.textContent = pendingLayerPreset
+        ? `${PRESET_NAMES[pendingLayerPreset] || pendingLayerPreset} MIX 予約中`
+        : "—";
+    },
+    onSync(info) {
+      syncState.textContent = info.mode === "ready" ? "BAR — / BEAT —" : `BAR ${info.bar} / BEAT ${info.beat}`;
+      pendingLayerPreset = info.pendingLayerPreset || pendingLayerPreset;
+      pendingState.textContent = pendingLayerPreset
+        ? `${PRESET_NAMES[pendingLayerPreset] || pendingLayerPreset} MIX 予約中`
+        : "—";
 
-    if (state !== "playing" || info.subdivision !== 0) return;
-    const key = `${info.bar}-${info.beat}`;
-    if (key === lastBeatKey) return;
-    lastBeatKey = key;
-    beginBeat();
+      if (state !== "playing" || info.subdivision !== 0) return;
+      const key = `${info.bar}-${info.beat}`;
+      if (key === lastBeatKey) return;
+      lastBeatKey = key;
+      beginBeat();
+    },
   },
+  settings: sharedSettings,
 });
-configureMusicManager(music, sharedSettings);
+const packEntry = runtime.entry;
+pulsePack = runtime.entry.pack;
+const music = runtime.manager;
 applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
 
 function setMessage(title, body, kicker = "RHYTHM / WAV STEM MIXER") {
