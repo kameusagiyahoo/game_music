@@ -1,28 +1,34 @@
 import { MusicManager } from "./music-manager.js";
+import { fantasyPack } from "./music-packs/fantasy.js";
 
 const ICONS = ["☀", "☾", "✦", "❖", "♜", "⚚"];
 const GAME_TIME = 45;
 const TENSION_TIME = 10;
 
-const board = document.querySelector("#board");
-const startButton = document.querySelector("#startButton");
-const retryButton = document.querySelector("#retryButton");
-const soundButton = document.querySelector("#soundButton");
-const resultOverlay = document.querySelector("#resultOverlay");
-
-const timeValue = document.querySelector("#timeValue");
-const movesValue = document.querySelector("#movesValue");
-const pairsValue = document.querySelector("#pairsValue");
-const bestValue = document.querySelector("#bestValue");
-const gameMessage = document.querySelector("#gameMessage");
-const hintText = document.querySelector("#hintText");
-const musicState = document.querySelector("#musicState");
-
-const resultTitle = document.querySelector("#resultTitle");
-const resultMessage = document.querySelector("#resultMessage");
-const scoreValue = document.querySelector("#scoreValue");
-const resultTime = document.querySelector("#resultTime");
-const resultMoves = document.querySelector("#resultMoves");
+const $ = (selector) => document.querySelector(selector);
+const board = $("#board");
+const startButton = $("#startButton");
+const retryButton = $("#retryButton");
+const soundButton = $("#soundButton");
+const resultOverlay = $("#resultOverlay");
+const timeValue = $("#timeValue");
+const movesValue = $("#movesValue");
+const pairsValue = $("#pairsValue");
+const bestValue = $("#bestValue");
+const gameMessage = $("#gameMessage");
+const hintText = $("#hintText");
+const musicState = $("#musicState");
+const bgmToggle = $("#bgmToggle");
+const sfxToggle = $("#sfxToggle");
+const bgmVolume = $("#bgmVolume");
+const sfxVolume = $("#sfxVolume");
+const bgmVolumeValue = $("#bgmVolumeValue");
+const sfxVolumeValue = $("#sfxVolumeValue");
+const resultTitle = $("#resultTitle");
+const resultMessage = $("#resultMessage");
+const scoreValue = $("#scoreValue");
+const resultTime = $("#resultTime");
+const resultMoves = $("#resultMoves");
 
 let state = "ready";
 let deck = [];
@@ -34,12 +40,11 @@ let pairs = 0;
 let remaining = GAME_TIME;
 let startedAt = 0;
 let timerId = null;
-let soundEnabled = true;
+let masterSoundEnabled = true;
 
 const music = new MusicManager({
-  onModeChange(label) {
-    if (musicState) musicState.textContent = label;
-  },
+  pack: fantasyPack,
+  onModeChange(label) { musicState.textContent = label; },
 });
 
 const best = Number(localStorage.getItem("mystic-match-best") || 0);
@@ -62,23 +67,14 @@ function renderBoard() {
     button.type = "button";
     button.dataset.index = String(index);
     button.setAttribute("aria-label", `カード ${index + 1}`);
-    button.innerHTML = `
-      <span class="card-inner">
-        <span class="card-face card-back" aria-hidden="true"></span>
-        <span class="card-face card-front" aria-hidden="true">${item.icon}</span>
-      </span>
-    `;
+    button.innerHTML = `<span class="card-inner"><span class="card-face card-back" aria-hidden="true"></span><span class="card-face card-front" aria-hidden="true">${item.icon}</span></span>`;
     button.addEventListener("click", () => flipCard(button));
     board.appendChild(button);
   });
 }
 
 function setMessage(title, body, kicker = "MEMORY GAME") {
-  gameMessage.innerHTML = `
-    <span class="message-kicker">${kicker}</span>
-    <strong>${title}</strong>
-    <span>${body}</span>
-  `;
+  gameMessage.innerHTML = `<span class="message-kicker">${kicker}</span><strong>${title}</strong><span>${body}</span>`;
 }
 
 function updateStatus() {
@@ -124,8 +120,8 @@ async function startGame() {
     if (remaining <= TENSION_TIME && state === "playing") {
       state = "tension";
       document.body.classList.add("is-tension");
-      setMessage("残り10秒", "BGMも加速。ここからが勝負。", "TENSION");
-      music.setMode("tension");
+      setMessage("残り10秒", "BGMがクロスフェードして加速します。", "TENSION");
+      music.transitionTo("tension", 0.55);
     }
 
     if (remaining <= 0) {
@@ -134,7 +130,6 @@ async function startGame() {
       endGame(false);
       return;
     }
-
     updateStatus();
   }, 50);
 }
@@ -147,17 +142,12 @@ function flipCard(card) {
 
   card.classList.add("is-flipped");
   music.sfx("flip");
-
-  if (!firstCard) {
-    firstCard = card;
-    return;
-  }
+  if (!firstCard) { firstCard = card; return; }
 
   secondCard = card;
   moves += 1;
   movesValue.textContent = String(moves);
   lockBoard = true;
-
   const firstIndex = Number(firstCard.dataset.index);
   const secondIndex = Number(secondCard.dataset.index);
 
@@ -171,11 +161,9 @@ function flipCard(card) {
     pairs += 1;
     pairsValue.textContent = String(pairs);
     music.sfx("match");
-
     firstCard = null;
     secondCard = null;
     lockBoard = false;
-
     if (pairs === ICONS.length) endGame(true);
     return;
   }
@@ -192,9 +180,7 @@ function flipCard(card) {
 
 function calculateScore(clear) {
   if (!clear) return pairs * 100;
-  const timeBonus = Math.round(remaining * 30);
-  const moveBonus = Math.max(0, 900 - Math.max(0, moves - 6) * 55);
-  return 1000 + timeBonus + moveBonus;
+  return 1000 + Math.round(remaining * 30) + Math.max(0, 900 - Math.max(0, moves - 6) * 55);
 }
 
 function endGame(clear) {
@@ -203,12 +189,11 @@ function endGame(clear) {
   state = "result";
   document.body.classList.remove("is-tension");
   lockBoard = true;
-  music.setMode("result");
+  music.transitionTo("result", 0.7);
 
   const score = calculateScore(clear);
   const elapsed = Math.min(GAME_TIME, (performance.now() - startedAt) / 1000);
   const previousBest = Number(localStorage.getItem("mystic-match-best") || 0);
-
   if (score > previousBest) {
     localStorage.setItem("mystic-match-best", String(score));
     bestValue.textContent = score.toLocaleString("ja-JP");
@@ -216,7 +201,7 @@ function endGame(clear) {
 
   resultTitle.textContent = clear ? "CLEAR!" : "TIME UP";
   resultMessage.textContent = clear
-    ? (score > previousBest ? "ベストスコア更新。記憶と判断の精度が上がっています。" : "6組すべて揃いました。さらに少ない手数を狙えます。")
+    ? (score > previousBest ? "ベストスコア更新。" : "6組すべて揃いました。さらに少ない手数を狙えます。")
     : `${pairs}組まで揃いました。位置を覚えて再挑戦しよう。`;
   scoreValue.textContent = score.toLocaleString("ja-JP");
   resultTime.textContent = `${elapsed.toFixed(1)}s`;
@@ -227,15 +212,30 @@ function endGame(clear) {
   music.sfx(clear ? "win" : "lose");
 }
 
+async function applyAudioState() {
+  await music.setMusicEnabled(masterSoundEnabled && bgmToggle.checked);
+  await music.setSfxEnabled(masterSoundEnabled && sfxToggle.checked);
+  soundButton.setAttribute("aria-pressed", String(masterSoundEnabled));
+  soundButton.textContent = masterSoundEnabled ? "♪" : "×";
+}
+
 soundButton.addEventListener("click", async () => {
-  soundEnabled = !soundEnabled;
-  soundButton.setAttribute("aria-pressed", String(soundEnabled));
-  soundButton.textContent = soundEnabled ? "♪" : "×";
-  await music.setEnabled(soundEnabled);
-  if (soundEnabled) music.sfx("toggle");
+  masterSoundEnabled = !masterSoundEnabled;
+  await applyAudioState();
+  if (masterSoundEnabled && sfxToggle.checked) music.sfx("toggle");
+});
+
+bgmToggle.addEventListener("change", applyAudioState);
+sfxToggle.addEventListener("change", applyAudioState);
+bgmVolume.addEventListener("input", () => {
+  bgmVolumeValue.textContent = bgmVolume.value;
+  music.setMusicVolume(Number(bgmVolume.value) / 100);
+});
+sfxVolume.addEventListener("input", () => {
+  sfxVolumeValue.textContent = sfxVolume.value;
+  music.setSfxVolume(Number(sfxVolume.value) / 100);
 });
 
 startButton.addEventListener("click", startGame);
 retryButton.addEventListener("click", startGame);
-
 resetGame();
