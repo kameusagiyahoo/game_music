@@ -2,22 +2,32 @@ const midiToHz = (note) => 440 * (2 ** ((note - 69) / 12));
 const STEPS_PER_BEAT = 2;
 const BEATS_PER_BAR = 4;
 const STEPS_PER_BAR = STEPS_PER_BEAT * BEATS_PER_BAR;
+const STEMS = ["drums", "bass", "chords", "melody", "sparkle"];
+
+const clamp01 = (value) => Math.max(0, Math.min(1, Number(value)));
 
 export class MusicManager {
-  constructor({ pack, onModeChange, onSync } = {}) {
+  constructor({ pack, onModeChange, onSync, onLayerChange } = {}) {
     this.pack = pack;
     this.onModeChange = onModeChange || (() => {});
     this.onSync = onSync || (() => {});
+    this.onLayerChange = onLayerChange || (() => {});
     this.context = null;
     this.master = null;
     this.musicRoot = null;
     this.sfxBus = null;
     this.activeMusicBus = null;
+    this.layerBuses = {};
+    this.noiseBuffer = null;
     this.running = false;
     this.mode = "normal";
     this.step = 0;
     this.timer = null;
     this.pendingTransition = null;
+    this.pendingLayerMix = null;
+    this.pendingLayerPreset = null;
+    this.layerPreset = null;
+    this.layerMix = this.#fullMix();
     this.musicEnabled = true;
     this.sfxEnabled = true;
     this.musicVolume = 0.82;
@@ -52,6 +62,10 @@ export class MusicManager {
       this.sfxBus.connect(this.master);
       this.master.connect(compressor);
       compressor.connect(this.context.destination);
+
+      this.noiseBuffer = this.context.createBuffer(1, Math.floor(this.context.sampleRate * 0.25), this.context.sampleRate);
+      const noise = this.noiseBuffer.getChannelData(0);
+      for (let i = 0; i < noise.length; i += 1) noise[i] = Math.random() * 2 - 1;
     }
 
     if (this.context.state !== "running") await this.context.resume();
@@ -64,8 +78,13 @@ export class MusicManager {
     this.mode = mode;
     this.step = 0;
     this.pendingTransition = null;
+    this.pendingLayerMix = null;
+    this.pendingLayerPreset = null;
+    this.layerPreset = this.pack?.defaultLayerPreset || null;
+    this.layerMix = this.#initialMix(mode);
     this.#replaceMusicBus(false);
     this.#announce();
+    this.#announceLayers();
     this.#restartClock(true);
   }
 
@@ -99,14 +118,51 @@ export class MusicManager {
     this.#sync();
   }
 
+  async setLayerPreset(name, options = {}) {
+    const preset = this.pack?.layerPresets?.[name];
+    if (!preset) throw new Error(`Unknown layer preset: ${name}`);
+    return this.setLayerMix(preset, { ...options, preset: name });
+  }
+
+  async setLayerMix(mix, options = {}) {
+    await this.init();
+    const config = { quantize: "immediate", fadeBeats: 1, ...options };
+    const target = this.#normalizeMix({ ...this.layerMix, ...mix });
+
+    if (config.quantize === "bar" && this.running) {
+      this.pendingLayerMix = target;
+      this.pendingLayerPreset = config.preset || null;
+      this.#announceLayers();
+      this.#sync();
+      return;
+    }
+
+    const seconds = Number(config.seconds ?? this.#beatsToSeconds(config.fadeBeats ?? 1));
+    this.#applyLayerMix(target, seconds, config.preset || null);
+  }
+
+  cancelPendingLayerMix() {
+    this.pendingLayerMix = null;
+    this.pendingLayerPreset = null;
+    this.#announceLayers();
+    this.#sync();
+  }
+
+  getLayerMix() {
+    return { ...this.layerMix };
+  }
+
   stop() {
     this.running = false;
     this.pendingTransition = null;
+    this.pendingLayerMix = null;
+    this.pendingLayerPreset = null;
     if (this.timer) window.clearTimeout(this.timer);
     this.timer = null;
     this.step = 0;
     if (this.activeMusicBus && this.context) this.#ramp(this.activeMusicBus.gain, 0.0001, 0.12);
     this.onModeChange("READY · music stopped", { mode: "ready", pendingMode: null });
+    this.#announceLayers();
     this.#sync();
   }
 
@@ -158,6 +214,30 @@ export class MusicManager {
     if (name === "toggle") this.#voice(660, now, 0.07, 0.04, "sine", this.sfxBus);
   }
 
+  #fullMix() {
+    return Object.fromEntries(STEMS.map((name) => [name, 1]));
+  }
+
+  #normalizeMix(mix = {}) {
+    return Object.fromEntries(STEMS.map((name) => [name, clamp01(mix[name] ?? 1)]));
+  }
+
+  #initialMix(mode) {
+    const presetName = this.pack?.defaultLayerPreset;
+    if (presetName && this.pack?.layerPresets?.[presetName]) {
+      return this.#normalizeMix(this.pack.layerPresets[presetName]);
+    }
+
+    const layers = this.pack?.modes?.[mode]?.layers || {};
+    return this.#normalizeMix({
+      drums: layers.drums ?? layers.pulse ?? 1,
+      bass: layers.bass ?? 1,
+      chords: layers.chords ?? 1,
+      melody: layers.melody ?? 1,
+      sparkle: layers.sparkle ?? 1,
+    });
+  }
+
   #beatsToSeconds(beats) {
     const bpm = this.pack?.modes?.[this.mode]?.bpm || 120;
     return Math.max(0.05, Number(beats) * 60 / bpm);
@@ -167,6 +247,15 @@ export class MusicManager {
     this.onModeChange(this.pack?.modes?.[this.mode]?.label || this.mode, {
       mode: this.mode,
       pendingMode: this.pendingTransition?.mode || null,
+    });
+  }
+
+  #announceLayers() {
+    this.onLayerChange({
+      mix: { ...this.layerMix },
+      preset: this.layerPreset,
+      pendingMix: this.pendingLayerMix ? { ...this.pendingLayerMix } : null,
+      pendingPreset: this.pendingLayerPreset,
     });
   }
 
@@ -180,6 +269,9 @@ export class MusicManager {
       subdivision: barStep % STEPS_PER_BEAT,
       mode: this.mode,
       pendingMode: this.pendingTransition?.mode || null,
+      layerPreset: this.layerPreset,
+      pendingLayerPreset: this.pendingLayerPreset,
+      layerMix: { ...this.layerMix },
     });
   }
 
@@ -202,10 +294,30 @@ export class MusicManager {
   }
 
   #applyPendingAtBar() {
-    if (!this.pendingTransition) return;
-    const { mode, crossfadeBeats } = this.pendingTransition;
-    const seconds = this.#beatsToSeconds(crossfadeBeats);
-    this.#applyTransition(mode, seconds, false);
+    if (this.pendingTransition) {
+      const { mode, crossfadeBeats } = this.pendingTransition;
+      const seconds = this.#beatsToSeconds(crossfadeBeats);
+      this.#applyTransition(mode, seconds, false);
+    }
+
+    if (this.pendingLayerMix) {
+      const target = this.pendingLayerMix;
+      const preset = this.pendingLayerPreset;
+      this.pendingLayerMix = null;
+      this.pendingLayerPreset = null;
+      this.#applyLayerMix(target, this.#beatsToSeconds(1), preset);
+    }
+  }
+
+  #applyLayerMix(target, seconds, preset = null) {
+    this.layerMix = this.#normalizeMix(target);
+    this.layerPreset = preset || this.layerPreset;
+    STEMS.forEach((name) => {
+      const bus = this.layerBuses[name];
+      if (bus) this.#ramp(bus.gain, Math.max(0.0001, this.layerMix[name]), seconds);
+    });
+    this.#announceLayers();
+    this.#sync();
   }
 
   #replaceMusicBus(crossfade, seconds = 0.45) {
@@ -213,7 +325,17 @@ export class MusicManager {
     const next = this.context.createGain();
     next.gain.value = crossfade ? 0.0001 : 1;
     next.connect(this.musicRoot);
+
+    const buses = {};
+    STEMS.forEach((name) => {
+      const bus = this.context.createGain();
+      bus.gain.value = Math.max(0.0001, this.layerMix[name] ?? 1);
+      bus.connect(next);
+      buses[name] = bus;
+    });
+
     this.activeMusicBus = next;
+    this.layerBuses = buses;
 
     if (crossfade) {
       this.#ramp(next.gain, 1, seconds);
@@ -249,7 +371,7 @@ export class MusicManager {
     if (this.context.state === "suspended") this.context.resume().catch(() => {});
 
     const barStep = this.step % STEPS_PER_BAR;
-    if (barStep === 0 && this.pendingTransition) this.#applyPendingAtBar();
+    if (barStep === 0 && (this.pendingTransition || this.pendingLayerMix)) this.#applyPendingAtBar();
 
     const patternStep = this.step % 16;
     this.#scheduleStep(patternStep, this.context.currentTime + 0.012);
@@ -261,42 +383,79 @@ export class MusicManager {
   #scheduleStep(step, time) {
     const mode = this.pack.modes[this.mode];
     const voices = this.pack.voices || {};
-    const layers = mode.layers || {};
-    const bus = this.activeMusicBus;
-    if (!bus) return;
 
-    const melody = mode.melody[step];
-    if (layers.melody !== false && melody !== null) {
+    const melody = mode.melody?.[step];
+    if (melody !== null && melody !== undefined) {
       const v = voices.melody || { type: "triangle", gain: 0.06, duration: 0.18 };
-      this.#voice(midiToHz(melody), time, v.duration, v.gain * (step % 4 === 0 ? 1.15 : 1), v.type, bus);
+      this.#voice(midiToHz(melody), time, v.duration, v.gain * (step % 4 === 0 ? 1.15 : 1), v.type, this.layerBuses.melody);
       const sparkle = voices.sparkle;
-      if (layers.sparkle !== false && sparkle) {
-        this.#voice(midiToHz(melody + (sparkle.octave || 12)), time, sparkle.duration, sparkle.gain, sparkle.type, bus);
+      if (sparkle) {
+        this.#voice(midiToHz(melody + (sparkle.octave || 12)), time, sparkle.duration, sparkle.gain, sparkle.type, this.layerBuses.sparkle);
       }
     }
 
     if (step % 4 === 0) {
       const index = (step / 4) % 4;
-      if (layers.bass !== false) {
+      if (mode.bass?.[index] !== undefined) {
         const bass = voices.bass || { type: "triangle", gain: 0.045, duration: 0.42 };
-        this.#voice(midiToHz(mode.bass[index]), time, bass.duration, bass.gain, bass.type, bus);
+        this.#voice(midiToHz(mode.bass[index]), time, bass.duration, bass.gain, bass.type, this.layerBuses.bass);
       }
 
-      if (layers.chords !== false) {
+      const chord = mode.chords?.[index];
+      if (chord) {
         const chordVoice = voices.chord || { type: "sine", gain: 0.015, duration: 0.60, octave: 12 };
-        mode.chords[index].forEach((note) => {
-          this.#voice(midiToHz(note + (chordVoice.octave || 0)), time, chordVoice.duration, chordVoice.gain, chordVoice.type, bus);
+        chord.forEach((note) => {
+          this.#voice(midiToHz(note + (chordVoice.octave || 0)), time, chordVoice.duration, chordVoice.gain, chordVoice.type, this.layerBuses.chords);
         });
       }
     }
 
-    if (layers.pulse !== false && step % (mode.pulseEvery || 4) === 0) {
+    const drumPattern = mode.drumPattern;
+    if (Array.isArray(drumPattern)) {
+      const hit = drumPattern[step % drumPattern.length];
+      if (hit) this.#drumHit(hit, time, this.layerBuses.drums);
+    } else if (step % (mode.pulseEvery || 4) === 0) {
       const pulse = voices.pulse || { type: "square", gain: 0.012, duration: 0.025 };
-      this.#voice(mode.pulseHz || 900, time, pulse.duration, pulse.gain, pulse.type, bus);
+      this.#voice(mode.pulseHz || 900, time, pulse.duration, pulse.gain, pulse.type, this.layerBuses.drums);
+    }
+  }
+
+  #drumHit(kind, time, destination) {
+    if (!destination) return;
+
+    if (kind === "kick" || kind === "both") {
+      const osc = this.context.createOscillator();
+      const gain = this.context.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(120, time);
+      osc.frequency.exponentialRampToValueAtTime(46, time + 0.11);
+      gain.gain.setValueAtTime(0.065, time);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.14);
+      osc.connect(gain);
+      gain.connect(destination);
+      osc.start(time);
+      osc.stop(time + 0.16);
+    }
+
+    if ((kind === "hat" || kind === "both") && this.noiseBuffer) {
+      const source = this.context.createBufferSource();
+      const filter = this.context.createBiquadFilter();
+      const gain = this.context.createGain();
+      source.buffer = this.noiseBuffer;
+      filter.type = "highpass";
+      filter.frequency.value = 5200;
+      gain.gain.setValueAtTime(0.022, time);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.045);
+      source.connect(filter);
+      filter.connect(gain);
+      gain.connect(destination);
+      source.start(time);
+      source.stop(time + 0.06);
     }
   }
 
   #voice(frequency, start, duration, gain, type, destination) {
+    if (!destination) return;
     const oscillator = this.context.createOscillator();
     const envelope = this.context.createGain();
     oscillator.type = type;
