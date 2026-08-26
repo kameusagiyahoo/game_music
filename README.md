@@ -39,33 +39,39 @@ URL: https://kameusagiyahoo.github.io/game_music/games/orbit-rush/
 - Energy 40%でBUILD MIX、75%でOVERDRIVE MIXを予約
 - 次の小節頭でステムGainだけを変更
 - WAV自体は止めず、全ステムの再生位置を維持
-- DRUMS / BASS / CHORDS / MELODY / SPARKLEのライブメーター表示
-- BAR / BEAT / NEXT BAR MIXを画面表示
+- Victory / Game Over専用WAV Stinger
+- Stinger中はBGMをduckし、終了後に元の音量へ復帰
 
 URL: https://kameusagiyahoo.github.io/game_music/games/pulse-forge/
 
-## Music Engine v4 — Real WAV Stem Transport
+## Music Debug / Mixer
+
+ゲームロジックを介さずMusic Engineだけを直接操作する検証画面。
+
+- WAV transport Start / Stop
+- BAR / BEAT / elapsed time表示
+- FOCUS / BUILD / OVERDRIVE / RESULTプリセット
+- プリセットを次小節頭へQuantize
+- Drums / Bass / Chords / Melody / Sparkleを個別0〜100%調整
+- 各stemのSOLO
+- Victory / Game Over Stinger単独テスト
+- Stinger cache / WAV buffer状態表示
+
+URL: https://kameusagiyahoo.github.io/game_music/debug/mixer/
+
+## Music Engine v5
 
 ```text
-Game Logic
-    ↓ Energy / state
-WavStemMusicManager
-    ↓
-AudioContext shared start time
-    ├── drums.wav   ─ Gain Bus
-    ├── bass.wav    ─ Gain Bus
-    ├── chords.wav  ─ Gain Bus
-    ├── melody.wav  ─ Gain Bus
-    └── sparkle.wav ─ Gain Bus
-            ↓
-     Quantized Layer Mixer
-            ↓ next bar
-        Music Root
+                     ┌─ drums.wav   ─ Gain
+                     ├─ bass.wav    ─ Gain
+Game State ────────> ├─ chords.wav  ─ Gain ─┐
+                     ├─ melody.wav  ─ Gain  │
+                     └─ sparkle.wav ─ Gain  │
+                                             ├─ Music Root ─┐
+Victory / Game Over ─> Stinger Bus ──────────┘              │
+                                                            ├─ Compressor ─ Output
+SE ─────────────────> SFX Bus ──────────────────────────────┘
 ```
-
-5本のWAVはすべて同じテンポ・長さ・開始位置で生成し、`AudioBufferSourceNode.start(startAt)` の同一 `startAt` を使って同時再生します。
-
-音量0のステムも停止しません。裏で同じ位置をループし続けるため、BUILDやOVERDRIVEでGainを上げた瞬間も現在の小節位置から自然に参加します。
 
 ### v1
 
@@ -92,22 +98,36 @@ AudioContext shared start time
 - 5つのAudioBufferを同一時刻でスタート
 - WAV再生位置を維持したままGainのみ変更
 - AudioContext時間を基準にゲームのBeat Clockも同期
-- 初回ロード後はブラウザキャッシュを利用
-- GitHub ActionsでWAVを再生成可能
+- GitHub ActionsでWAVを再生成
 
-## WAV generation pipeline
+### v5
+
+- `playStinger(name)`
+- `victory.wav / gameover.wav`
+- BGMを止めずにStingerをオーバーレイ
+- Stinger中のBGM ducking / release
+- Stinger用AudioBuffer cache
+- `getDebugState()`
+- Music Debug / Mixer画面
+- 手動5stem Mixer / SOLO / preset検証
+
+## Audio generation pipeline
 
 ```text
 tools/generate_pulse_stems.py
         ↓
 GitHub Actions
         ↓
-assets/stems/pulse/
-├── drums.wav
-├── bass.wav
-├── chords.wav
-├── melody.wav
-└── sparkle.wav
+assets/
+├── stems/pulse/
+│   ├── drums.wav
+│   ├── bass.wav
+│   ├── chords.wav
+│   ├── melody.wav
+│   └── sparkle.wav
+└── stingers/pulse/
+    ├── victory.wav
+    └── gameover.wav
         ↓
 GitHub Pages
         ↓
@@ -115,8 +135,6 @@ WavStemMusicManager
 ```
 
 Workflow: `.github/workflows/generate-pulse-stems.yml`
-
-曲生成条件をコードとして保存しているため、音楽内容を変更しても同じフォーマットの同期WAVを再生成できます。
 
 ## Structure
 
@@ -133,13 +151,13 @@ src/
     ├── neon.js
     └── pulse.js
 assets/
-└── stems/
-    └── pulse/
-        ├── drums.wav
-        ├── bass.wav
-        ├── chords.wav
-        ├── melody.wav
-        └── sparkle.wav
+├── stems/pulse/
+└── stingers/pulse/
+debug/
+└── mixer/
+    ├── index.html
+    ├── mixer.js
+    └── styles.css
 tools/
 └── generate_pulse_stems.py
 games/
@@ -149,9 +167,9 @@ games/
 
 ## Next candidates
 
-- 高音質ステム（44.1 kHz stereo）への差し替え
-- WAV / OGG / AACの自動フォーマット選択
-- Victory / Game Over専用Stinger
+- 44.1 kHz stereo stemsへの差し替え
+- OGG / AACの自動フォーマット選択
 - Music Pack選択画面
-- Music Debug / Mixer画面
+- Stingerを小節頭 / beat頭へQuantize
+- Transition専用Whoosh / Fill
 - Game 04追加
