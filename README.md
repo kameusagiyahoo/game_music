@@ -22,7 +22,7 @@ URL: https://kameusagiyahoo.github.io/game_music/
 
 - Game 01と同じ `MusicManager` を再利用
 - Neon Music Pack
-- Normal / Overdrive / Result
+- Normal / Tension / Result
 - コンボ・スコア・ベストスコア
 
 URL: https://kameusagiyahoo.github.io/game_music/games/orbit-rush/
@@ -35,14 +35,26 @@ URL: https://kameusagiyahoo.github.io/game_music/games/orbit-rush/
 - `drums.wav / bass.wav / chords.wav / melody.wav / sparkle.wav`
 - 4小節 / 112 BPM / 22.05 kHz / mono WAV
 - PERFECT / GOOD / MISS判定
-- プレイ精度からEnergyを算出
-- Energy 40%でBUILD MIX、75%でOVERDRIVE MIXを予約
-- 次の小節頭でステムGainだけを変更
+- Energyに応じて次小節からStem Mixを変更
 - WAV自体は止めず、全ステムの再生位置を維持
 - Victory / Game Over専用WAV Stinger
 - Stinger中はBGMをduckし、終了後に元の音量へ復帰
 
 URL: https://kameusagiyahoo.github.io/game_music/games/pulse-forge/
+
+### Game 04 — Rune Relay
+
+4つのルーンの点灯順を覚え、同じ順番で入力する45秒のシーケンス記憶ゲーム。
+
+- Fantasy / Neon / Clockworkの3 Music Packを選択可能
+- プレイ中にもPack変更可能
+- Pack変更は即時ではなく次の小節頭へ予約
+- 新PackへクロスフェードしながらBAR位置を維持
+- PackごとにNormal / Tension / Resultを共通インターフェース化
+- 選択したPackをlocalStorageへ保存
+- 残り10秒で現在または予約中PackのTensionへ移行
+
+URL: https://kameusagiyahoo.github.io/game_music/games/rune-relay/
 
 ## Music Debug / Mixer
 
@@ -59,18 +71,33 @@ URL: https://kameusagiyahoo.github.io/game_music/games/pulse-forge/
 
 URL: https://kameusagiyahoo.github.io/game_music/debug/mixer/
 
-## Music Engine v5
+## Music Engine v6
+
+現在は2系統の再生エンジンを同じプロジェクトで検証しています。
 
 ```text
-                     ┌─ drums.wav   ─ Gain
-                     ├─ bass.wav    ─ Gain
-Game State ────────> ├─ chords.wav  ─ Gain ─┐
-                     ├─ melody.wav  ─ Gain  │
-                     └─ sparkle.wav ─ Gain  │
-                                             ├─ Music Root ─┐
-Victory / Game Over ─> Stinger Bus ──────────┘              │
-                                                            ├─ Compressor ─ Output
-SE ─────────────────> SFX Bus ──────────────────────────────┘
+Procedural Music
+Game 01 / 02 / 04
+        ↓
+MusicManager
+        ↓
+Music Pack
+├── Fantasy Table
+├── Neon Orbit
+└── Clockwork Grove
+        ↓
+Normal / Tension / Result
+        ↓
+Quantized Pack Switch
+
+Real WAV Adaptive Music
+Game 03
+        ↓
+WavStemMusicManager
+        ↓
+5 synchronized WAV stems
+        +
+Victory / Game Over Stinger
 ```
 
 ### v1
@@ -106,10 +133,35 @@ SE ─────────────────> SFX Bus ─────�
 - `victory.wav / gameover.wav`
 - BGMを止めずにStingerをオーバーレイ
 - Stinger中のBGM ducking / release
-- Stinger用AudioBuffer cache
 - `getDebugState()`
 - Music Debug / Mixer画面
-- 手動5stem Mixer / SOLO / preset検証
+
+### v6
+
+- `switchPack(pack, options)`
+- `cancelPendingPackSwitch()`
+- `getPackInfo()`
+- `onPackChange()`
+- `switchPack(pack, { quantize: "bar", crossfadeBeats: 2, mode: "normal" })`
+- Pack変更を次小節頭へ予約
+- 現在Pack / 予約PackをUIへ通知
+- Pack切替後もゲーム側APIは `normal / tension / result` のまま維持
+- Music Pack選択をゲーム設定としてlocalStorageへ保存
+
+Game側は具体的な曲名を知らず、状態名だけをMusic Engineへ渡す方針です。
+
+```text
+Game State
+  normal
+  tension
+  result
+     ↓
+MusicManager
+     ↓
+Selected Music Pack
+```
+
+この構造により、ゲームロジックを変更せず世界観だけを差し替えられます。
 
 ## Audio generation pipeline
 
@@ -149,6 +201,7 @@ src/
 └── music-packs/
     ├── fantasy.js
     ├── neon.js
+    ├── clockwork.js
     └── pulse.js
 assets/
 ├── stems/pulse/
@@ -162,14 +215,19 @@ tools/
 └── generate_pulse_stems.py
 games/
 ├── orbit-rush/
-└── pulse-forge/
+├── pulse-forge/
+└── rune-relay/
+    ├── index.html
+    ├── game.js
+    └── styles.css
 ```
 
 ## Next candidates
 
-- 44.1 kHz stereo stemsへの差し替え
-- OGG / AACの自動フォーマット選択
-- Music Pack選択画面
+- Music Pack Registryを共通モジュール化
+- 全ゲーム共通の設定画面
+- PackごとのWAV / procedural自動選択
 - Stingerを小節頭 / beat頭へQuantize
 - Transition専用Whoosh / Fill
-- Game 04追加
+- 44.1 kHz stereo stemsへの差し替え
+- Game 05追加
