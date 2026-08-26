@@ -1,0 +1,215 @@
+:root {
+  --relay-glow: 58%;
+}
+
+body {
+  background:
+    radial-gradient(circle at 20% 15%, rgba(91, 119, 115, 0.20), transparent 30%),
+    radial-gradient(circle at 80% 5%, rgba(133, 99, 62, 0.16), transparent 26%),
+    #101315;
+}
+
+.relay-shell {
+  max-width: 760px;
+}
+
+.relay-status {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.pack-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 18px;
+  background: rgba(255,255,255,0.035);
+}
+
+.pack-heading {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.pack-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.pack-heading span {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  color: rgba(255,255,255,0.52);
+}
+
+.pack-heading strong {
+  font-size: 0.92rem;
+}
+
+.pack-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.pack-button {
+  min-height: 68px;
+  padding: 10px 8px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  background: rgba(0,0,0,0.18);
+  color: inherit;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+}
+
+.pack-button strong {
+  font-size: 0.88rem;
+}
+
+.pack-button span {
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.52);
+}
+
+.pack-button.is-active {
+  border-color: rgba(255,255,255,0.50);
+  background: rgba(255,255,255,0.10);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.08) inset;
+}
+
+.pack-button.is-pending {
+  outline: 1px dashed rgba(255,255,255,0.70);
+  outline-offset: 2px;
+}
+
+.relay-area {
+  display: grid;
+  gap: 18px;
+}
+
+.rune-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.rune-pad {
+  aspect-ratio: 1.25 / 1;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 22px;
+  color: rgba(255,255,255,0.78);
+  background: linear-gradient(145deg, rgba(255,255,255,0.055), rgba(255,255,255,0.018));
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease, background 120ms ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.rune-pad span {
+  font-size: clamp(2.2rem, 10vw, 4.1rem);
+  line-height: 1;
+}
+
+.rune-pad small {
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  color: rgba(255,255,255,0.42);
+}
+
+.rune-pad:active {
+  transform: scale(0.97);
+}
+
+.rune-pad.is-demo,
+.rune-pad.is-hit {
+  filter: brightness(1.55);
+  transform: scale(1.025);
+  background: rgba(255,255,255,0.16);
+  box-shadow: 0 0 30px rgba(255,255,255,0.18), inset 0 0 24px rgba(255,255,255,0.08);
+}
+
+.rune-pad.is-miss {
+  animation: relay-shake 260ms ease;
+  filter: brightness(0.7);
+}
+
+.rune-0.is-demo,
+.rune-0.is-hit { box-shadow: 0 0 34px rgba(167, 190, 255, 0.38); }
+.rune-1.is-demo,
+.rune-1.is-hit { box-shadow: 0 0 34px rgba(255, 226, 136, 0.36); }
+.rune-2.is-demo,
+.rune-2.is-hit { box-shadow: 0 0 34px rgba(255, 147, 95, 0.36); }
+.rune-3.is-demo,
+.rune-3.is-hit { box-shadow: 0 0 34px rgba(149, 225, 164, 0.36); }
+
+.sequence-meter {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(0,0,0,0.18);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.sequence-meter > span {
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.48);
+}
+
+.sequence-meter > strong {
+  font-size: 1.25rem;
+}
+
+.sequence-dots {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.sequence-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.18);
+}
+
+.sequence-dots i.is-current {
+  background: rgba(255,255,255,0.86);
+}
+
+@keyframes relay-shake {
+  0%, 100% { transform: translateX(0); }
+  30% { transform: translateX(-7px); }
+  65% { transform: translateX(7px); }
+}
+
+@media (max-width: 560px) {
+  .relay-status {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .pack-buttons {
+    grid-template-columns: 1fr;
+  }
+
+  .pack-button {
+    min-height: 54px;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .pack-button span {
+    text-align: right;
+  }
+}
