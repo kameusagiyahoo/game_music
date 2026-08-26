@@ -1,0 +1,40 @@
+export const fantasyPack = {
+  id: "fantasy",
+  name: "Fantasy Table",
+  modes: {
+    normal: {
+      label: "NORMAL · Fantasy Table",
+      bpm: 120,
+      melody: [72, 76, 79, 76, 74, 72, 67, 69, 72, 76, 79, 81, 79, 76, 74, 72],
+      bass: [48, 43, 45, 41],
+      chords: [[60, 64, 67], [59, 62, 67], [57, 60, 64], [53, 57, 60]],
+      pulseEvery: 4,
+      pulseHz: 920,
+    },
+    tension: {
+      label: "TENSION · Final Rush",
+      bpm: 144,
+      melody: [72, 76, 79, 81, 79, 76, 74, 76, 72, 76, 79, 83, 81, 79, 76, 74],
+      bass: [48, 45, 41, 43],
+      chords: [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]],
+      pulseEvery: 2,
+      pulseHz: 1200,
+    },
+    result: {
+      label: "RESULT · Afterglow",
+      bpm: 92,
+      melody: [72, null, 76, null, 79, null, 76, null, 69, null, 72, null, 67, null, 64, null],
+      bass: [48, 45, 41, 43],
+      chords: [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]],
+      pulseEvery: 8,
+      pulseHz: 720,
+    },
+  },
+  voices: {
+    melody: { type: "triangle", gain: 0.072, duration: 0.19 },
+    sparkle: { type: "sine", gain: 0.016, duration: 0.10, octave: 12 },
+    bass: { type: "triangle", gain: 0.050, duration: 0.45 },
+    chord: { type: "sine", gain: 0.018, duration: 0.65, octave: 12 },
+    pulse: { type: "square", gain: 0.014, duration: 0.025 },
+  },
+};
