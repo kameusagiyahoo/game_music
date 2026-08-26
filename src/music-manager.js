@@ -1,56 +1,41 @@
-const MODES = {
-  normal: {
-    label: "NORMAL · Fantasy Table",
-    bpm: 120,
-    melody: [72, 76, 79, 76, 74, 72, 67, 69, 72, 76, 79, 81, 79, 76, 74, 72],
-    bass: [48, 43, 45, 41],
-    chords: [[60, 64, 67], [59, 62, 67], [57, 60, 64], [53, 57, 60]],
-  },
-  tension: {
-    label: "TENSION · Final Rush",
-    bpm: 144,
-    melody: [72, 76, 79, 81, 79, 76, 74, 76, 72, 76, 79, 83, 81, 79, 76, 74],
-    bass: [48, 45, 41, 43],
-    chords: [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]],
-  },
-  result: {
-    label: "RESULT · Afterglow",
-    bpm: 92,
-    melody: [72, null, 76, null, 79, null, 76, null, 69, null, 72, null, 67, null, 64, null],
-    bass: [48, 45, 41, 43],
-    chords: [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]],
-  },
-};
-
 const midiToHz = (note) => 440 * (2 ** ((note - 69) / 12));
 
 export class MusicManager {
-  constructor({ onModeChange } = {}) {
+  constructor({ pack, onModeChange } = {}) {
+    this.pack = pack;
+    this.onModeChange = onModeChange || (() => {});
     this.context = null;
     this.master = null;
-    this.musicBus = null;
+    this.musicRoot = null;
     this.sfxBus = null;
-    this.enabled = true;
+    this.activeMusicBus = null;
     this.running = false;
     this.mode = "normal";
     this.step = 0;
     this.timer = null;
-    this.onModeChange = onModeChange || (() => {});
+    this.musicEnabled = true;
+    this.sfxEnabled = true;
+    this.musicVolume = 0.82;
+    this.sfxVolume = 0.72;
+  }
+
+  setPack(pack) {
+    this.pack = pack;
+    if (!this.pack?.modes?.[this.mode]) this.mode = "normal";
   }
 
   async init() {
     if (!this.context) {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       this.context = new AudioContext();
-
       this.master = this.context.createGain();
-      this.musicBus = this.context.createGain();
+      this.musicRoot = this.context.createGain();
       this.sfxBus = this.context.createGain();
       const compressor = this.context.createDynamicsCompressor();
 
-      this.master.gain.value = this.enabled ? 0.9 : 0.0001;
-      this.musicBus.gain.value = 0.9;
-      this.sfxBus.gain.value = 0.72;
+      this.master.gain.value = 1;
+      this.musicRoot.gain.value = this.musicEnabled ? this.musicVolume : 0.0001;
+      this.sfxBus.gain.value = this.sfxEnabled ? this.sfxVolume : 0.0001;
 
       compressor.threshold.value = -18;
       compressor.knee.value = 16;
@@ -58,33 +43,45 @@ export class MusicManager {
       compressor.attack.value = 0.006;
       compressor.release.value = 0.18;
 
-      this.musicBus.connect(this.master);
+      this.musicRoot.connect(this.master);
       this.sfxBus.connect(this.master);
       this.master.connect(compressor);
       compressor.connect(this.context.destination);
     }
 
-    if (this.context.state !== "running") {
-      await this.context.resume();
-    }
+    if (this.context.state !== "running") await this.context.resume();
   }
 
   async play(mode = "normal") {
     await this.init();
-    this.mode = MODES[mode] ? mode : "normal";
-    this.step = 0;
+    if (!this.pack?.modes?.[mode]) throw new Error(`Unknown music mode: ${mode}`);
     this.running = true;
-    this.#fadeMaster(this.enabled ? 0.9 : 0.0001, 0.04);
+    this.mode = mode;
+    this.step = 0;
+    this.#replaceMusicBus(false);
     this.#announce();
     this.#restartClock(true);
   }
 
-  setMode(mode) {
-    if (!MODES[mode] || mode === this.mode) return;
+  async transitionTo(mode, seconds = 0.45) {
+    if (!this.pack?.modes?.[mode] || mode === this.mode) return;
+    await this.init();
+    const oldBus = this.activeMusicBus;
     this.mode = mode;
     this.step = 0;
+    this.#replaceMusicBus(true, seconds);
     this.#announce();
-    if (this.running) this.#restartClock(true);
+    this.#restartClock(true);
+
+    if (oldBus) {
+      window.setTimeout(() => {
+        try { oldBus.disconnect(); } catch (_) {}
+      }, Math.ceil(seconds * 1000) + 120);
+    }
+  }
+
+  setMode(mode) {
+    return this.transitionTo(mode, 0.35);
   }
 
   stop() {
@@ -92,49 +89,83 @@ export class MusicManager {
     if (this.timer) window.clearTimeout(this.timer);
     this.timer = null;
     this.step = 0;
-    if (this.context) this.#fadeMaster(0.0001, 0.08);
+    if (this.activeMusicBus && this.context) {
+      this.#ramp(this.activeMusicBus.gain, 0.0001, 0.12);
+    }
     this.onModeChange("READY · music stopped");
   }
 
-  async setEnabled(enabled) {
-    this.enabled = enabled;
+  async setMusicEnabled(enabled) {
+    this.musicEnabled = enabled;
     if (!this.context && enabled) await this.init();
     if (!this.context) return;
-    if (enabled && this.context.state !== "running") await this.context.resume();
-    this.#fadeMaster(enabled ? 0.9 : 0.0001, 0.04);
+    this.#ramp(this.musicRoot.gain, enabled ? this.musicVolume : 0.0001, 0.06);
+  }
+
+  async setSfxEnabled(enabled) {
+    this.sfxEnabled = enabled;
+    if (!this.context && enabled) await this.init();
+    if (!this.context) return;
+    this.#ramp(this.sfxBus.gain, enabled ? this.sfxVolume : 0.0001, 0.06);
+  }
+
+  setMusicVolume(value) {
+    this.musicVolume = Math.max(0.01, Math.min(1, Number(value)));
+    if (this.context && this.musicEnabled) this.#ramp(this.musicRoot.gain, this.musicVolume, 0.04);
+  }
+
+  setSfxVolume(value) {
+    this.sfxVolume = Math.max(0.01, Math.min(1, Number(value)));
+    if (this.context && this.sfxEnabled) this.#ramp(this.sfxBus.gain, this.sfxVolume, 0.04);
+  }
+
+  async setEnabled(enabled) {
+    await Promise.all([this.setMusicEnabled(enabled), this.setSfxEnabled(enabled)]);
   }
 
   sfx(name) {
-    if (!this.enabled || !this.context) return;
+    if (!this.sfxEnabled || !this.context) return;
     const now = this.context.currentTime + 0.005;
-
-    if (name === "flip") this.#voice(520, now, 0.05, 0.045, "sine", this.sfxBus);
+    if (name === "flip" || name === "tap") this.#voice(520, now, 0.05, 0.045, "sine", this.sfxBus);
     if (name === "miss") this.#voice(210, now, 0.13, 0.045, "triangle", this.sfxBus);
-    if (name === "match") {
-      this.#voice(660, now, 0.11, 0.055, "sine", this.sfxBus);
-      this.#voice(880, now + 0.07, 0.14, 0.05, "sine", this.sfxBus);
+    if (name === "match" || name === "hit") {
+      this.#voice(660, now, 0.10, 0.055, "sine", this.sfxBus);
+      this.#voice(880, now + 0.06, 0.12, 0.045, "sine", this.sfxBus);
     }
     if (name === "win") {
-      [523.25, 659.25, 783.99].forEach((hz, index) => {
-        this.#voice(hz, now + index * 0.12, index === 2 ? 0.32 : 0.18, 0.06, "triangle", this.sfxBus);
-      });
+      [523.25, 659.25, 783.99].forEach((hz, i) => this.#voice(hz, now + i * 0.12, i === 2 ? 0.32 : 0.18, 0.06, "triangle", this.sfxBus));
     }
     if (name === "lose") {
       this.#voice(330, now, 0.18, 0.05, "triangle", this.sfxBus);
-      this.#voice(247, now + 0.14, 0.3, 0.045, "triangle", this.sfxBus);
+      this.#voice(247, now + 0.14, 0.30, 0.045, "triangle", this.sfxBus);
     }
     if (name === "toggle") this.#voice(660, now, 0.07, 0.04, "sine", this.sfxBus);
   }
 
   #announce() {
-    this.onModeChange(MODES[this.mode].label);
+    this.onModeChange(this.pack?.modes?.[this.mode]?.label || this.mode);
   }
 
-  #fadeMaster(value, seconds) {
+  #replaceMusicBus(crossfade, seconds = 0.45) {
+    const previous = this.activeMusicBus;
+    const next = this.context.createGain();
+    next.gain.value = crossfade ? 0.0001 : 1;
+    next.connect(this.musicRoot);
+    this.activeMusicBus = next;
+
+    if (crossfade) {
+      this.#ramp(next.gain, 1, seconds);
+      if (previous) this.#ramp(previous.gain, 0.0001, seconds);
+    } else if (previous) {
+      try { previous.disconnect(); } catch (_) {}
+    }
+  }
+
+  #ramp(param, value, seconds) {
     const now = this.context.currentTime;
-    this.master.gain.cancelScheduledValues(now);
-    this.master.gain.setValueAtTime(Math.max(this.master.gain.value, 0.0001), now);
-    this.master.gain.exponentialRampToValueAtTime(Math.max(value, 0.0001), now + seconds);
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(Math.max(param.value, 0.0001), now);
+    param.exponentialRampToValueAtTime(Math.max(value, 0.0001), now + seconds);
   }
 
   #restartClock(playImmediately = false) {
@@ -147,62 +178,57 @@ export class MusicManager {
 
   #queueNext() {
     if (!this.running) return;
-    const bpm = MODES[this.mode].bpm;
-    const stepMs = (60_000 / bpm) / 2;
-    this.timer = window.setTimeout(() => this.#tick(), stepMs);
+    const bpm = this.pack.modes[this.mode].bpm;
+    this.timer = window.setTimeout(() => this.#tick(), (60_000 / bpm) / 2);
   }
 
   #tick() {
     if (!this.running || !this.context) return;
-
-    if (this.context.state === "suspended") {
-      this.context.resume().catch(() => {});
-    }
-
-    const time = this.context.currentTime + 0.012;
-    this.#scheduleStep(this.step, time);
+    if (this.context.state === "suspended") this.context.resume().catch(() => {});
+    this.#scheduleStep(this.step, this.context.currentTime + 0.012);
     this.step = (this.step + 1) % 16;
     this.#queueNext();
   }
 
   #scheduleStep(step, time) {
-    const pack = MODES[this.mode];
-    const melodyNote = pack.melody[step];
+    const mode = this.pack.modes[this.mode];
+    const voices = this.pack.voices || {};
+    const bus = this.activeMusicBus;
+    if (!bus) return;
 
-    if (melodyNote !== null) {
-      const accent = step % 4 === 0 ? 0.075 : 0.055;
-      this.#voice(midiToHz(melodyNote), time, 0.19, accent, "triangle", this.musicBus);
-      this.#voice(midiToHz(melodyNote + 12), time, 0.10, accent * 0.22, "sine", this.musicBus);
+    const melody = mode.melody[step];
+    if (melody !== null) {
+      const v = voices.melody || { type: "triangle", gain: 0.06, duration: 0.18 };
+      this.#voice(midiToHz(melody), time, v.duration, v.gain * (step % 4 === 0 ? 1.15 : 1), v.type, bus);
+      const sparkle = voices.sparkle;
+      if (sparkle) this.#voice(midiToHz(melody + (sparkle.octave || 12)), time, sparkle.duration, sparkle.gain, sparkle.type, bus);
     }
 
     if (step % 4 === 0) {
       const index = (step / 4) % 4;
-      const bassNote = pack.bass[index];
-      this.#voice(midiToHz(bassNote), time, 0.45, this.mode === "tension" ? 0.06 : 0.05, "triangle", this.musicBus);
+      const bass = voices.bass || { type: "triangle", gain: 0.045, duration: 0.42 };
+      this.#voice(midiToHz(mode.bass[index]), time, bass.duration, bass.gain, bass.type, bus);
 
-      const chord = pack.chords[index];
-      chord.forEach((note) => {
-        this.#voice(midiToHz(note + 12), time, 0.65, 0.018, "sine", this.musicBus);
+      const chordVoice = voices.chord || { type: "sine", gain: 0.015, duration: 0.60, octave: 12 };
+      mode.chords[index].forEach((note) => {
+        this.#voice(midiToHz(note + (chordVoice.octave || 0)), time, chordVoice.duration, chordVoice.gain, chordVoice.type, bus);
       });
     }
 
-    const pulseEvery = this.mode === "tension" ? 2 : 4;
-    if (step % pulseEvery === 0) {
-      const pulseHz = this.mode === "tension" ? 1200 : 920;
-      this.#voice(pulseHz, time, 0.025, this.mode === "tension" ? 0.024 : 0.014, "square", this.musicBus);
+    if (step % (mode.pulseEvery || 4) === 0) {
+      const pulse = voices.pulse || { type: "square", gain: 0.012, duration: 0.025 };
+      this.#voice(mode.pulseHz || 900, time, pulse.duration, pulse.gain, pulse.type, bus);
     }
   }
 
   #voice(frequency, start, duration, gain, type, destination) {
     const oscillator = this.context.createOscillator();
     const envelope = this.context.createGain();
-
     oscillator.type = type;
     oscillator.frequency.setValueAtTime(frequency, start);
     envelope.gain.setValueAtTime(0.0001, start);
     envelope.gain.exponentialRampToValueAtTime(Math.max(gain, 0.0002), start + 0.012);
     envelope.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-
     oscillator.connect(envelope);
     envelope.connect(destination);
     oscillator.start(start);
