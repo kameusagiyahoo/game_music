@@ -1,5 +1,13 @@
 import { WavStemMusicManager } from "../../src/wav-stem-manager.js";
-import { pulsePack } from "../../src/music-packs/pulse.js";
+import {
+  GAME_IDS,
+  MUSIC_ENGINES,
+  getMusicSettings,
+  saveMusicSettings,
+  resolveMusicPack,
+  configureMusicManager,
+  applyMusicSettingsToControls,
+} from "../../src/music-registry.js";
 
 const GAME_TIME = 40;
 const PERFECT_MS = 170;
@@ -78,6 +86,9 @@ function renderStemMix(mix, preset = currentLayerPreset) {
   stemPreset.textContent = PRESET_NAMES[preset] || String(preset || "CUSTOM").toUpperCase();
 }
 
+const sharedSettings = getMusicSettings();
+const packEntry = resolveMusicPack(GAME_IDS.PULSE_FORGE, MUSIC_ENGINES.WAV_STEM);
+const pulsePack = packEntry.pack;
 const music = new WavStemMusicManager({
   pack: pulsePack,
   onModeChange(label) {
@@ -105,8 +116,8 @@ const music = new WavStemMusicManager({
     beginBeat();
   },
 });
-music.setMusicVolume(0.80);
-music.setSfxVolume(0.76);
+configureMusicManager(music, sharedSettings);
+applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
 
 function setMessage(title, body, kicker = "RHYTHM / WAV STEM MIXER") {
   gameMessage.innerHTML = `<span class="message-kicker">${kicker}</span><strong>${title}</strong><span>${body}</span>`;
@@ -244,7 +255,7 @@ function resetGame() {
   judgement.className = "";
   syncState.textContent = "BAR — / BEAT —";
   pendingState.textContent = "—";
-  setMessage("光った炉心をビートに合わせて叩く", "5本のWAVステムが同じ再生位置を共有し、Energyに応じて音量だけ変化します。");
+  setMessage("光った炉心をビートに合わせて叩く", `5本のWAVステムが同じ再生位置を共有します。Pack: ${packEntry.name}`);
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
 }
@@ -323,15 +334,23 @@ soundButton.addEventListener("click", async () => {
   await applyAudioState();
   if (masterSoundEnabled && sfxToggle.checked) music.sfx("toggle");
 });
-bgmToggle.addEventListener("change", applyAudioState);
-sfxToggle.addEventListener("change", applyAudioState);
+bgmToggle.addEventListener("change", async () => {
+  saveMusicSettings({ bgmEnabled: bgmToggle.checked });
+  await applyAudioState();
+});
+sfxToggle.addEventListener("change", async () => {
+  saveMusicSettings({ sfxEnabled: sfxToggle.checked });
+  await applyAudioState();
+});
 bgmVolume.addEventListener("input", () => {
   bgmVolumeValue.textContent = bgmVolume.value;
   music.setMusicVolume(Number(bgmVolume.value) / 100);
+  saveMusicSettings({ bgmVolume: Number(bgmVolume.value) / 100 });
 });
 sfxVolume.addEventListener("input", () => {
   sfxVolumeValue.textContent = sfxVolume.value;
   music.setSfxVolume(Number(sfxVolume.value) / 100);
+  saveMusicSettings({ sfxVolume: Number(sfxVolume.value) / 100 });
 });
 startButton.addEventListener("click", startGame);
 retryButton.addEventListener("click", startGame);
