@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#101315" />
+  <title>Music Debug Mixer</title>
+  <link rel="stylesheet" href="../../styles.css" />
+  <link rel="stylesheet" href="../../ui-enhancements.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell mixer-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">GAME MUSIC LAB / DEBUG</p>
+        <h1>Music Mixer</h1>
+      </div>
+      <a class="back-link" href="../../games/pulse-forge/">← Game 03</a>
+    </header>
+
+    <section class="transport-panel" aria-label="音楽エンジン状態">
+      <div><span>ENGINE</span><strong id="engineState">WAV / IDLE</strong></div>
+      <div><span>TRANSPORT</span><strong id="transportState">STOPPED</strong></div>
+      <div><span>SYNC</span><strong id="syncState">BAR — / BEAT —</strong></div>
+      <div><span>PRESET</span><strong id="presetState">FOCUS</strong></div>
+    </section>
+
+    <section class="debug-card">
+      <div class="section-heading">
+        <div><span>TRANSPORT</span><strong>WAV STEM PLAYER</strong></div>
+        <output id="elapsedValue">0.00s</output>
+      </div>
+      <div class="button-grid two">
+        <button id="startButton" class="primary-button" type="button">再生開始</button>
+        <button id="stopButton" class="secondary-button" type="button">停止</button>
+      </div>
+      <label class="master-row">
+        <span>MASTER BGM</span>
+        <input id="masterVolume" type="range" min="0" max="100" value="80" />
+        <output id="masterVolumeValue">80</output>
+      </label>
+      <label class="quantize-row">
+        <input id="quantizeToggle" type="checkbox" checked />
+        <span>Preset変更を次の小節頭に同期</span>
+      </label>
+    </section>
+
+    <section class="debug-card">
+      <div class="section-heading">
+        <div><span>PRESETS</span><strong>ADAPTIVE STATES</strong></div>
+        <output id="pendingState">NEXT BAR —</output>
+      </div>
+      <div class="button-grid four preset-buttons">
+        <button type="button" data-preset="focus">FOCUS</button>
+        <button type="button" data-preset="build">BUILD</button>
+        <button type="button" data-preset="overdrive">OVERDRIVE</button>
+        <button type="button" data-preset="result">RESULT</button>
+      </div>
+    </section>
+
+    <section class="debug-card">
+      <div class="section-heading">
+        <div><span>LIVE MIX</span><strong>5 SYNCHRONIZED STEMS</strong></div>
+        <button id="resetMixButton" class="text-button" type="button">FOCUSへ戻す</button>
+      </div>
+      <div id="stemControls" class="stem-controls">
+        <div class="debug-stem" data-stem="drums"><span>DRUMS</span><input type="range" min="0" max="100" value="22" /><output>22</output><button type="button">SOLO</button></div>
+        <div class="debug-stem" data-stem="bass"><span>BASS</span><input type="range" min="0" max="100" value="42" /><output>42</output><button type="button">SOLO</button></div>
+        <div class="debug-stem" data-stem="chords"><span>CHORDS</span><input type="range" min="0" max="100" value="68" /><output>68</output><button type="button">SOLO</button></div>
+        <div class="debug-stem" data-stem="melody"><span>MELODY</span><input type="range" min="0" max="100" value="48" /><output>48</output><button type="button">SOLO</button></div>
+        <div class="debug-stem" data-stem="sparkle"><span>SPARKLE</span><input type="range" min="0" max="100" value="0" /><output>0</output><button type="button">SOLO</button></div>
+      </div>
+    </section>
+
+    <section class="debug-card">
+      <div class="section-heading">
+        <div><span>STINGERS</span><strong>BGM DUCKING TEST</strong></div>
+        <output id="stingerState">READY</output>
+      </div>
+      <div class="button-grid two">
+        <button id="victoryButton" class="stinger-button victory" type="button">VICTORY</button>
+        <button id="gameoverButton" class="stinger-button gameover" type="button">GAME OVER</button>
+      </div>
+      <p class="debug-note">Stinger再生中も5本のWAV stemは停止しません。BGMだけ一時的にduckし、終了後に元の音量へ戻ります。</p>
+    </section>
+
+    <section class="debug-card data-card">
+      <div class="section-heading"><div><span>STATE</span><strong>ENGINE SNAPSHOT</strong></div></div>
+      <dl>
+        <div><dt>WAV BUFFERS</dt><dd id="bufferState">not loaded</dd></div>
+        <div><dt>MODE</dt><dd id="modeState">normal</dd></div>
+        <div><dt>BPM</dt><dd id="bpmState">112</dd></div>
+        <div><dt>STINGER CACHE</dt><dd id="stingerCache">—</dd></div>
+      </dl>
+    </section>
+  </main>
+
+  <script type="module" src="mixer.js"></script>
+</body>
+</html>
