@@ -1,11 +1,8 @@
-import { MusicManager } from "../../src/music-manager.js";
+import { createMusicRuntime } from "../../src/music-asset-resolver.js";
 import {
   GAME_IDS,
-  MUSIC_ENGINES,
   getMusicSettings,
   saveMusicSettings,
-  resolveMusicPack,
-  configureMusicManager,
   applyMusicSettingsToControls,
 } from "../../src/music-registry.js";
 
@@ -50,12 +47,15 @@ let timerId = null;
 let masterSoundEnabled = true;
 
 const sharedSettings = getMusicSettings();
-const packEntry = resolveMusicPack(GAME_IDS.ORBIT_RUSH, MUSIC_ENGINES.PROCEDURAL);
-const music = new MusicManager({
-  pack: packEntry.pack,
-  onModeChange(label) { musicState.textContent = label; },
+const runtime = createMusicRuntime({
+  gameId: GAME_IDS.ORBIT_RUSH,
+  callbacks: {
+    onModeChange(label) { musicState.textContent = label; },
+  },
+  settings: sharedSettings,
 });
-configureMusicManager(music, sharedSettings);
+const packEntry = runtime.entry;
+const music = runtime.manager;
 applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
 
 const best = Number(localStorage.getItem("orbit-rush-best") || 0);
