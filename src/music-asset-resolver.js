@@ -1,6 +1,7 @@
 import { MusicManager } from "./music-manager.js";
 import { WavStemMusicManager } from "./wav-stem-manager.js";
 import {
+  GAME_DEFAULT_PACKS,
   MUSIC_ENGINES,
   configureMusicManager,
   getMusicPackEntry,
@@ -36,7 +37,14 @@ export function resolveMusicAsset({ gameId, packId, engine } = {}) {
   }
 
   if (!gameId) throw new Error("gameId or packId is required");
-  const entry = resolveMusicPack(gameId, engine || MUSIC_ENGINES.PROCEDURAL);
+
+  let targetEngine = engine;
+  if (!targetEngine) {
+    const defaultPackId = GAME_DEFAULT_PACKS[gameId];
+    targetEngine = getMusicPackEntry(defaultPackId)?.engine || MUSIC_ENGINES.PROCEDURAL;
+  }
+
+  const entry = resolveMusicPack(gameId, targetEngine);
   if (!entry) throw new Error(`No compatible Music Pack for ${gameId}`);
   return entry;
 }
