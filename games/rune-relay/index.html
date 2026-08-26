@@ -23,8 +23,9 @@
       <a href="../../">01 Mystic</a>
       <a href="../orbit-rush/">02 Orbit</a>
       <a href="../pulse-forge/">03 Pulse</a>
-      <span class="game-nav-current">04 Rune Relay</span>
+      <span class="game-nav-current">04 Rune</span>
       <a href="../../debug/mixer/">Mixer</a>
+      <a href="../../settings/music/">⚙ Settings</a>
     </nav>
 
     <section class="status-panel relay-status" aria-label="ゲーム状況">
@@ -36,14 +37,10 @@
 
     <section class="pack-panel" aria-label="Music Pack選択">
       <div class="pack-heading">
-        <div><span>MUSIC PACK</span><strong id="currentPack">Fantasy Table</strong></div>
+        <div><span>MUSIC PACK</span><strong id="currentPack">—</strong></div>
         <div><span>NEXT BAR</span><strong id="pendingPack">—</strong></div>
       </div>
-      <div class="pack-buttons">
-        <button type="button" class="pack-button" data-pack="fantasy"><strong>Fantasy</strong><span>やさしい幻想</span></button>
-        <button type="button" class="pack-button" data-pack="neon"><strong>Neon</strong><span>高速シンセ</span></button>
-        <button type="button" class="pack-button" data-pack="clockwork"><strong>Clockwork</strong><span>機械仕掛け</span></button>
-      </div>
+      <div id="packButtons" class="pack-buttons"></div>
     </section>
 
     <section class="sync-panel" aria-label="音楽同期状況">
@@ -88,7 +85,7 @@
 
     <footer class="controls">
       <button id="startButton" class="primary-button" type="button">ゲーム開始</button>
-      <p class="hint">Music Packはプレイ中も変更できます。切替予約後、次の小節頭でBGMだけが新しいPackへ移行します。</p>
+      <p class="hint">Pack一覧はMusic Registryから自動生成。プレイ中の切替は次の小節頭で適用されます。</p>
     </footer>
   </main>
 
