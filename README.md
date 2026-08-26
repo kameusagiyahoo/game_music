@@ -35,26 +35,37 @@ URL: https://kameusagiyahoo.github.io/game_music/games/orbit-rush/
 - Web Audioの音楽クロックをゲーム側でも利用
 - PERFECT / GOOD / MISS判定
 - プレイ精度からEnergyを算出
-- Energy 40%でBUILD、75%でOVERDRIVE
-- 状態変化は即時ではなく「次の小節頭」に予約
-- 小節頭でMusic LayerとBPMをクロスフェード
-- BAR / BEAT / NEXT BARを画面表示
+- 5本の同期ステムを常時同じ位置で進行
+- Energy 40%でBUILD MIX、75%でOVERDRIVE MIXを予約
+- 次の小節頭でステムGainだけを変更
+- BPMと小節位置を維持したまま音の厚みが変化
+- DRUMS / BASS / CHORDS / MELODY / SPARKLEのライブメーター表示
+- BAR / BEAT / NEXT BAR MIXを画面表示
 
 URL: https://kameusagiyahoo.github.io/game_music/games/pulse-forge/
 
-## Music Engine v2
+## Music Engine v3
 
 ```text
 Game Logic
-    ↓ state / performance
+    ↓ performance / state
 MusicManager
     ↓
-Quantized Transition
-    ↓ next bar
-Music Pack / Layers
+Shared Music Clock
+    ├── DRUMS stem
+    ├── BASS stem
+    ├── CHORDS stem
+    ├── MELODY stem
+    └── SPARKLE stem
+            ↓
+      Quantized Layer Mixer
+            ↓ next bar
+        Music Root
 ```
 
-`src/music-manager.js` はゲーム固有の曲を持ちません。曲データは `src/music-packs/` に分離されています。
+`src/music-manager.js` はゲーム固有の曲を持ちません。曲データとステム配合は `src/music-packs/` に分離しています。
+
+現段階のstemsはWAVファイルではなくWeb Audioでリアルタイム生成する「procedural stems」です。全レイヤーが同じ16ステップクロックを共有するため、音量0のレイヤーも演奏位置は失いません。
 
 ### v1機能
 
@@ -70,11 +81,45 @@ Music Pack / Layers
 ### v2追加機能
 
 - `transitionTo(mode, { quantize: "bar", crossfadeBeats: 2 })`
-- 次の小節境界まで遷移を予約
-- 予約中のTransitionを差し替え / キャンセル
+- 次の小節境界までMode Transitionを予約
 - `onSync()` でBAR / BEAT / subdivisionをゲーム側へ通知
-- Music PackごとのLayer ON/OFF
-- ゲーム成績から音楽Intensityを動的変更
+
+### v3追加機能
+
+- DRUMS / BASS / CHORDS / MELODY / SPARKLEの独立Gain Bus
+- `setLayerMix()`
+- `setLayerPreset()`
+- `setLayerPreset(name, { quantize: "bar", fadeBeats: 1 })`
+- Layer Mixの予約 / キャンセル
+- `onLayerChange()` で現在Mixと次のMixをUIへ通知
+- Music Pack側に `layerPresets` を定義
+- 同じ小節位置を維持したままレイヤーを追加・削除
+- procedural kick / hi-hat stem
+
+Pulse Forgeのプリセット例:
+
+```text
+FOCUS
+Drums    22%
+Bass     42%
+Chords   68%
+Melody   48%
+Sparkle   0%
+
+BUILD
+Drums    56%
+Bass     74%
+Chords   82%
+Melody   78%
+Sparkle  28%
+
+OVERDRIVE
+Drums   100%
+Bass    100%
+Chords   92%
+Melody  100%
+Sparkle  78%
+```
 
 ## Structure
 
@@ -102,9 +147,9 @@ games/
 
 ## Next candidates
 
-- WAV / MP3 Music Pack対応
-- stemsを使った本格Layer Mixer
-- 曲の小節位置を維持したままstemsを追加・削除
+- procedural stemsを実WAV stemsへ差し替え
+- AudioBufferによる複数WAVの完全同期再生
 - Victory / Game Over専用Stinger
 - Music Pack選択画面
+- Music Debug / Mixer画面
 - Game 04追加
