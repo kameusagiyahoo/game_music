@@ -1,0 +1,300 @@
+import { MusicManager } from "../../src/music-manager.js";
+import { pulsePack } from "../../src/music-packs/pulse.js";
+
+const GAME_TIME = 40;
+const PERFECT_MS = 170;
+const GOOD_MS = 340;
+const PAD_COUNT = 4;
+const $ = (selector) => document.querySelector(selector);
+
+const startButton = $("#startButton");
+const retryButton = $("#retryButton");
+const soundButton = $("#soundButton");
+const resultOverlay = $("#resultOverlay");
+const timeValue = $("#timeValue");
+const scoreValue = $("#scoreValue");
+const comboValue = $("#comboValue");
+const energyValue = $("#energyValue");
+const coreEnergy = $("#coreEnergy");
+const judgement = $("#judgement");
+const gameMessage = $("#gameMessage");
+const musicState = $("#musicState");
+const syncState = $("#syncState");
+const pendingState = $("#pendingState");
+const beatRing = $("#beatRing");
+const bgmToggle = $("#bgmToggle");
+const sfxToggle = $("#sfxToggle");
+const bgmVolume = $("#bgmVolume");
+const sfxVolume = $("#sfxVolume");
+const bgmVolumeValue = $("#bgmVolumeValue");
+const sfxVolumeValue = $("#sfxVolumeValue");
+const resultTitle = $("#resultTitle");
+const resultMessage = $("#resultMessage");
+const finalScore = $("#finalScore");
+const perfectValue = $("#perfectValue");
+const maxComboValue = $("#maxComboValue");
+const pads = [...document.querySelectorAll(".forge-pad")];
+
+let state = "ready";
+let remaining = GAME_TIME;
+let startedAt = 0;
+let timerId = null;
+let score = 0;
+let combo = 0;
+let maxCombo = 0;
+let energy = 20;
+let perfects = 0;
+let activePad = -1;
+let previousPad = -1;
+let beatStartedAt = 0;
+let beatResolved = true;
+let lastBeatKey = "";
+let currentMusicMode = "normal";
+let pendingMusicMode = null;
+let masterSoundEnabled = true;
+
+const MODE_NAMES = {
+  normal: "FOCUS",
+  build: "BUILD",
+  overdrive: "OVERDRIVE",
+  result: "RESULT",
+};
+
+const music = new MusicManager({
+  pack: pulsePack,
+  onModeChange(label, meta = {}) {
+    musicState.textContent = label;
+    if (meta.mode && meta.mode !== "ready") currentMusicMode = meta.mode;
+    pendingMusicMode = meta.pendingMode || null;
+  },
+  onSync(info) {
+    syncState.textContent = info.mode === "ready" ? "BAR — / BEAT —" : `BAR ${info.bar} / BEAT ${info.beat}`;
+    pendingMusicMode = info.pendingMode || null;
+    pendingState.textContent = pendingMusicMode ? `${MODE_NAMES[pendingMusicMode] || pendingMusicMode} 予約中` : "—";
+
+    if (state !== "playing" || info.subdivision !== 0) return;
+    const key = `${info.bar}-${info.beat}`;
+    if (key === lastBeatKey) return;
+    lastBeatKey = key;
+    beginBeat();
+  },
+});
+music.setMusicVolume(0.80);
+music.setSfxVolume(0.76);
+
+function setMessage(title, body, kicker = "RHYTHM / ADAPTIVE MUSIC") {
+  gameMessage.innerHTML = `<span class="message-kicker">${kicker}</span><strong>${title}</strong><span>${body}</span>`;
+}
+
+function updateStatus() {
+  timeValue.textContent = remaining.toFixed(1);
+  scoreValue.textContent = score.toLocaleString("ja-JP");
+  comboValue.textContent = String(combo);
+  energyValue.textContent = String(Math.round(energy));
+  coreEnergy.textContent = String(Math.round(energy));
+  document.documentElement.style.setProperty("--forge-energy", `${energy}%`);
+}
+
+function clearPads() {
+  pads.forEach((pad) => pad.classList.remove("is-active", "is-perfect", "is-good", "is-miss"));
+}
+
+function choosePad() {
+  let next = Math.floor(Math.random() * PAD_COUNT);
+  while (next === previousPad) next = Math.floor(Math.random() * PAD_COUNT);
+  previousPad = next;
+  return next;
+}
+
+function beginBeat() {
+  if (!beatResolved && activePad >= 0) applyMiss(false);
+
+  clearPads();
+  activePad = choosePad();
+  beatResolved = false;
+  beatStartedAt = performance.now();
+  pads[activePad]?.classList.add("is-active");
+
+  beatRing.classList.remove("is-pulse");
+  void beatRing.offsetWidth;
+  beatRing.classList.add("is-pulse");
+}
+
+function desiredMode() {
+  if (energy >= 75) return "overdrive";
+  if (energy >= 40) return "build";
+  return "normal";
+}
+
+function updateAdaptiveMode() {
+  const desired = desiredMode();
+
+  if (desired === currentMusicMode) {
+    if (pendingMusicMode && pendingMusicMode !== desired) music.cancelPendingTransition();
+    return;
+  }
+
+  if (pendingMusicMode !== desired) {
+    music.transitionTo(desired, { quantize: "bar", crossfadeBeats: 2 });
+  }
+}
+
+function showJudgement(text, className) {
+  judgement.textContent = text;
+  judgement.className = className;
+}
+
+function applyHit(kind, pad) {
+  beatResolved = true;
+  pad.classList.remove("is-active");
+
+  if (kind === "perfect") {
+    combo += 1;
+    perfects += 1;
+    maxCombo = Math.max(maxCombo, combo);
+    score += 100 + Math.min(100, combo * 5);
+    energy = Math.min(100, energy + 12);
+    pad.classList.add("is-perfect");
+    showJudgement("PERFECT", "is-perfect-text");
+    music.sfx("perfect");
+  } else {
+    combo += 1;
+    maxCombo = Math.max(maxCombo, combo);
+    score += 55 + Math.min(50, combo * 3);
+    energy = Math.min(100, energy + 7);
+    pad.classList.add("is-good");
+    showJudgement("GOOD", "is-good-text");
+    music.sfx("good");
+  }
+
+  activePad = -1;
+  updateStatus();
+  updateAdaptiveMode();
+}
+
+function applyMiss(playSound = true, pad = null) {
+  beatResolved = true;
+  combo = 0;
+  energy = Math.max(0, energy - 10);
+  score = Math.max(0, score - 20);
+  if (pad) pad.classList.add("is-miss");
+  showJudgement("MISS", "is-miss-text");
+  if (playSound) music.sfx("miss");
+  activePad = -1;
+  updateStatus();
+  updateAdaptiveMode();
+}
+
+function tapPad(index, pad) {
+  if (state !== "playing" || beatResolved) return;
+
+  if (index !== activePad) {
+    pads[activePad]?.classList.remove("is-active");
+    applyMiss(true, pad);
+    return;
+  }
+
+  const delta = performance.now() - beatStartedAt;
+  if (delta <= PERFECT_MS) applyHit("perfect", pad);
+  else if (delta <= GOOD_MS) applyHit("good", pad);
+  else applyMiss(true, pad);
+}
+
+function resetGame() {
+  clearInterval(timerId);
+  music.stop();
+  state = "ready";
+  remaining = GAME_TIME;
+  score = 0;
+  combo = 0;
+  maxCombo = 0;
+  energy = 20;
+  perfects = 0;
+  activePad = -1;
+  previousPad = -1;
+  beatResolved = true;
+  lastBeatKey = "";
+  currentMusicMode = "normal";
+  pendingMusicMode = null;
+  resultOverlay.hidden = true;
+  clearPads();
+  updateStatus();
+  judgement.textContent = "READY";
+  judgement.className = "";
+  syncState.textContent = "BAR — / BEAT —";
+  pendingState.textContent = "—";
+  setMessage("光った炉心をビートに合わせて叩く", "精度が上がるほど音楽レイヤーが増えます。");
+  startButton.disabled = false;
+  startButton.textContent = "ゲーム開始";
+}
+
+async function startGame() {
+  resetGame();
+  await music.play("normal");
+  state = "playing";
+  startedAt = performance.now();
+  startButton.disabled = true;
+  startButton.textContent = "鍛造中";
+  setMessage("ビートに同期せよ", "光ったパッドを素早く叩いてエネルギーを上げよう。", "PLAYING / BAR SYNC");
+
+  timerId = window.setInterval(() => {
+    const elapsed = (performance.now() - startedAt) / 1000;
+    remaining = Math.max(0, GAME_TIME - elapsed);
+    updateStatus();
+    if (remaining <= 0) endGame();
+  }, 50);
+}
+
+function endGame() {
+  if (state === "result") return;
+  clearInterval(timerId);
+  remaining = 0;
+  state = "result";
+  beatResolved = true;
+  activePad = -1;
+  clearPads();
+  music.cancelPendingTransition();
+  music.transitionTo("result", 0.7);
+  music.sfx(energy >= 60 ? "win" : "lose");
+  updateStatus();
+
+  const previousBest = Number(localStorage.getItem("pulse-forge-best") || 0);
+  if (score > previousBest) localStorage.setItem("pulse-forge-best", String(score));
+
+  resultTitle.textContent = score > previousBest ? "NEW FORGE!" : "FORGED!";
+  resultMessage.textContent = `最終エネルギー${Math.round(energy)}%。PERFECT ${perfects}回、最大${maxCombo}コンボ。`;
+  finalScore.textContent = score.toLocaleString("ja-JP");
+  perfectValue.textContent = String(perfects);
+  maxComboValue.textContent = String(maxCombo);
+  resultOverlay.hidden = false;
+  startButton.disabled = false;
+  startButton.textContent = "ゲーム開始";
+}
+
+async function applyAudioState() {
+  await music.setMusicEnabled(masterSoundEnabled && bgmToggle.checked);
+  await music.setSfxEnabled(masterSoundEnabled && sfxToggle.checked);
+  soundButton.setAttribute("aria-pressed", String(masterSoundEnabled));
+  soundButton.textContent = masterSoundEnabled ? "♪" : "×";
+}
+
+pads.forEach((pad, index) => pad.addEventListener("click", () => tapPad(index, pad)));
+soundButton.addEventListener("click", async () => {
+  masterSoundEnabled = !masterSoundEnabled;
+  await applyAudioState();
+  if (masterSoundEnabled && sfxToggle.checked) music.sfx("toggle");
+});
+bgmToggle.addEventListener("change", applyAudioState);
+sfxToggle.addEventListener("change", applyAudioState);
+bgmVolume.addEventListener("input", () => {
+  bgmVolumeValue.textContent = bgmVolume.value;
+  music.setMusicVolume(Number(bgmVolume.value) / 100);
+});
+sfxVolume.addEventListener("input", () => {
+  sfxVolumeValue.textContent = sfxVolume.value;
+  music.setSfxVolume(Number(sfxVolume.value) / 100);
+});
+startButton.addEventListener("click", startGame);
+retryButton.addEventListener("click", startGame);
+
+resetGame();
