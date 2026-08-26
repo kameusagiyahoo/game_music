@@ -1,18 +1,22 @@
 import { MusicManager } from "../../src/music-manager.js";
-import { fantasyPack } from "../../src/music-packs/fantasy.js";
-import { neonPack } from "../../src/music-packs/neon.js";
-import { clockworkPack } from "../../src/music-packs/clockwork.js";
+import {
+  GAME_IDS,
+  MUSIC_ENGINES,
+  getMusicSettings,
+  saveMusicSettings,
+  resolveMusicPack,
+  listMusicPacks,
+  configureMusicManager,
+  applyMusicSettingsToControls,
+} from "../../src/music-registry.js";
 
 const GAME_TIME = 45;
 const TENSION_AT = 10;
 const $ = (selector) => document.querySelector(selector);
 const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
-const PACKS = {
-  fantasy: fantasyPack,
-  neon: neonPack,
-  clockwork: clockworkPack,
-};
+const proceduralEntries = listMusicPacks({ engine: MUSIC_ENGINES.PROCEDURAL });
+const PACKS = Object.fromEntries(proceduralEntries.map((entry) => [entry.id, entry.pack]));
 
 const startButton = $("#startButton");
 const retryButton = $("#retryButton");
@@ -28,6 +32,7 @@ const musicState = $("#musicState");
 const syncState = $("#syncState");
 const currentPack = $("#currentPack");
 const pendingPack = $("#pendingPack");
+const packButtonsContainer = $("#packButtons");
 const bgmToggle = $("#bgmToggle");
 const sfxToggle = $("#sfxToggle");
 const bgmVolume = $("#bgmVolume");
@@ -41,10 +46,6 @@ const finalScore = $("#finalScore");
 const finalRound = $("#finalRound");
 const finalPack = $("#finalPack");
 const pads = [...document.querySelectorAll(".rune-pad")];
-const packButtons = [...document.querySelectorAll(".pack-button")];
-
-const storedPack = localStorage.getItem("rune-relay-pack");
-const initialPackId = PACKS[storedPack] ? storedPack : "fantasy";
 
 let state = "ready";
 let remaining = GAME_TIME;
@@ -60,18 +61,30 @@ let playbackToken = 0;
 let tensionRequested = false;
 let masterSoundEnabled = true;
 
+function renderPackRegistry() {
+  packButtonsContainer.innerHTML = proceduralEntries.map((entry) => `
+    <button type="button" class="pack-button" data-pack="${entry.id}">
+      <strong>${entry.shortName}</strong><span>${entry.description}</span>
+    </button>
+  `).join("");
+}
+
 function renderPackButtons(info = {}) {
-  currentPack.textContent = info.name || music.getPackInfo().name;
-  pendingPack.textContent = info.pendingName || "—";
-  packButtons.forEach((button) => {
+  const activeInfo = info.id ? info : music.getPackInfo();
+  currentPack.textContent = activeInfo.name || music.getPackInfo().name;
+  pendingPack.textContent = activeInfo.pendingName || "—";
+  document.querySelectorAll(".pack-button").forEach((button) => {
     const id = button.dataset.pack;
-    button.classList.toggle("is-active", id === (info.id || music.getPackInfo().id));
-    button.classList.toggle("is-pending", id === info.pendingId);
+    button.classList.toggle("is-active", id === (activeInfo.id || music.getPackInfo().id));
+    button.classList.toggle("is-pending", id === activeInfo.pendingId);
   });
 }
 
+renderPackRegistry();
+const sharedSettings = getMusicSettings();
+const initialEntry = resolveMusicPack(GAME_IDS.RUNE_RELAY, MUSIC_ENGINES.PROCEDURAL);
 const music = new MusicManager({
-  pack: PACKS[initialPackId],
+  pack: initialEntry.pack,
   onModeChange(label) {
     musicState.textContent = label;
   },
@@ -80,12 +93,11 @@ const music = new MusicManager({
   },
   onSync(info) {
     syncState.textContent = info.mode === "ready" ? "BAR — / BEAT —" : `BAR ${info.bar} / BEAT ${info.beat}`;
-    if (info.pendingPackName) pendingPack.textContent = info.pendingPackName;
+    pendingPack.textContent = info.pendingPackName || "—";
   },
 });
-
-music.setMusicVolume(0.82);
-music.setSfxVolume(0.72);
+configureMusicManager(music, sharedSettings);
+applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
 
 function setMessage(title, body, kicker = "MEMORY / PACK SWITCH") {
   gameMessage.innerHTML = `<span class="message-kicker">${kicker}</span><strong>${title}</strong><span>${body}</span>`;
@@ -271,7 +283,7 @@ function endGame() {
   if (score > previousBest) localStorage.setItem("rune-relay-best", String(score));
   const info = music.getPackInfo();
   resultTitle.textContent = score > previousBest ? "NEW RELAY!" : "RELAY COMPLETE";
-  resultMessage.textContent = `${sequence.length}個の列まで到達。最高連続成功は現在のSTREAK ${streak}。`;
+  resultMessage.textContent = `${sequence.length}個の列まで到達。現在のSTREAKは${streak}。`;
   finalScore.textContent = score.toLocaleString("ja-JP");
   finalRound.textContent = String(round);
   finalPack.textContent = info.name;
@@ -283,7 +295,7 @@ function endGame() {
 async function choosePack(id) {
   const pack = PACKS[id];
   if (!pack) return;
-  localStorage.setItem("rune-relay-pack", id);
+  saveMusicSettings({ proceduralPackId: id });
   const info = music.getPackInfo();
 
   if (state === "playing") {
@@ -308,7 +320,10 @@ async function applyAudioState() {
 }
 
 pads.forEach((pad, index) => pad.addEventListener("click", () => tapPad(index, pad)));
-packButtons.forEach((button) => button.addEventListener("click", () => void choosePack(button.dataset.pack)));
+packButtonsContainer.addEventListener("click", (event) => {
+  const button = event.target.closest(".pack-button");
+  if (button) void choosePack(button.dataset.pack);
+});
 
 soundButton.addEventListener("click", async () => {
   masterSoundEnabled = !masterSoundEnabled;
@@ -316,15 +331,23 @@ soundButton.addEventListener("click", async () => {
   if (masterSoundEnabled && sfxToggle.checked) music.sfx("toggle");
 });
 
-bgmToggle.addEventListener("change", applyAudioState);
-sfxToggle.addEventListener("change", applyAudioState);
+bgmToggle.addEventListener("change", async () => {
+  saveMusicSettings({ bgmEnabled: bgmToggle.checked });
+  await applyAudioState();
+});
+sfxToggle.addEventListener("change", async () => {
+  saveMusicSettings({ sfxEnabled: sfxToggle.checked });
+  await applyAudioState();
+});
 bgmVolume.addEventListener("input", () => {
   bgmVolumeValue.textContent = bgmVolume.value;
   music.setMusicVolume(Number(bgmVolume.value) / 100);
+  saveMusicSettings({ bgmVolume: Number(bgmVolume.value) / 100 });
 });
 sfxVolume.addEventListener("input", () => {
   sfxVolumeValue.textContent = sfxVolume.value;
   music.setSfxVolume(Number(sfxVolume.value) / 100);
+  saveMusicSettings({ sfxVolume: Number(sfxVolume.value) / 100 });
 });
 startButton.addEventListener("click", startGame);
 retryButton.addEventListener("click", startGame);
