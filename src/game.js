@@ -1,11 +1,8 @@
-import { MusicManager } from "./music-manager.js";
+import { createMusicRuntime } from "./music-asset-resolver.js";
 import {
   GAME_IDS,
-  MUSIC_ENGINES,
   getMusicSettings,
   saveMusicSettings,
-  resolveMusicPack,
-  configureMusicManager,
   applyMusicSettingsToControls,
 } from "./music-registry.js";
 
@@ -51,12 +48,15 @@ let timerId = null;
 let masterSoundEnabled = true;
 
 const sharedSettings = getMusicSettings();
-const packEntry = resolveMusicPack(GAME_IDS.MYSTIC_MATCH, MUSIC_ENGINES.PROCEDURAL);
-const music = new MusicManager({
-  pack: packEntry.pack,
-  onModeChange(label) { musicState.textContent = label; },
+const runtime = createMusicRuntime({
+  gameId: GAME_IDS.MYSTIC_MATCH,
+  callbacks: {
+    onModeChange(label) { musicState.textContent = label; },
+  },
+  settings: sharedSettings,
 });
-configureMusicManager(music, sharedSettings);
+const packEntry = runtime.entry;
+const music = runtime.manager;
 applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
 
 const best = Number(localStorage.getItem("mystic-match-best") || 0);
