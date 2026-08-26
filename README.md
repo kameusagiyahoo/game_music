@@ -1,36 +1,84 @@
 # game_music
 
-GitHub Pagesだけでゲーム制作とゲーム音楽基盤を練習するためのプロジェクトです。
+GitHub Pagesだけでゲーム制作とゲーム音楽基盤を練習するプロジェクトです。
 
-## Game 01 — Mystic Match
+## Games
 
-12枚のカードから同じ紋章の6ペアを見つける、45秒制限のメモリーゲームです。
+### Game 01 — Mystic Match
 
-### 現在の実装
+12枚のカードから同じ紋章の6ペアを見つける45秒のメモリーゲーム。
 
-- iPhone向けレスポンシブUI
-- 12枚 / 6ペアのカードシャッフル
-- 45秒タイマー
-- 残り10秒で `tension` 状態へ遷移
-- 手数・ペア数・スコア表示
-- ベストスコアを `localStorage` に保存
-- Web Audio APIによる簡易SE
-- サウンドON/OFF
+- Normal BGM
+- 残り10秒で Tension BGMへクロスフェード
+- Result BGM
+- BGM / SE 個別ON/OFF
+- BGM / SE 個別音量
+- ベストスコアを localStorage に保存
 
-### ゲーム状態
+URL: https://kameusagiyahoo.github.io/game_music/
+
+### Game 02 — Orbit Rush
+
+9マスの中から光ったターゲットを追い続ける30秒の反射神経ゲーム。
+
+- Mystic Matchと同じ `MusicManager` を再利用
+- Neon Orbit Music Packを使用
+- 残り8秒で Overdriveへクロスフェード
+- コンボ・スコア・ベストスコア
+- BGM / SE 個別設定
+
+URL: https://kameusagiyahoo.github.io/game_music/games/orbit-rush/
+
+## Music Engine v1
 
 ```text
-ready
-  ↓
-playing
-  ↓ 残り10秒
-tension
-  ↓
-result
+Game Logic
+    ↓
+MusicManager
+    ↓
+Music Pack
+├── fantasy.js
+└── neon.js
 ```
 
-この状態遷移を、次の段階で共通 Music Manager に接続します。
+`src/music-manager.js` はゲーム固有のメロディやBPMを持ちません。曲データは `src/music-packs/` に分離しています。
 
-## GitHub Pages
+### 主な機能
 
-https://kameusagiyahoo.github.io/game_music/
+- `play(mode)`
+- `transitionTo(mode, seconds)`
+- Music Pack差し替え
+- BGMクロスフェード
+- BGM ON/OFF
+- SE ON/OFF
+- BGM音量
+- SE音量
+- 共通SE
+- iPhone Safari向けWeb Audio再生
+
+## Structure
+
+```text
+index.html
+styles.css
+ui-enhancements.css
+src/
+├── game.js
+├── music-manager.js
+└── music-packs/
+    ├── fantasy.js
+    └── neon.js
+games/
+└── orbit-rush/
+    ├── index.html
+    ├── game.js
+    └── styles.css
+```
+
+## Next candidates
+
+- Victory / Game Over専用Music State
+- 小節境界に同期したトランジション
+- MIDI / WAV / MP3 Music Pack対応
+- stemsを使ったAdaptive Music
+- Game 03追加
