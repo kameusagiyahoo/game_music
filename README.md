@@ -51,6 +51,20 @@ URL: https://kameusagiyahoo.github.io/game_music/games/pulse-forge/
 
 URL: https://kameusagiyahoo.github.io/game_music/games/rune-relay/
 
+### Game 05 — Aether Shift
+
+9つのノードを追いかける4ウェーブ制の反射ゲーム。
+
+- `createMusicRuntime()` だけで再生Runtimeを生成
+- Fantasy / Neon / Clockwork / Pulse WAVを同じPack UIから選択
+- Pack変更は次のウェーブ境界へ予約
+- procedural ↔ WAV Stemでもゲームロジックを変更せずRuntime交換
+- ゲーム側は `normal / tension / result` の共通Stateだけを送信
+- WAV EngineではStateがFocus / Overdrive / Result Stem Mixへ自動変換
+- 勝敗演出もStinger対応EngineならWAV Stinger、それ以外はSEへ自動フォールバック
+- 共通BGM / SE設定を利用
+
+URL: https://kameusagiyahoo.github.io/game_music/games/aether-shift/
 ## Global Music Settings
 
 全ゲーム共通の音楽設定画面。
@@ -111,6 +125,9 @@ Music Asset Resolver
 resolveMusicAsset({ gameId, packId, engine });
 createMusicRuntime({ gameId, packId, callbacks, settings });
 getRuntimeDescriptor(runtime);
+applyMusicState(runtime, state, options);
+playMusicOutcome(runtime, success, options);
+stopMusicRuntime(runtime);
 ```
 
 `createMusicRuntime()` の戻り値:
@@ -206,6 +223,9 @@ URL: https://kameusagiyahoo.github.io/game_music/debug/resolver/
 - EngineごとのCapabilities定義
 - `/debug/resolver/` Asset Resolver Lab
 - procedural / WAVを同じ選択UIから再生可能
+- `applyMusicState()` でEngine固有のMode / Stem Preset差を吸収
+- `playMusicOutcome()` でWAV Stinger / procedural SEを自動選択
+- Game 05でウェーブ境界のEngine hot-swapを実証
 
 ## Music Debug / Mixer
 
@@ -271,7 +291,7 @@ assets/
 
 ## Next candidates
 
-- Resolverを使うGame 05追加
+- Game 01〜04も `createMusicRuntime()` へ全面移行
 - procedural PackのWAV Stem版生成
 - WAV / OGG / AACのブラウザ対応Format Resolver
 - Stingerを小節頭 / beat頭へQuantize
