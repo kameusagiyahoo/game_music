@@ -16,7 +16,8 @@ BAR = BEAT * BEATS_PER_BAR
 STEP = BEAT / 2.0
 DURATION = BARS * BAR
 SAMPLES = round(DURATION * SAMPLE_RATE)
-OUT = Path("assets/stems/pulse")
+STEM_OUT = Path("assets/stems/pulse")
+STINGER_OUT = Path("assets/stingers/pulse")
 
 MELODY = [69, None, 72, None, 76, None, 72, None, 67, None, 71, None, 74, None, 71, None]
 BASS = [45, 41, 43, 40]
@@ -53,15 +54,15 @@ def add_tone(buf: list[float], start: float, duration: float, freq: float, amp: 
         buf[start_i + i] += sample * amp * envelope
 
 
-def normalize_and_write(name: str, samples: list[float]) -> None:
+def write_wav(path: Path, samples: list[float]) -> None:
     peak = max(max(abs(v) for v in samples), 1e-9)
     scale = 0.88 / peak
     pcm = bytearray()
     for value in samples:
         sample = max(-1.0, min(1.0, value * scale))
         pcm.extend(struct.pack("<h", round(sample * 32767)))
-    OUT.mkdir(parents=True, exist_ok=True)
-    with wave.open(str(OUT / f"{name}.wav"), "wb") as wav:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
         wav.setframerate(SAMPLE_RATE)
@@ -138,6 +139,34 @@ def make_sparkle() -> list[float]:
     return buf
 
 
+def make_victory_stinger() -> list[float]:
+    duration = 2.25
+    buf = [0.0] * round(duration * SAMPLE_RATE)
+    phrase = [69, 73, 76, 81]
+    for index, note in enumerate(phrase):
+        start = index * 0.18
+        add_tone(buf, start, 0.34 if index < 3 else 0.72, midi(note), 0.11, "triangle")
+        add_tone(buf, start, 0.20, midi(note + 12), 0.035, "sine")
+    for note in (57, 61, 64, 69):
+        add_tone(buf, 0.72, 1.05, midi(note), 0.050, "sine")
+    for offset, note in enumerate((88, 93, 88, 93)):
+        add_tone(buf, 1.05 + offset * 0.16, 0.16, midi(note), 0.027, "sine")
+    return buf
+
+
+def make_gameover_stinger() -> list[float]:
+    duration = 2.10
+    buf = [0.0] * round(duration * SAMPLE_RATE)
+    phrase = [69, 64, 60, 57]
+    for index, note in enumerate(phrase):
+        start = index * 0.27
+        add_tone(buf, start, 0.42 if index < 3 else 0.86, midi(note), 0.085, "triangle")
+    for note in (45, 52, 57):
+        add_tone(buf, 0.86, 0.95, midi(note), 0.040, "sine")
+    add_tone(buf, 0.86, 0.72, midi(33), 0.045, "sine")
+    return buf
+
+
 def main() -> None:
     stems = {
         "drums": make_drums(),
@@ -147,9 +176,18 @@ def main() -> None:
         "sparkle": make_sparkle(),
     }
     for name, samples in stems.items():
-        normalize_and_write(name, samples)
-        print(f"generated {name}.wav")
-    print(f"{BARS} bars / {BPM} BPM / {SAMPLE_RATE} Hz / {DURATION:.6f}s")
+        write_wav(STEM_OUT / f"{name}.wav", samples)
+        print(f"generated stem: {name}.wav")
+
+    stingers = {
+        "victory": make_victory_stinger(),
+        "gameover": make_gameover_stinger(),
+    }
+    for name, samples in stingers.items():
+        write_wav(STINGER_OUT / f"{name}.wav", samples)
+        print(f"generated stinger: {name}.wav")
+
+    print(f"stems: {BARS} bars / {BPM} BPM / {SAMPLE_RATE} Hz / {DURATION:.6f}s")
 
 
 if __name__ == "__main__":
