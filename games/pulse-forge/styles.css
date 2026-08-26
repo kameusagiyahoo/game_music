@@ -47,6 +47,74 @@ body {
   text-overflow: ellipsis;
 }
 
+.stem-panel {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(27,27,24,.78);
+  display: grid;
+  gap: 7px;
+}
+
+.stem-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+
+.stem-heading span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .14em;
+}
+
+.stem-heading strong {
+  font-size: 11px;
+  letter-spacing: .08em;
+  color: #ffd6a4;
+}
+
+.stem-row {
+  display: grid;
+  grid-template-columns: 62px 1fr 28px;
+  gap: 8px;
+  align-items: center;
+}
+
+.stem-row > span {
+  color: #c6bdb4;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.stem-track {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255,255,255,.07);
+}
+
+.stem-track i {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(240,164,91,.62), rgba(255,218,165,.96));
+  transition: width 420ms ease;
+}
+
+.stem-row output {
+  color: var(--muted);
+  text-align: right;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
 .forge-area {
   min-height: 390px;
 }
@@ -174,7 +242,8 @@ body {
   100% { transform: scale(1.10); opacity: 0; }
 }
 
-@media (max-height: 790px) {
+@media (max-height: 880px) {
+  .stem-panel { padding-block: 9px; gap: 5px; }
   .forge-area { min-height: 330px; }
   .forge-stage { width: min(66vw, 285px); }
   .forge-pad { width: 72px; height: 72px; border-radius: 20px; }
