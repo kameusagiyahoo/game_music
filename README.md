@@ -10,6 +10,7 @@ GitHub Pagesだけでゲーム制作とゲーム音楽基盤を練習するプ�
 
 - Normal / Tension / Result
 - 残り10秒でTensionへクロスフェード
+- `createMusicRuntime()` でResolver経由のRuntimeを生成
 - Music Registryからprocedural Packを解決
 - 共通BGM / SE設定を利用
 
@@ -19,7 +20,7 @@ URL: https://kameusagiyahoo.github.io/game_music/
 
 9マスの中から光ったターゲットを追い続ける30秒の反射神経ゲーム。
 
-- Game 01と同じ `MusicManager` を再利用
+- `createMusicRuntime()` でResolver経由のRuntimeを生成
 - Normal / Tension / Result
 - Music Registryからprocedural Packを解決
 - 共通BGM / SE設定を利用
@@ -35,6 +36,7 @@ URL: https://kameusagiyahoo.github.io/game_music/games/orbit-rush/
 - Victory / Game Over専用WAV Stinger
 - Stinger中はBGMをduckし、終了後に元の音量へ復帰
 - Registry上では `wav-stem` engineとして管理
+- `createMusicRuntime()` が `WavStemMusicManager` を自動生成
 - 共通BGM / SE設定を利用
 
 URL: https://kameusagiyahoo.github.io/game_music/games/pulse-forge/
@@ -43,6 +45,7 @@ URL: https://kameusagiyahoo.github.io/game_music/games/pulse-forge/
 
 4つのルーンの点灯順を覚え、同じ順番で入力する45秒のシーケンス記憶ゲーム。
 
+- `createMusicRuntime()` でResolver経由のRuntimeを生成
 - Music PackボタンをRegistryから自動生成
 - Fantasy / Neon / Clockworkを選択可能
 - プレイ中のPack変更は次の小節頭へ予約
@@ -227,6 +230,37 @@ URL: https://kameusagiyahoo.github.io/game_music/debug/resolver/
 - `playMusicOutcome()` でWAV Stinger / procedural SEを自動選択
 - Game 05でウェーブ境界のEngine hot-swapを実証
 
+## Music Engine v9 — Runtime API Unification
+
+Game 01〜05の音楽初期化をすべて `createMusicRuntime()` に統一しました。
+
+```text
+Game 01 Mystic Match
+Game 02 Orbit Rush
+Game 03 Pulse Forge
+Game 04 Rune Relay
+Game 05 Aether Shift
+        |
+        | createMusicRuntime()
+        v
+Music Asset Resolver
+        |
+        +--> procedural -> MusicManager
+        |
+        +--> wav-stem   -> WavStemMusicManager
+```
+
+ゲームコードからの直接 `new MusicManager()` / `new WavStemMusicManager()` は禁止します。
+
+境界を守るため、以下を追加しています。
+
+- `tools/check_music_boundary.py`
+- `.github/workflows/music-architecture-check.yml`
+- Game 01〜05に `createMusicRuntime()` が存在することを検証
+- GameコードからManager実装ファイルを直接importしていないことを検証
+
+Engine固有機能はRuntime生成後のCapabilitiesに応じて利用し、Manager選択そのものはResolverへ集約します。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Music Engineだけを直接操作する検証画面。
@@ -291,7 +325,8 @@ assets/
 
 ## Next candidates
 
-- Game 01〜04も `createMusicRuntime()` へ全面移行
+- Game State APIをさらにFacade化して `manager.*` 呼び出しを縮小
+- WAV / OGG / AACのブラウザ対応Format Resolver
 - procedural PackのWAV Stem版生成
 - WAV / OGG / AACのブラウザ対応Format Resolver
 - Stingerを小節頭 / beat頭へQuantize
