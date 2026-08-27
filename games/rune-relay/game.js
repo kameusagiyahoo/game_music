@@ -1,12 +1,10 @@
-import { MusicManager } from "../../src/music-manager.js";
+import { createMusicRuntime } from "../../src/music-asset-resolver.js";
 import {
   GAME_IDS,
   MUSIC_ENGINES,
   getMusicSettings,
   saveMusicSettings,
-  resolveMusicPack,
   listMusicPacks,
-  configureMusicManager,
   applyMusicSettingsToControls,
 } from "../../src/music-registry.js";
 
@@ -82,21 +80,25 @@ function renderPackButtons(info = {}) {
 
 renderPackRegistry();
 const sharedSettings = getMusicSettings();
-const initialEntry = resolveMusicPack(GAME_IDS.RUNE_RELAY, MUSIC_ENGINES.PROCEDURAL);
-const music = new MusicManager({
-  pack: initialEntry.pack,
-  onModeChange(label) {
-    musicState.textContent = label;
+let music;
+const runtime = createMusicRuntime({
+  gameId: GAME_IDS.RUNE_RELAY,
+  engine: MUSIC_ENGINES.PROCEDURAL,
+  callbacks: {
+    onModeChange(label) {
+      musicState.textContent = label;
+    },
+    onPackChange(info) {
+      if (music) renderPackButtons(info);
+    },
+    onSync(info) {
+      syncState.textContent = info.mode === "ready" ? "BAR — / BEAT —" : `BAR ${info.bar} / BEAT ${info.beat}`;
+      pendingPack.textContent = info.pendingPackName || "—";
+    },
   },
-  onPackChange(info) {
-    renderPackButtons(info);
-  },
-  onSync(info) {
-    syncState.textContent = info.mode === "ready" ? "BAR — / BEAT —" : `BAR ${info.bar} / BEAT ${info.beat}`;
-    pendingPack.textContent = info.pendingPackName || "—";
-  },
+  settings: sharedSettings,
 });
-configureMusicManager(music, sharedSettings);
+music = runtime.manager;
 applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
 
 function setMessage(title, body, kicker = "MEMORY / PACK SWITCH") {
