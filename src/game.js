@@ -220,7 +220,7 @@ function endGame(clear) {
   resultOverlay.hidden = false;
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
-  music.cue(clear ? "win" : "lose");
+  void music.outcome(clear);
 }
 
 async function applyAudioState() {
