@@ -1,7 +1,12 @@
-import { fantasyPack } from "./music-packs/fantasy.js";
-import { neonPack } from "./music-packs/neon.js";
-import { clockworkPack } from "./music-packs/clockwork.js";
-import { pulsePack } from "./music-packs/pulse.js";
+import { fantasyPack, fantasyManifest } from "./music-packs/fantasy.js";
+import { neonPack, neonManifest } from "./music-packs/neon.js";
+import { clockworkPack, clockworkManifest } from "./music-packs/clockwork.js";
+import { pulsePack, pulseManifest } from "./music-packs/pulse.js";
+import {
+  createRegistryEntry,
+  MUSIC_PACK_SCHEMA_VERSION,
+  MUSIC_FACADE_API_VERSION,
+} from "./music-pack-manifest.js";
 
 const STORAGE_KEY = "game-music-global-settings-v1";
 
@@ -18,40 +23,14 @@ export const GAME_IDS = Object.freeze({
   AETHER_SHIFT: "aether-shift",
 });
 
-const registry = Object.freeze({
-  fantasy: Object.freeze({
-    id: "fantasy",
-    name: "Fantasy Table",
-    shortName: "Fantasy",
-    description: "やさしい幻想",
-    engine: MUSIC_ENGINES.PROCEDURAL,
-    pack: fantasyPack,
-  }),
-  neon: Object.freeze({
-    id: "neon",
-    name: "Neon Orbit",
-    shortName: "Neon",
-    description: "高速シンセ",
-    engine: MUSIC_ENGINES.PROCEDURAL,
-    pack: neonPack,
-  }),
-  clockwork: Object.freeze({
-    id: "clockwork",
-    name: "Clockwork Grove",
-    shortName: "Clockwork",
-    description: "機械仕掛け",
-    engine: MUSIC_ENGINES.PROCEDURAL,
-    pack: clockworkPack,
-  }),
-  pulse: Object.freeze({
-    id: "pulse",
-    name: "Pulse Forge WAV",
-    shortName: "Pulse WAV",
-    description: "5本の同期WAV Stem",
-    engine: MUSIC_ENGINES.WAV_STEM,
-    pack: pulsePack,
-  }),
-});
+const entries = [
+  createRegistryEntry(fantasyManifest, fantasyPack),
+  createRegistryEntry(neonManifest, neonPack),
+  createRegistryEntry(clockworkManifest, clockworkPack),
+  createRegistryEntry(pulseManifest, pulsePack),
+];
+
+const registry = Object.freeze(Object.fromEntries(entries.map((entry) => [entry.id, entry])));
 
 export const GAME_DEFAULT_PACKS = Object.freeze({
   [GAME_IDS.MYSTIC_MATCH]: "fantasy",
@@ -109,8 +88,35 @@ export function listMusicPacks({ engine } = {}) {
   return Object.values(registry).filter((entry) => !engine || entry.engine === engine);
 }
 
+export function listMusicPackManifests({ engine } = {}) {
+  return listMusicPacks({ engine }).map((entry) => entry.manifest);
+}
+
 export function getMusicPackEntry(id) {
   return registry[id] || null;
+}
+
+export function getMusicPackManifest(id) {
+  return registry[id]?.manifest || null;
+}
+
+export function getMusicRegistrySnapshot() {
+  return Object.freeze({
+    schemaVersion: MUSIC_PACK_SCHEMA_VERSION,
+    facadeApi: MUSIC_FACADE_API_VERSION,
+    packCount: entries.length,
+    packs: Object.freeze(entries.map((entry) => Object.freeze({
+      id: entry.id,
+      version: entry.version,
+      schemaVersion: entry.schemaVersion,
+      name: entry.name,
+      engine: entry.engine,
+      states: entry.states,
+      stems: entry.stems,
+      stingers: entry.stingers,
+      facadeApi: entry.facadeApi,
+    }))),
+  });
 }
 
 export function getMusicSettings() {
