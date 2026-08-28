@@ -1,3 +1,5 @@
+import { defineMusicPackManifest } from "../music-pack-manifest.js";
+
 export const clockworkPack = {
   id: "clockwork",
   name: "Clockwork Grove",
@@ -35,3 +37,17 @@ export const clockworkPack = {
     pulse: { type: "square", gain: 0.010, duration: 0.018 },
   },
 };
+
+
+export const clockworkManifest = defineMusicPackManifest({
+  id: clockworkPack.id,
+  name: clockworkPack.name,
+  shortName: "Clockwork",
+  description: "機械仕掛け",
+  engine: "procedural",
+  version: "1.0.0",
+  states: ["normal","tension","result"],
+  stems: [],
+  stingers: [],
+  tags: ["clockwork","mechanical","procedural"],
+});
