@@ -192,7 +192,7 @@ function endGame() {
   resultOverlay.hidden = false;
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
-  music.cue(score >= 250 ? "win" : "lose");
+  void music.outcome(score >= 250);
 }
 
 async function applyAudioState() {
