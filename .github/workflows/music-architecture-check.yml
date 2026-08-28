@@ -22,5 +22,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Enforce Music Resolver boundary
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Enforce Music Facade boundary
         run: python tools/check_music_boundary.py
+      - name: Check JavaScript syntax
+        run: |
+          node --check src/music-asset-resolver.js
+          node --check src/music-facade.js
+          node --check src/game.js
+          node --check games/orbit-rush/game.js
+          node --check games/pulse-forge/game.js
+          node --check games/rune-relay/game.js
+          node --check games/aether-shift/game.js
