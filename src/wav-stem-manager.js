@@ -1,12 +1,15 @@
+import { rememberAudioFormat } from "./music-format-resolver.js";
+
 const STEMS = ["drums", "bass", "chords", "melody", "sparkle"];
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value)));
 
 export class WavStemMusicManager {
-  constructor({ pack, onModeChange, onSync, onLayerChange } = {}) {
+  constructor({ pack, onModeChange, onSync, onLayerChange, onFormatChange } = {}) {
     this.pack = pack;
     this.onModeChange = onModeChange || (() => {});
     this.onSync = onSync || (() => {});
     this.onLayerChange = onLayerChange || (() => {});
+    this.onFormatChange = onFormatChange || (() => {});
 
     this.context = null;
     this.master = null;
@@ -36,6 +39,13 @@ export class WavStemMusicManager {
     this.musicVolume = 0.80;
     this.sfxVolume = 0.76;
     this.duckAmount = 1;
+
+    this.selectedAudioFormat = pack?.selectedAudioFormat || pack?.audioStems?.selectedFormat || "wav";
+    this.stingerAudioFormat = pack?.stingers?.selectedFormat || this.selectedAudioFormat;
+    this.audioFormatCandidates = [...new Set(
+      (pack?.audioFormatCandidates?.length ? pack.audioFormatCandidates : [this.selectedAudioFormat]).filter(Boolean)
+    )];
+    this.audioFormatAttempts = [];
   }
 
   async init() {
@@ -78,7 +88,13 @@ export class WavStemMusicManager {
 
   async play(mode = "normal") {
     await this.init();
-    this.onModeChange("LOADING · WAV STEMS", { mode: "loading", pendingMode: null, engine: "wav" });
+    this.audioFormatAttempts = [];
+    this.onModeChange("LOADING · WAV STEMS", {
+      mode: "loading",
+      pendingMode: null,
+      engine: "wav",
+      format: this.selectedAudioFormat,
+    });
     await this.#loadBuffers();
     this.stop({ keepStatus: true });
 
@@ -159,6 +175,15 @@ export class WavStemMusicManager {
     return { ...this.layerMix };
   }
 
+  getAudioFormatInfo() {
+    return {
+      format: this.selectedAudioFormat,
+      stingerFormat: this.stingerAudioFormat,
+      candidates: [...this.audioFormatCandidates],
+      attempts: this.audioFormatAttempts.map((attempt) => ({ ...attempt })),
+    };
+  }
+
   getDebugState() {
     const step = Math.max(0, this.lastStep);
     const barStep = step % 8;
@@ -182,6 +207,10 @@ export class WavStemMusicManager {
       stemBuffersReady: STEMS.every((name) => Boolean(this.buffers[name])),
       loadedStingers: Object.keys(this.stingerBuffers),
       stingerPlaying: Boolean(this.stingerSource),
+      audioFormat: this.selectedAudioFormat,
+      stingerAudioFormat: this.stingerAudioFormat,
+      audioFormatCandidates: [...this.audioFormatCandidates],
+      audioFormatAttempts: this.audioFormatAttempts.map((attempt) => ({ ...attempt })),
     };
   }
 
@@ -204,7 +233,12 @@ export class WavStemMusicManager {
     if (this.context) this.#applyMusicRootGain(0.04);
 
     if (!options.keepStatus) {
-      this.onModeChange("READY · music stopped", { mode: "ready", pendingMode: null, engine: "wav" });
+      this.onModeChange("READY · music stopped", {
+        mode: "ready",
+        pendingMode: null,
+        engine: "wav",
+        format: this.selectedAudioFormat,
+      });
       this.onSync({
         bar: 0,
         beat: 0,
@@ -213,6 +247,7 @@ export class WavStemMusicManager {
         pendingLayerPreset: null,
         layerMix: { ...this.layerMix },
         engine: "wav",
+        format: this.selectedAudioFormat,
       });
     }
   }
@@ -251,7 +286,7 @@ export class WavStemMusicManager {
   async playStinger(name, options = {}) {
     await this.init();
     const file = this.pack?.stingers?.files?.[name];
-    if (!file) throw new Error(`Unknown stinger: ${name}`);
+    if (!file && !this.pack?.stingers?.formats) throw new Error(`Unknown stinger: ${name}`);
 
     const buffer = await this.#loadStingerBuffer(name, file);
     this.stopStinger({ restoreMusic: true });
@@ -275,7 +310,7 @@ export class WavStemMusicManager {
     };
 
     source.start(this.context.currentTime + 0.015);
-    return { name, duration: buffer.duration };
+    return { name, duration: buffer.duration, format: this.stingerAudioFormat };
   }
 
   stopStinger(options = {}) {
@@ -313,26 +348,142 @@ export class WavStemMusicManager {
   }
 
   async #loadBuffers() {
-    const files = this.pack?.audioStems?.files;
-    if (!files) throw new Error("audioStems.files is missing");
+    if (STEMS.every((name) => Boolean(this.buffers[name]))) return;
 
-    const missing = STEMS.filter((name) => !this.buffers[name]);
-    await Promise.all(missing.map(async (name) => {
-      const response = await fetch(files[name], { cache: "force-cache" });
-      if (!response.ok) throw new Error(`Failed to load ${name}.wav: ${response.status}`);
-      const data = await response.arrayBuffer();
-      this.buffers[name] = await this.context.decodeAudioData(data);
-    }));
+    const candidates = this.#orderedFormatCandidates();
+    let lastError = null;
+
+    for (const format of candidates) {
+      try {
+        const files = this.#filesForFormat("audioStems", format);
+        if (!files) throw new Error(`No stem file set for ${format}`);
+
+        this.onModeChange(`LOADING · ${format.toUpperCase()} STEMS`, {
+          mode: "loading",
+          pendingMode: null,
+          engine: "wav",
+          format,
+        });
+
+        const decoded = await Promise.all(STEMS.map(async (name) => {
+          const url = files[name];
+          if (!url) throw new Error(`${format} missing stem ${name}`);
+          const response = await fetch(url, { cache: "force-cache" });
+          if (!response.ok) throw new Error(`Failed to load ${name}.${format}: ${response.status}`);
+          const data = await response.arrayBuffer();
+          const buffer = await this.context.decodeAudioData(data);
+          return [name, buffer];
+        }));
+
+        // Commit only when every stem in the format decoded successfully.
+        this.buffers = Object.fromEntries(decoded);
+        this.#commitStemFormat(format);
+        return;
+      } catch (error) {
+        lastError = error;
+        this.audioFormatAttempts.push({
+          stage: "stems",
+          format,
+          message: error?.message || String(error),
+        });
+        console.warn(`[Music] ${format} stem decode failed; trying fallback`, error);
+      }
+    }
+
+    throw new Error(
+      `Failed to load audio stems after ${candidates.join(" → ")}: ${lastError?.message || "unknown error"}`
+    );
   }
 
-  async #loadStingerBuffer(name, file) {
+  async #loadStingerBuffer(name, fallbackFile) {
     if (this.stingerBuffers[name]) return this.stingerBuffers[name];
-    const response = await fetch(file, { cache: "force-cache" });
-    if (!response.ok) throw new Error(`Failed to load stinger ${name}: ${response.status}`);
-    const data = await response.arrayBuffer();
-    const buffer = await this.context.decodeAudioData(data);
-    this.stingerBuffers[name] = buffer;
-    return buffer;
+
+    const candidates = this.#orderedFormatCandidates();
+    let lastError = null;
+
+    for (const format of candidates) {
+      try {
+        const files = this.#filesForFormat("stingers", format);
+        const file = files?.[name] || (format === this.selectedAudioFormat ? fallbackFile : null);
+        if (!file) throw new Error(`${format} missing stinger ${name}`);
+
+        const response = await fetch(file, { cache: "force-cache" });
+        if (!response.ok) throw new Error(`Failed to load stinger ${name}.${format}: ${response.status}`);
+        const data = await response.arrayBuffer();
+        const buffer = await this.context.decodeAudioData(data);
+
+        this.stingerBuffers[name] = buffer;
+        this.stingerAudioFormat = format;
+        this.onFormatChange({
+          ...this.getAudioFormatInfo(),
+          stage: "stinger",
+          name,
+        });
+        return buffer;
+      } catch (error) {
+        lastError = error;
+        this.audioFormatAttempts.push({
+          stage: "stinger",
+          format,
+          name,
+          message: error?.message || String(error),
+        });
+        console.warn(`[Music] ${format} stinger decode failed; trying fallback`, error);
+      }
+    }
+
+    throw new Error(
+      `Failed to load stinger ${name} after ${candidates.join(" → ")}: ${lastError?.message || "unknown error"}`
+    );
+  }
+
+  #orderedFormatCandidates() {
+    return [...new Set([
+      this.selectedAudioFormat,
+      ...this.audioFormatCandidates,
+      "wav",
+    ].filter(Boolean))];
+  }
+
+  #filesForFormat(section, format) {
+    const data = this.pack?.[section];
+    if (!data) return null;
+    const formatted = data.formats?.[format]?.files;
+    if (formatted) return formatted;
+    if (!data.formats || format === data.selectedFormat || format === this.selectedAudioFormat) return data.files || null;
+    return null;
+  }
+
+  #commitStemFormat(format) {
+    this.selectedAudioFormat = format;
+    this.stingerAudioFormat = format;
+    const audioStems = this.pack?.audioStems;
+    const stingers = this.pack?.stingers;
+    const stemFormat = audioStems?.formats?.[format];
+    const stingerFormat = stingers?.formats?.[format];
+
+    this.pack = {
+      ...this.pack,
+      selectedAudioFormat: format,
+      audioStems: audioStems ? {
+        ...audioStems,
+        files: stemFormat?.files || audioStems.files,
+        selectedFormat: format,
+        selectedMime: stemFormat?.mime || audioStems.selectedMime || null,
+      } : audioStems,
+      stingers: stingers ? {
+        ...stingers,
+        files: stingerFormat?.files || stingers.files,
+        selectedFormat: format,
+        selectedMime: stingerFormat?.mime || stingers.selectedMime || null,
+      } : stingers,
+    };
+
+    rememberAudioFormat(this.pack, format);
+    this.onFormatChange({
+      ...this.getAudioFormatInfo(),
+      stage: "stems",
+    });
   }
 
   #clock() {
@@ -369,12 +520,18 @@ export class WavStemMusicManager {
       layerPreset: this.layerPreset,
       layerMix: { ...this.layerMix },
       engine: "wav",
+      format: this.selectedAudioFormat,
     });
   }
 
   #announce() {
     const label = this.pack?.modes?.[this.mode]?.label || this.mode;
-    this.onModeChange(`${label} · WAV STEMS`, { mode: this.mode, pendingMode: null, engine: "wav" });
+    this.onModeChange(`${label} · WAV STEMS · ${this.selectedAudioFormat.toUpperCase()}`, {
+      mode: this.mode,
+      pendingMode: null,
+      engine: "wav",
+      format: this.selectedAudioFormat,
+    });
   }
 
   #announceLayers() {
@@ -384,6 +541,7 @@ export class WavStemMusicManager {
       pendingMix: this.pendingLayerMix ? { ...this.pendingLayerMix } : null,
       pendingPreset: this.pendingLayerPreset,
       engine: "wav",
+      format: this.selectedAudioFormat,
     });
   }
 
