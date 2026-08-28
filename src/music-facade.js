@@ -6,6 +6,7 @@ import {
   getRuntimeDescriptor,
 } from "./music-asset-resolver.js";
 import { getMusicPackEntry, getMusicSettings } from "./music-registry.js";
+import { ensureMusicServiceWorker } from "./music-service-worker.js";
 
 const normalizeOutcome = (value) => {
   if (typeof value === "boolean") return value;
@@ -37,10 +38,21 @@ export class MusicFacade {
 
   async preload(options = {}) {
     const manager = this.runtime.manager;
+    const serviceWorker = await ensureMusicServiceWorker();
+
     if (typeof manager.preload !== "function") {
-      return { state: "not-needed", engine: this.runtime.engine };
+      return {
+        state: "not-needed",
+        engine: this.runtime.engine,
+        serviceWorker,
+      };
     }
-    return manager.preload(options);
+
+    const result = await manager.preload(options);
+    return {
+      ...result,
+      serviceWorker,
+    };
   }
 
   stop() { stopMusicRuntime(this.runtime); }
