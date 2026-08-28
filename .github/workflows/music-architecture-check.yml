@@ -29,6 +29,8 @@ jobs:
         run: python tools/check_music_boundary.py
       - name: Check JavaScript syntax
         run: |
+          node --check src/music-pack-manifest.js
+          node --check src/music-registry.js
           node --check src/music-asset-resolver.js
           node --check src/music-facade.js
           node --check src/game.js
@@ -36,3 +38,6 @@ jobs:
           node --check games/pulse-forge/game.js
           node --check games/rune-relay/game.js
           node --check games/aether-shift/game.js
+
+      - name: Check Music Pack manifests
+        run: node tools/check_music_manifests.mjs
