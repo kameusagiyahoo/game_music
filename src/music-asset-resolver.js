@@ -171,7 +171,13 @@ export function getRuntimeDescriptor(runtime) {
   return {
     packId: runtime.entry?.id || null,
     packName: runtime.entry?.name || null,
+    version: runtime.entry?.version || null,
+    schemaVersion: runtime.entry?.schemaVersion || null,
+    facadeApi: runtime.entry?.facadeApi || null,
     engine: runtime.engine || null,
+    states: [...(runtime.entry?.states || [])],
+    stems: [...(runtime.entry?.stems || [])],
+    stingers: [...(runtime.entry?.stingers || [])],
     capabilities: { ...(runtime.capabilities || {}) },
   };
 }
