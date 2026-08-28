@@ -108,6 +108,9 @@ function buildRuntime(packId) {
       },
       onLayerChange() {},
       onPackChange() {},
+      onFormatChange() {
+        renderRuntime();
+      },
     },
   });
   renderRuntime();
@@ -168,7 +171,9 @@ function renderSpecialButtons() {
     button.addEventListener("click", async () => {
       if (!playing || typeof runtime.manager.playStinger !== "function") return;
       statusText.textContent = `${button.dataset.stinger.toUpperCase()} STINGER`;
-      await runtime.manager.playStinger(button.dataset.stinger);
+      const result = await runtime.manager.playStinger(button.dataset.stinger);
+      renderRuntime();
+      statusText.textContent = `${button.dataset.stinger.toUpperCase()} · ${result?.format?.toUpperCase() || "AUDIO"} STINGER`;
     });
   });
 }
@@ -183,7 +188,10 @@ async function playSelected() {
   try {
     await runtime.manager.play("normal");
     playing = true;
-    statusText.textContent = `${runtime.entry.name}${descriptor?.audioFormat ? ` · ${descriptor.audioFormat.toUpperCase()}` : ""} PLAYING`;
+    renderRuntime();
+    const active = getRuntimeDescriptor(runtime);
+    const fallbackCount = (active?.audioFormatAttempts || []).filter((attempt) => attempt.stage === "stems").length;
+    statusText.textContent = `${runtime.entry.name}${active?.audioFormat ? ` · ${active.audioFormat.toUpperCase()}` : ""} PLAYING${fallbackCount ? ` · FALLBACK ${fallbackCount}` : ""}`;
   } catch (error) {
     console.error(error);
     statusText.textContent = `ERROR · ${error.message}`;
