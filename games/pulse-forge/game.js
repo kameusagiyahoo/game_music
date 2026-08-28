@@ -1,4 +1,4 @@
-import { createMusicRuntime } from "../../src/music-asset-resolver.js";
+import { createMusicFacade } from "../../src/music-facade.js";
 import {
   GAME_IDS,
   getMusicSettings,
@@ -85,7 +85,7 @@ function renderStemMix(mix, preset = currentLayerPreset) {
 
 const sharedSettings = getMusicSettings();
 let pulsePack = null;
-const runtime = createMusicRuntime({
+const music = createMusicFacade({
   gameId: GAME_IDS.PULSE_FORGE,
   callbacks: {
     onModeChange(label) {
@@ -115,9 +115,8 @@ const runtime = createMusicRuntime({
   },
   settings: sharedSettings,
 });
-const packEntry = runtime.entry;
-pulsePack = runtime.entry.pack;
-const music = runtime.manager;
+const packEntry = music.entry;
+pulsePack = music.entry.pack;
 applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
 
 function setMessage(title, body, kicker = "RHYTHM / WAV STEM MIXER") {
@@ -165,11 +164,11 @@ function desiredPreset() {
 function updateAdaptiveMix() {
   const desired = desiredPreset();
   if (desired === currentLayerPreset) {
-    if (pendingLayerPreset && pendingLayerPreset !== desired) music.cancelPendingLayerMix();
+    if (pendingLayerPreset && pendingLayerPreset !== desired) music.cancel("layer");
     return;
   }
   if (pendingLayerPreset !== desired) {
-    music.setLayerPreset(desired, { quantize: "bar", fadeBeats: 1 });
+    void music.layer(desired, { quantize: "bar", fadeBeats: 1 });
   }
 }
 
@@ -190,7 +189,7 @@ function applyHit(kind, pad) {
     energy = Math.min(100, energy + 12);
     pad.classList.add("is-perfect");
     showJudgement("PERFECT", "is-perfect-text");
-    music.sfx("perfect");
+    music.cue("perfect");
   } else {
     combo += 1;
     maxCombo = Math.max(maxCombo, combo);
@@ -198,7 +197,7 @@ function applyHit(kind, pad) {
     energy = Math.min(100, energy + 7);
     pad.classList.add("is-good");
     showJudgement("GOOD", "is-good-text");
-    music.sfx("good");
+    music.cue("good");
   }
 
   activePad = -1;
@@ -213,7 +212,7 @@ function applyMiss(playSound = true, pad = null) {
   score = Math.max(0, score - 20);
   if (pad) pad.classList.add("is-miss");
   showJudgement("MISS", "is-miss-text");
-  if (playSound) music.sfx("miss");
+  if (playSound) music.cue("miss");
   activePad = -1;
   updateStatus();
   updateAdaptiveMix();
@@ -266,7 +265,7 @@ async function startGame() {
   startButton.disabled = true;
   startButton.textContent = "WAV読込中…";
   try {
-    await music.play("normal");
+    await music.start("normal");
   } catch (error) {
     console.error(error);
     startButton.disabled = false;
@@ -295,17 +294,16 @@ function endGame() {
   beatResolved = true;
   activePad = -1;
   clearPads();
-  music.cancelPendingLayerMix();
+  music.cancel("layer");
 
   const cleared = energy >= 60;
   void (async () => {
     try {
-      await music.setLayerPreset("result", { seconds: 0.30 });
-      await music.transitionTo("result");
-      await music.playStinger(cleared ? "victory" : "gameover", { duck: 0.26, attack: 0.06, release: 0.32 });
+      await music.state("result", { quantize: "immediate", seconds: 0.30 });
+      await music.outcome(cleared, { duck: 0.26, attack: 0.06, release: 0.32 });
     } catch (error) {
-      console.error("stinger playback failed", error);
-      music.sfx(cleared ? "win" : "lose");
+      console.error("music outcome failed", error);
+      music.cue(cleared ? "win" : "lose");
     }
   })();
   updateStatus();
@@ -323,8 +321,10 @@ function endGame() {
 }
 
 async function applyAudioState() {
-  await music.setMusicEnabled(masterSoundEnabled && bgmToggle.checked);
-  await music.setSfxEnabled(masterSoundEnabled && sfxToggle.checked);
+  await music.audio({
+    musicEnabled: masterSoundEnabled && bgmToggle.checked,
+    sfxEnabled: masterSoundEnabled && sfxToggle.checked,
+  });
   soundButton.setAttribute("aria-pressed", String(masterSoundEnabled));
   soundButton.textContent = masterSoundEnabled ? "♪" : "×";
 }
@@ -333,7 +333,7 @@ pads.forEach((pad, index) => pad.addEventListener("click", () => tapPad(index, p
 soundButton.addEventListener("click", async () => {
   masterSoundEnabled = !masterSoundEnabled;
   await applyAudioState();
-  if (masterSoundEnabled && sfxToggle.checked) music.sfx("toggle");
+  if (masterSoundEnabled && sfxToggle.checked) music.cue("toggle");
 });
 bgmToggle.addEventListener("change", async () => {
   saveMusicSettings({ bgmEnabled: bgmToggle.checked });
@@ -345,12 +345,12 @@ sfxToggle.addEventListener("change", async () => {
 });
 bgmVolume.addEventListener("input", () => {
   bgmVolumeValue.textContent = bgmVolume.value;
-  music.setMusicVolume(Number(bgmVolume.value) / 100);
+  void music.audio({ musicVolume: Number(bgmVolume.value) / 100 });
   saveMusicSettings({ bgmVolume: Number(bgmVolume.value) / 100 });
 });
 sfxVolume.addEventListener("input", () => {
   sfxVolumeValue.textContent = sfxVolume.value;
-  music.setSfxVolume(Number(sfxVolume.value) / 100);
+  void music.audio({ sfxVolume: Number(sfxVolume.value) / 100 });
   saveMusicSettings({ sfxVolume: Number(sfxVolume.value) / 100 });
 });
 startButton.addEventListener("click", startGame);
