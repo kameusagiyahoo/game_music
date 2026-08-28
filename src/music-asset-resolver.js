@@ -10,6 +10,49 @@ import {
   resolveMusicPack,
 } from "./music-registry.js";
 
+function versionAssetUrl(url, version) {
+  if (!url || !version) return url;
+  const value = String(url);
+  const separator = value.includes("?") ? "&" : "?";
+  return `${value}${separator}gmv=${encodeURIComponent(version)}`;
+}
+
+function versionFileMap(files, version) {
+  return Object.fromEntries(
+    Object.entries(files || {}).map(([name, url]) => [name, versionAssetUrl(url, version)]),
+  );
+}
+
+function versionFormatMap(formats, version) {
+  return Object.fromEntries(
+    Object.entries(formats || {}).map(([format, config]) => [
+      format,
+      {
+        ...config,
+        files: versionFileMap(config?.files, version),
+      },
+    ]),
+  );
+}
+
+function versionPackAudioAssets(pack, version) {
+  if (!pack || !version) return pack;
+  return {
+    ...pack,
+    assetVersion: version,
+    audioStems: pack.audioStems ? {
+      ...pack.audioStems,
+      files: versionFileMap(pack.audioStems.files, version),
+      formats: versionFormatMap(pack.audioStems.formats, version),
+    } : pack.audioStems,
+    stingers: pack.stingers ? {
+      ...pack.stingers,
+      files: versionFileMap(pack.stingers.files, version),
+      formats: versionFormatMap(pack.stingers.formats, version),
+    } : pack.stingers,
+  };
+}
+
 export const MUSIC_CAPABILITIES = Object.freeze({
   [MUSIC_ENGINES.PROCEDURAL]: Object.freeze({
     quantizedModeTransition: true,
@@ -21,6 +64,8 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     runtimeDecodeFallback: false,
     preload: false,
     memoryAssetCache: false,
+    persistentAudioCache: false,
+    serviceWorkerCache: false,
   }),
   [MUSIC_ENGINES.WAV_STEM]: Object.freeze({
     quantizedModeTransition: false,
@@ -32,6 +77,8 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     runtimeDecodeFallback: true,
     preload: true,
     memoryAssetCache: true,
+    persistentAudioCache: true,
+    serviceWorkerCache: true,
   }),
 });
 
@@ -67,9 +114,10 @@ export function createMusicRuntime({
   formatOptions = {},
 } = {}) {
   const entry = resolveMusicAsset({ gameId, packId, engine });
+  const versionedPack = versionPackAudioAssets(entry.pack, entry.version);
   const formatResolution = entry.engine === MUSIC_ENGINES.WAV_STEM
-    ? resolvePackAudioFormat(entry.pack, formatOptions)
-    : { pack: entry.pack, selection: null, candidates: [] };
+    ? resolvePackAudioFormat(versionedPack, formatOptions)
+    : { pack: versionedPack, selection: null, candidates: [] };
 
   const options = {
     pack: formatResolution.pack,
