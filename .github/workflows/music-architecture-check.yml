@@ -5,13 +5,19 @@ on:
     paths:
       - "src/**"
       - "games/**"
+      - "debug/**"
       - "tools/check_music_boundary.py"
+      - "tools/check_music_manifests.mjs"
+      - "tools/check_music_formats.mjs"
       - ".github/workflows/music-architecture-check.yml"
   pull_request:
     paths:
       - "src/**"
       - "games/**"
+      - "debug/**"
       - "tools/check_music_boundary.py"
+      - "tools/check_music_manifests.mjs"
+      - "tools/check_music_formats.mjs"
       - ".github/workflows/music-architecture-check.yml"
 
 jobs:
@@ -30,6 +36,7 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check src/music-pack-manifest.js
+          node --check src/music-format-resolver.js
           node --check src/music-registry.js
           node --check src/music-asset-resolver.js
           node --check src/music-facade.js
@@ -38,6 +45,8 @@ jobs:
           node --check games/pulse-forge/game.js
           node --check games/rune-relay/game.js
           node --check games/aether-shift/game.js
-
+          node --check debug/resolver/resolver.js
       - name: Check Music Pack manifests
         run: node tools/check_music_manifests.mjs
+      - name: Check Music Format Resolver
+        run: node tools/check_music_formats.mjs
