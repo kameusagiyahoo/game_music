@@ -398,7 +398,10 @@ export class WavStemMusicManager {
   async #loadStingerBuffer(name, fallbackFile) {
     if (this.stingerBuffers[name]) return this.stingerBuffers[name];
 
-    const candidates = this.#orderedFormatCandidates();
+    const candidates = [...new Set([
+      this.stingerAudioFormat,
+      ...this.#orderedFormatCandidates(),
+    ].filter(Boolean))];
     let lastError = null;
 
     for (const format of candidates) {
