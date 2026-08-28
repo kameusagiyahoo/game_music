@@ -1,4 +1,4 @@
-import { createMusicFacade } from "../../src/music-facade.js";
+import { createMusicFacade, preloadMusicAssets } from "../../src/music-facade.js";
 import { resolveMusicAsset } from "../../src/music-asset-resolver.js";
 import {
   GAME_IDS,
@@ -129,6 +129,27 @@ function refreshPackButtons() {
   });
 }
 
+function warmPack(packId, announce = false) {
+  const entry = getMusicPackEntry(packId);
+  if (!entry || entry.engine !== "wav-stem") return;
+
+  if (announce) musicState.textContent = "PRELOADING · AUDIO ASSETS";
+  void preloadMusicAssets({
+    packId,
+    settings: getMusicSettings(),
+    preloadOptions: { stingers: true },
+  }).then((info) => {
+    if (announce && state === "ready" && selectedPackId === packId && info?.state === "ready") {
+      musicState.textContent = `PRELOADED · ${String(info.format || "audio").toUpperCase()}`;
+    }
+  }).catch((error) => {
+    console.warn("pack preload failed; runtime start will retry", error);
+    if (announce && state === "ready" && selectedPackId === packId) {
+      musicState.textContent = "READY · preload retry on START";
+    }
+  });
+}
+
 function previewPack(packId) {
   const entry = getMusicPackEntry(packId);
   if (!entry) return;
@@ -138,6 +159,7 @@ function previewPack(packId) {
   musicState.textContent = "READY · resolver selected";
   syncState.textContent = "BAR — / BEAT —";
   refreshPackButtons();
+  warmPack(packId, true);
 }
 
 async function activateRuntime(packId, play = true) {
@@ -167,6 +189,8 @@ function queuePack(packId) {
 
   selectedPackId = packId;
   localStorage.setItem(STORAGE_KEY, packId);
+
+  warmPack(packId, false);
 
   if (state === "playing" || state === "intermission") {
     if (music?.entry?.id === packId) {
