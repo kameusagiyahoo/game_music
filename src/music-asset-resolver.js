@@ -120,84 +120,11 @@ export async function applyMusicState(runtime, state, options = {}) {
     });
   }
 
-  if (mapping.mode && runtime.entry?.pack?.modes?.[mapping.mode] && typeof manager.transitionTo === "function") {
-    if (runtime.engine === MUSIC_ENGINES.PROCEDURAL) {
-      await manager.transitionTo(mapping.mode, {
-        quantize,
-        crossfadeBeats: Number(options.crossfadeBeats ?? 1.5),
-        seconds: options.seconds,
-      });
-    } else {
-      await manager.transitionTo(mapping.mode);
-    }
-  }
-
-  return { state, ...mapping };
-}
-
-export async function playMusicOutcome(runtime, success, options = {}) {
-  if (!runtime?.manager) return null;
-  const manager = runtime.manager;
-
-  if (runtime.capabilities?.stingers && typeof manager.playStinger === "function") {
-    const name = success ? "victory" : "gameover";
-    await manager.playStinger(name, {
-      duck: Number(options.duck ?? 0.28),
-      attack: Number(options.attack ?? 0.06),
-      release: Number(options.release ?? 0.32),
-    });
-    return { type: "stinger", name };
-  }
-
-  if (typeof manager.sfx === "function") {
-    const name = success ? "win" : "lose";
-    manager.sfx(name);
-    return { type: "sfx", name };
-  }
-
-  return null;
-}
-
-export function stopMusicRuntime(runtime) {
-  try { runtime?.manager?.stop?.(); } catch (_) {}
-}
-
-const STATE_MAP = Object.freeze({
-  normal: Object.freeze({
-    [MUSIC_ENGINES.PROCEDURAL]: { mode: "normal", preset: null },
-    [MUSIC_ENGINES.WAV_STEM]: { mode: "normal", preset: "focus" },
-  }),
-  tension: Object.freeze({
-    [MUSIC_ENGINES.PROCEDURAL]: { mode: "tension", preset: null },
-    [MUSIC_ENGINES.WAV_STEM]: { mode: "overdrive", preset: "overdrive" },
-  }),
-  result: Object.freeze({
-    [MUSIC_ENGINES.PROCEDURAL]: { mode: "result", preset: null },
-    [MUSIC_ENGINES.WAV_STEM]: { mode: "result", preset: "result" },
-  }),
-});
-
-export async function applyMusicState(runtime, state, options = {}) {
-  if (!runtime?.manager) return null;
-  const mapping = STATE_MAP[state]?.[runtime.engine];
-  if (!mapping) throw new Error(`Unsupported music state: ${state}`);
-
-  const manager = runtime.manager;
-  const quantize = options.quantize || "bar";
-
   if (
-    mapping.preset &&
-    runtime.entry?.pack?.layerPresets?.[mapping.preset] &&
-    typeof manager.setLayerPreset === "function"
+    mapping.mode &&
+    runtime.entry?.pack?.modes?.[mapping.mode] &&
+    typeof manager.transitionTo === "function"
   ) {
-    await manager.setLayerPreset(mapping.preset, {
-      quantize,
-      fadeBeats: Number(options.fadeBeats ?? 1),
-      seconds: options.seconds,
-    });
-  }
-
-  if (mapping.mode && runtime.entry?.pack?.modes?.[mapping.mode] && typeof manager.transitionTo === "function") {
     if (runtime.engine === MUSIC_ENGINES.PROCEDURAL) {
       await manager.transitionTo(mapping.mode, {
         quantize,
