@@ -1,7 +1,17 @@
 import { defineMusicPackManifest } from "../music-pack-manifest.js";
 
-const stemUrl = (name) => new URL(`../../assets/stems/pulse/${name}.wav`, import.meta.url).href;
-const stingerUrl = (name) => new URL(`../../assets/stingers/pulse/${name}.wav`, import.meta.url).href;
+const audioUrl = (kind, name, ext) => new URL(`../../assets/${kind}/pulse/${name}.${ext}`, import.meta.url).href;
+const stemFiles = (ext) => ({
+  drums: audioUrl("stems", "drums", ext),
+  bass: audioUrl("stems", "bass", ext),
+  chords: audioUrl("stems", "chords", ext),
+  melody: audioUrl("stems", "melody", ext),
+  sparkle: audioUrl("stems", "sparkle", ext),
+});
+const stingerFiles = (ext) => ({
+  victory: audioUrl("stingers", "victory", ext),
+  gameover: audioUrl("stingers", "gameover", ext),
+});
 
 export const pulsePack = {
   id: "pulse",
@@ -12,19 +22,20 @@ export const pulsePack = {
     bpm: 112,
     bars: 4,
     sampleRate: 22050,
-    files: {
-      drums: stemUrl("drums"),
-      bass: stemUrl("bass"),
-      chords: stemUrl("chords"),
-      melody: stemUrl("melody"),
-      sparkle: stemUrl("sparkle"),
+    files: stemFiles("wav"),
+    formats: {
+      m4a: { mime: 'audio/mp4; codecs="mp4a.40.2"', files: stemFiles("m4a") },
+      ogg: { mime: 'audio/ogg; codecs="vorbis"', files: stemFiles("ogg") },
+      wav: { mime: "audio/wav", files: stemFiles("wav") },
     },
   },
 
   stingers: {
-    files: {
-      victory: stingerUrl("victory"),
-      gameover: stingerUrl("gameover"),
+    files: stingerFiles("wav"),
+    formats: {
+      m4a: { mime: 'audio/mp4; codecs="mp4a.40.2"', files: stingerFiles("m4a") },
+      ogg: { mime: 'audio/ogg; codecs="vorbis"', files: stingerFiles("ogg") },
+      wav: { mime: "audio/wav", files: stingerFiles("wav") },
     },
   },
 
@@ -43,16 +54,16 @@ export const pulsePack = {
   },
 };
 
-
 export const pulseManifest = defineMusicPackManifest({
   id: pulsePack.id,
   name: pulsePack.name,
   shortName: "Pulse WAV",
-  description: "5本の同期WAV Stem",
+  description: "5本の同期Stem / multi-format",
   engine: "wav-stem",
-  version: "1.0.0",
-  states: ["normal","build","overdrive","result"],
-  stems: ["drums","bass","chords","melody","sparkle"],
-  stingers: ["victory","gameover"],
-  tags: ["pulse","wav","stems","adaptive"],
+  version: "1.1.0",
+  states: ["normal", "build", "overdrive", "result"],
+  stems: ["drums", "bass", "chords", "melody", "sparkle"],
+  stingers: ["victory", "gameover"],
+  formats: ["m4a", "ogg", "wav"],
+  tags: ["pulse", "wav", "ogg", "aac", "stems", "adaptive"],
 });
