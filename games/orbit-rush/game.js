@@ -1,4 +1,4 @@
-import { createMusicRuntime } from "../../src/music-asset-resolver.js";
+import { createMusicFacade } from "../../src/music-facade.js";
 import {
   GAME_IDS,
   getMusicSettings,
@@ -47,15 +47,14 @@ let timerId = null;
 let masterSoundEnabled = true;
 
 const sharedSettings = getMusicSettings();
-const runtime = createMusicRuntime({
+const music = createMusicFacade({
   gameId: GAME_IDS.ORBIT_RUSH,
   callbacks: {
     onModeChange(label) { musicState.textContent = label; },
   },
   settings: sharedSettings,
 });
-const packEntry = runtime.entry;
-const music = runtime.manager;
+const packEntry = music.entry;
 applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
 
 const best = Number(localStorage.getItem("orbit-rush-best") || 0);
@@ -119,7 +118,7 @@ function resetGame() {
 
 async function startGame() {
   resetGame();
-  await music.play("normal");
+  await music.start("normal");
   state = "playing";
   startedAt = performance.now();
   startButton.disabled = true;
@@ -135,7 +134,7 @@ async function startGame() {
       state = "tension";
       document.body.classList.add("is-tension");
       setMessage("OVERDRIVE", "残り8秒。BGMも高速モードへ。", "TENSION");
-      music.transitionTo("tension", 0.5);
+      void music.state("tension", { quantize: "immediate", seconds: 0.5 });
     }
 
     if (remaining <= 0) {
@@ -158,14 +157,14 @@ function tapPad(index, button) {
     score += 10 + Math.min(40, combo * 2);
     button.classList.add("is-hit");
     window.setTimeout(() => button.classList.remove("is-hit"), 120);
-    music.sfx("hit");
+    music.cue("hit");
     chooseTarget();
   } else {
     combo = 0;
     score = Math.max(0, score - 5);
     button.classList.add("is-miss");
     window.setTimeout(() => button.classList.remove("is-miss"), 150);
-    music.sfx("miss");
+    music.cue("miss");
   }
   updateStatus();
 }
@@ -177,7 +176,7 @@ function endGame() {
   activePad = -1;
   document.body.classList.remove("is-tension");
   document.querySelectorAll(".orbit-pad").forEach((pad) => pad.classList.remove("is-active"));
-  music.transitionTo("result", 0.7);
+  void music.state("result", { quantize: "immediate", seconds: 0.7 });
 
   const previousBest = Number(localStorage.getItem("orbit-rush-best") || 0);
   if (score > previousBest) {
@@ -193,12 +192,14 @@ function endGame() {
   resultOverlay.hidden = false;
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
-  music.sfx(score >= 250 ? "win" : "lose");
+  music.cue(score >= 250 ? "win" : "lose");
 }
 
 async function applyAudioState() {
-  await music.setMusicEnabled(masterSoundEnabled && bgmToggle.checked);
-  await music.setSfxEnabled(masterSoundEnabled && sfxToggle.checked);
+  await music.audio({
+    musicEnabled: masterSoundEnabled && bgmToggle.checked,
+    sfxEnabled: masterSoundEnabled && sfxToggle.checked,
+  });
   soundButton.setAttribute("aria-pressed", String(masterSoundEnabled));
   soundButton.textContent = masterSoundEnabled ? "♪" : "×";
 }
@@ -206,7 +207,7 @@ async function applyAudioState() {
 soundButton.addEventListener("click", async () => {
   masterSoundEnabled = !masterSoundEnabled;
   await applyAudioState();
-  if (masterSoundEnabled && sfxToggle.checked) music.sfx("toggle");
+  if (masterSoundEnabled && sfxToggle.checked) music.cue("toggle");
 });
 bgmToggle.addEventListener("change", async () => {
   saveMusicSettings({ bgmEnabled: bgmToggle.checked });
@@ -218,12 +219,12 @@ sfxToggle.addEventListener("change", async () => {
 });
 bgmVolume.addEventListener("input", () => {
   bgmVolumeValue.textContent = bgmVolume.value;
-  music.setMusicVolume(Number(bgmVolume.value) / 100);
+  void music.audio({ musicVolume: Number(bgmVolume.value) / 100 });
   saveMusicSettings({ bgmVolume: Number(bgmVolume.value) / 100 });
 });
 sfxVolume.addEventListener("input", () => {
   sfxVolumeValue.textContent = sfxVolume.value;
-  music.setSfxVolume(Number(sfxVolume.value) / 100);
+  void music.audio({ sfxVolume: Number(sfxVolume.value) / 100 });
   saveMusicSettings({ sfxVolume: Number(sfxVolume.value) / 100 });
 });
 
