@@ -1,3 +1,5 @@
+import { defineMusicPackManifest } from "../music-pack-manifest.js";
+
 export const neonPack = {
   id: "neon",
   name: "Neon Orbit",
@@ -38,3 +40,17 @@ export const neonPack = {
     pulse: { type: "square", gain: 0.011, duration: 0.018 },
   },
 };
+
+
+export const neonManifest = defineMusicPackManifest({
+  id: neonPack.id,
+  name: neonPack.name,
+  shortName: "Neon",
+  description: "高速シンセ",
+  engine: "procedural",
+  version: "1.0.0",
+  states: ["normal","tension","result"],
+  stems: [],
+  stingers: [],
+  tags: ["neon","synth","procedural"],
+});
