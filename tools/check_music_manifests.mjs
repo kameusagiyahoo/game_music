@@ -42,6 +42,18 @@ for (const entry of packs) {
   if (compareSemver(entry.facadeApi, MUSIC_FACADE_API_VERSION) > 0) {
     errors.push(`${entry.id}: requires facade API ${entry.facadeApi}; current is ${MUSIC_FACADE_API_VERSION}`);
   }
+
+  for (const format of entry.formats || []) {
+    const stemFiles = entry.pack.audioStems?.formats?.[format]?.files || {};
+    const stingerFiles = entry.pack.stingers?.formats?.[format]?.files || {};
+
+    for (const stem of entry.stems || []) {
+      if (!stemFiles[stem]) errors.push(`${entry.id}@${entry.version}: ${format} missing stem ${stem}`);
+    }
+    for (const stinger of entry.stingers || []) {
+      if (!stingerFiles[stinger]) errors.push(`${entry.id}@${entry.version}: ${format} missing stinger ${stinger}`);
+    }
+  }
 }
 
 for (const [gameId, packId] of Object.entries(GAME_DEFAULT_PACKS)) {
@@ -63,6 +75,6 @@ console.log(`Schema: v${snapshot.schemaVersion}`);
 console.log(`Facade API: v${snapshot.facadeApi}`);
 for (const entry of packs) {
   console.log(
-    `- ${entry.id}@${entry.version} [${entry.engine}] states=${entry.states.join(",")} stems=${entry.stems.length} stingers=${entry.stingers.length}`
+    `- ${entry.id}@${entry.version} [${entry.engine}] states=${entry.states.join(",")} stems=${entry.stems.length} stingers=${entry.stingers.length} formats=${entry.formats.join(",") || "n/a"}`
   );
 }
