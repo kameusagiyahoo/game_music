@@ -19,6 +19,8 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     stingers: false,
     formatResolver: false,
     runtimeDecodeFallback: false,
+    preload: false,
+    memoryAssetCache: false,
   }),
   [MUSIC_ENGINES.WAV_STEM]: Object.freeze({
     quantizedModeTransition: false,
@@ -28,6 +30,8 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     stingers: true,
     formatResolver: true,
     runtimeDecodeFallback: true,
+    preload: true,
+    memoryAssetCache: true,
   }),
 });
 
@@ -200,6 +204,7 @@ export function getRuntimeDescriptor(runtime) {
     ],
     audioFormatAttempts: (formatInfo?.attempts || []).map((attempt) => ({ ...attempt })),
     audioFormatSelection: runtime.audioFormatSelection ? { ...runtime.audioFormatSelection } : null,
+    preload: runtime.manager?.getPreloadInfo?.() || null,
     states: [...(runtime.entry?.states || [])],
     stems: [...(runtime.entry?.stems || [])],
     stingers: [...(runtime.entry?.stingers || [])],
