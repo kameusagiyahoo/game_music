@@ -1,4 +1,5 @@
 import { rememberAudioFormat } from "./music-format-resolver.js";
+import { getAudioBytes, preloadAudioUrls, getAudioAssetCacheInfo } from "./audio-asset-cache.js";
 
 const STEMS = ["drums", "bass", "chords", "melody", "sparkle"];
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value)));
@@ -46,6 +47,14 @@ export class WavStemMusicManager {
       (pack?.audioFormatCandidates?.length ? pack.audioFormatCandidates : [this.selectedAudioFormat]).filter(Boolean)
     )];
     this.audioFormatAttempts = [];
+    this.preloadPromise = null;
+    this.preloadState = {
+      state: "idle",
+      format: this.selectedAudioFormat,
+      requested: 0,
+      loaded: 0,
+      error: null,
+    };
   }
 
   async init() {
@@ -181,6 +190,71 @@ export class WavStemMusicManager {
       stingerFormat: this.stingerAudioFormat,
       candidates: [...this.audioFormatCandidates],
       attempts: this.audioFormatAttempts.map((attempt) => ({ ...attempt })),
+    };
+  }
+
+  async preload({ stingers = true, concurrency = 4 } = {}) {
+    if (this.preloadPromise) return this.preloadPromise;
+
+    const format = this.selectedAudioFormat || this.audioFormatCandidates[0] || "wav";
+    const stemFiles = this.#filesForFormat("audioStems", format) || {};
+    const stingerFiles = stingers ? (this.#filesForFormat("stingers", format) || {}) : {};
+    const urls = [
+      ...STEMS.map((name) => stemFiles[name]).filter(Boolean),
+      ...Object.values(stingerFiles).filter(Boolean),
+    ];
+
+    if (!urls.length) {
+      this.preloadState = {
+        state: "not-needed",
+        format,
+        requested: 0,
+        loaded: 0,
+        error: null,
+      };
+      return this.getPreloadInfo();
+    }
+
+    this.preloadState = {
+      state: "loading",
+      format,
+      requested: urls.length,
+      loaded: 0,
+      error: null,
+    };
+
+    this.preloadPromise = preloadAudioUrls(urls, { concurrency })
+      .then((result) => {
+        this.preloadState = {
+          state: "ready",
+          format,
+          requested: result.requested,
+          loaded: result.loaded,
+          error: null,
+        };
+        return this.getPreloadInfo();
+      })
+      .catch((error) => {
+        this.preloadState = {
+          state: "error",
+          format,
+          requested: urls.length,
+          loaded: 0,
+          error: error?.message || String(error),
+        };
+        throw error;
+      })
+      .finally(() => {
+        this.preloadPromise = null;
+      });
+
+    return this.preloadPromise;
+  }
+
+  getPreloadInfo() {
+    return {
+      ...this.preloadState,
+      cache: getAudioAssetCacheInfo(),
     };
   }
 
@@ -368,9 +442,7 @@ export class WavStemMusicManager {
         const decoded = await Promise.all(STEMS.map(async (name) => {
           const url = files[name];
           if (!url) throw new Error(`${format} missing stem ${name}`);
-          const response = await fetch(url, { cache: "force-cache" });
-          if (!response.ok) throw new Error(`Failed to load ${name}.${format}: ${response.status}`);
-          const data = await response.arrayBuffer();
+          const data = await getAudioBytes(url);
           const buffer = await this.context.decodeAudioData(data);
           return [name, buffer];
         }));
@@ -410,9 +482,7 @@ export class WavStemMusicManager {
         const file = files?.[name] || (format === this.selectedAudioFormat ? fallbackFile : null);
         if (!file) throw new Error(`${format} missing stinger ${name}`);
 
-        const response = await fetch(file, { cache: "force-cache" });
-        if (!response.ok) throw new Error(`Failed to load stinger ${name}.${format}: ${response.status}`);
-        const data = await response.arrayBuffer();
+        const data = await getAudioBytes(file);
         const buffer = await this.context.decodeAudioData(data);
 
         this.stingerBuffers[name] = buffer;
