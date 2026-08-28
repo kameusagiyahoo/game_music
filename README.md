@@ -10,7 +10,7 @@ GitHub Pagesだけでゲーム制作とゲーム音楽基盤を練習するプ�
 
 - Normal / Tension / Result
 - 残り10秒でTensionへクロスフェード
-- `createMusicRuntime()` でResolver経由のRuntimeを生成
+- `createMusicFacade()` で共通Facadeを生成
 - Music Registryからprocedural Packを解決
 - 共通BGM / SE設定を利用
 
@@ -20,7 +20,7 @@ URL: https://kameusagiyahoo.github.io/game_music/
 
 9マスの中から光ったターゲットを追い続ける30秒の反射神経ゲーム。
 
-- `createMusicRuntime()` でResolver経由のRuntimeを生成
+- `createMusicFacade()` で共通Facadeを生成
 - Normal / Tension / Result
 - Music Registryからprocedural Packを解決
 - 共通BGM / SE設定を利用
@@ -36,7 +36,7 @@ URL: https://kameusagiyahoo.github.io/game_music/games/orbit-rush/
 - Victory / Game Over専用WAV Stinger
 - Stinger中はBGMをduckし、終了後に元の音量へ復帰
 - Registry上では `wav-stem` engineとして管理
-- `createMusicRuntime()` が `WavStemMusicManager` を自動生成
+- `createMusicFacade()` がResolver経由でWAV Stem Runtimeを自動生成
 - 共通BGM / SE設定を利用
 
 URL: https://kameusagiyahoo.github.io/game_music/games/pulse-forge/
@@ -45,7 +45,7 @@ URL: https://kameusagiyahoo.github.io/game_music/games/pulse-forge/
 
 4つのルーンの点灯順を覚え、同じ順番で入力する45秒のシーケンス記憶ゲーム。
 
-- `createMusicRuntime()` でResolver経由のRuntimeを生成
+- `createMusicFacade()` で共通Facadeを生成
 - Music PackボタンをRegistryから自動生成
 - Fantasy / Neon / Clockworkを選択可能
 - プレイ中のPack変更は次の小節頭へ予約
@@ -58,7 +58,7 @@ URL: https://kameusagiyahoo.github.io/game_music/games/rune-relay/
 
 9つのノードを追いかける4ウェーブ制の反射ゲーム。
 
-- `createMusicRuntime()` だけで再生Runtimeを生成
+- `createMusicFacade()` だけで再生Facadeを生成
 - Fantasy / Neon / Clockwork / Pulse WAVを同じPack UIから選択
 - Pack変更は次のウェーブ境界へ予約
 - procedural ↔ WAV Stemでもゲームロジックを変更せずRuntime交換
@@ -308,6 +308,62 @@ Music Asset Resolver
 
 `Music Architecture Check` がGitHub Actionsでこの境界とJavaScript構文を検証します。
 
+## Music Engine v11 — Versioned Music Pack Manifest
+
+各Music Packは音楽データだけでなく、versioned Manifestを持ちます。
+
+```js
+{
+  schemaVersion: "1.0.0",
+  id: "pulse",
+  version: "1.0.0",
+  name: "Pulse Forge WAV",
+  engine: "wav-stem",
+  states: ["normal", "build", "overdrive", "result"],
+  stems: ["drums", "bass", "chords", "melody", "sparkle"],
+  stingers: ["victory", "gameover"],
+  facadeApi: "1.0.0"
+}
+```
+
+構造:
+
+```text
+Music Pack
+├─ pack data
+└─ manifest
+     ↓
+createRegistryEntry()
+     ↓
+Music Registry
+     ↓
+Resolver / Facade / Settings
+```
+
+ManifestがSource of Truthになるため、Registry側でPack名・説明・version・Engine・state一覧を重複記述しません。
+
+追加API:
+
+```js
+getMusicPackManifest(id);
+listMusicPackManifests();
+getMusicRegistrySnapshot();
+music.info(); // version / schema / states / stems / stingersも返す
+```
+
+Settings画面では各Packのversion、state数、Stem数、Stinger数、Manifest schema version、Facade API versionを確認できます。
+
+CIでは `tools/check_music_manifests.mjs` が以下を検証します。
+
+- Pack versionがSemVer形式
+- Manifest ID / Nameと実Packが一致
+- 宣言したstateが `pack.modes` に存在
+- Stem / Stinger宣言と実ファイル定義が一致
+- Manifest schema互換性
+- Facade API互換性
+- Music Packファイル数とRegistry登録数の不一致
+- Gameごとのdefault Packが実在
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Music Engineだけを直接操作する検証画面。
@@ -339,6 +395,8 @@ WavStemMusicManager
 
 Workflow: `.github/workflows/generate-pulse-stems.yml`
 
+Manifest validation: `tools/check_music_manifests.mjs` / `.github/workflows/music-architecture-check.yml`
+
 ## Structure
 
 ```text
@@ -352,6 +410,7 @@ src/
 ├── music-registry.js
 ├── music-asset-resolver.js
 ├── music-facade.js
+├── music-pack-manifest.js
 └── music-packs/
     ├── fantasy.js
     ├── neon.js
@@ -374,7 +433,6 @@ assets/
 ## Next candidates
 
 - Game 06追加
-- Music Pack manifest / version管理
 
 - WAV / OGG / AACのブラウザ対応Format Resolver
 - procedural PackのWAV Stem版生成
