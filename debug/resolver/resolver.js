@@ -8,6 +8,7 @@ import {
   createMusicRuntime,
   getRuntimeDescriptor,
 } from "../../src/music-asset-resolver.js";
+import { ensureMusicServiceWorker } from "../../src/music-service-worker.js";
 
 const $ = (selector) => document.querySelector(selector);
 const packGrid = $("#packGrid");
@@ -30,6 +31,8 @@ const bgmVolume = $("#bgmVolume");
 const sfxVolume = $("#sfxVolume");
 const bgmVolumeValue = $("#bgmVolumeValue");
 const sfxVolumeValue = $("#sfxVolumeValue");
+
+void ensureMusicServiceWorker();
 
 const entries = listMusicPacks();
 let selectedId = entries[0]?.id || null;
