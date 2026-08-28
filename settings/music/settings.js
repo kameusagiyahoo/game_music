@@ -41,6 +41,7 @@ function packButton(entry, selected, disabled = false) {
     `${entry.states.length} states`,
     entry.stems.length ? `${entry.stems.length} stems` : null,
     entry.stingers.length ? `${entry.stingers.length} stingers` : null,
+    entry.formats.length ? entry.formats.map((value) => value.toUpperCase()).join("/") : null,
   ].filter(Boolean).join(" · ");
   label.innerHTML = `
     <input type="radio" name="${entry.engine}" value="${entry.id}" ${selected ? "checked" : ""} ${disabled ? "disabled" : ""} />
