@@ -117,6 +117,22 @@ function buildRuntime(packId) {
   const descriptor = getRuntimeDescriptor(runtime);
   const formatLabel = descriptor?.audioFormat ? ` · ${descriptor.audioFormat.toUpperCase()}` : "";
   statusText.textContent = `${runtime.entry.name}${formatLabel} READY`;
+
+  const builtRuntime = runtime;
+  if (typeof builtRuntime.manager?.preload === "function") {
+    statusText.textContent = `${builtRuntime.entry.name}${formatLabel} · PRELOADING…`;
+    void builtRuntime.manager.preload({ stingers: true }).then((info) => {
+      if (runtime !== builtRuntime || playing) return;
+      renderRuntime();
+      const ready = getRuntimeDescriptor(builtRuntime);
+      const readyFormat = ready?.audioFormat ? ` · ${ready.audioFormat.toUpperCase()}` : "";
+      statusText.textContent = `${builtRuntime.entry.name}${readyFormat} · PRELOADED ${info.loaded}/${info.requested}`;
+    }).catch((error) => {
+      if (runtime !== builtRuntime || playing) return;
+      console.warn(error);
+      statusText.textContent = `${builtRuntime.entry.name} · PRELOAD ERROR · START WILL RETRY`;
+    });
+  }
 }
 
 function selectPack(id) {
