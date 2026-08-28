@@ -1,10 +1,5 @@
-import {
-  createMusicRuntime,
-  resolveMusicAsset,
-  applyMusicState,
-  playMusicOutcome,
-  stopMusicRuntime,
-} from "../../src/music-asset-resolver.js";
+import { createMusicFacade } from "../../src/music-facade.js";
+import { resolveMusicAsset } from "../../src/music-asset-resolver.js";
 import {
   GAME_IDS,
   listMusicPacks,
@@ -58,7 +53,7 @@ const fallbackEntry = resolveMusicAsset({ gameId: GAME_IDS.AETHER_SHIFT });
 const storedPack = localStorage.getItem(STORAGE_KEY);
 let selectedPackId = getMusicPackEntry(storedPack)?.id || fallbackEntry.id;
 
-let runtime = null;
+let music = null;
 let pendingPackId = null;
 let state = "ready";
 let wave = 1;
@@ -104,7 +99,7 @@ function runtimeCallbacks() {
         : `BAR ${info.bar} / BEAT ${info.beat}`;
     },
     onLayerChange(info = {}) {
-      if (runtime?.engine === "wav-stem" && info.pendingPreset) {
+      if (music?.engine === "wav-stem" && info.pendingPreset) {
         musicState.textContent = `NEXT BAR · ${String(info.pendingPreset).toUpperCase()}`;
       }
     },
@@ -127,7 +122,7 @@ function renderPackButtons() {
 }
 
 function refreshPackButtons() {
-  const shownCurrent = runtime?.entry?.id || (state === "ready" || state === "result" ? selectedPackId : null);
+  const shownCurrent = music?.entry?.id || (state === "ready" || state === "result" ? selectedPackId : null);
   document.querySelectorAll(".pack-button").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.pack === shownCurrent);
     button.classList.toggle("is-pending", button.dataset.pack === pendingPackId);
@@ -146,24 +141,24 @@ function previewPack(packId) {
 }
 
 async function activateRuntime(packId, play = true) {
-  stopMusicRuntime(runtime);
-  runtime = createMusicRuntime({
+  music?.stop();
+  music = createMusicFacade({
     packId,
     callbacks: runtimeCallbacks(),
     settings: getMusicSettings(),
   });
-  selectedPackId = runtime.entry.id;
+  selectedPackId = music.entry.id;
   localStorage.setItem(STORAGE_KEY, selectedPackId);
-  currentPack.textContent = runtime.entry.name;
-  engineState.textContent = runtime.engine.toUpperCase();
+  currentPack.textContent = music.entry.name;
+  engineState.textContent = music.engine.toUpperCase();
   pendingPack.textContent = pendingPackId ? getMusicPackEntry(pendingPackId)?.name || pendingPackId : "—";
   refreshPackButtons();
 
   if (play) {
-    musicState.textContent = runtime.engine === "wav-stem" ? "LOADING · WAV STEMS" : "STARTING · PROCEDURAL";
-    await runtime.manager.play("normal");
+    musicState.textContent = music.engine === "wav-stem" ? "LOADING · WAV STEMS" : "STARTING · PROCEDURAL";
+    await music.start("normal");
   }
-  return runtime;
+  return music;
 }
 
 function queuePack(packId) {
@@ -174,7 +169,7 @@ function queuePack(packId) {
   localStorage.setItem(STORAGE_KEY, packId);
 
   if (state === "playing" || state === "intermission") {
-    if (runtime?.entry?.id === packId) {
+    if (music?.entry?.id === packId) {
       pendingPackId = null;
       pendingPack.textContent = "—";
     } else {
@@ -226,7 +221,7 @@ function missTarget(playSound = true) {
   misses += 1;
   combo = 0;
   flow = Math.max(0, flow - 8);
-  if (playSound) runtime?.manager?.sfx?.("miss");
+  if (playSound) music?.cue("miss");
   updateStatus(Math.max(0, WAVE_SECONDS - (performance.now() - waveStartedAt) / 1000));
   window.setTimeout(() => node?.classList.remove("is-miss"), 140);
   chooseTarget();
@@ -240,7 +235,7 @@ function tapNode(index, node) {
     combo = 0;
     flow = Math.max(0, flow - 6);
     node.classList.add("is-miss");
-    runtime?.manager?.sfx?.("miss");
+    music?.cue("miss");
     window.setTimeout(() => node.classList.remove("is-miss"), 140);
     updateStatus(Math.max(0, WAVE_SECONDS - (performance.now() - waveStartedAt) / 1000));
     return;
@@ -252,7 +247,7 @@ function tapNode(index, node) {
   score += 25 + Math.min(60, combo * 4) + wave * 5;
   node.classList.remove("is-active");
   node.classList.add("is-hit");
-  runtime?.manager?.sfx?.("hit");
+  music?.cue("hit");
   window.setTimeout(() => node.classList.remove("is-hit"), 110);
   updateStatus(Math.max(0, WAVE_SECONDS - (performance.now() - waveStartedAt) / 1000));
   chooseTarget();
@@ -263,7 +258,7 @@ async function startWave() {
   tensionTriggered = false;
   clearNodes();
 
-  if (pendingPackId && pendingPackId !== runtime?.entry?.id) {
+  if (pendingPackId && pendingPackId !== music?.entry?.id) {
     const nextEntry = getMusicPackEntry(pendingPackId);
     setMessage("Runtimeを交換中", `${nextEntry.name} → ${nextEntry.engine.toUpperCase()}`, "MUSIC ASSET RESOLVER");
     const nextId = pendingPackId;
@@ -279,18 +274,18 @@ async function startWave() {
       startButton.textContent = "ゲーム開始";
       return;
     }
-  } else if (!runtime?.manager?.running) {
-    await runtime.manager.play("normal");
+  } else if (!music?.running) {
+    await music.start("normal");
   }
 
-  await applyMusicState(runtime, "normal", { quantize: "immediate", seconds: 0.20 });
+  await music.state("normal", { quantize: "immediate", seconds: 0.20 });
 
   state = "playing";
   waveStartedAt = performance.now();
   chooseTarget();
   setMessage(
     `WAVE ${wave}`,
-    `${runtime.entry.name} / ${runtime.engine.toUpperCase()}。光ったノードを追い続けよう。`,
+    `${music.entry.name} / ${music.engine.toUpperCase()}。光ったノードを追い続けよう。`,
     "AETHER STREAM ACTIVE"
   );
 
@@ -306,7 +301,7 @@ function tick() {
 
   if (remaining <= TENSION_SECONDS && !tensionTriggered) {
     tensionTriggered = true;
-    void applyMusicState(runtime, "tension", { quantize: "bar", crossfadeBeats: 1, fadeBeats: 1 });
+    void music.state("tension", { quantize: "bar", crossfadeBeats: 1, fadeBeats: 1 });
     setMessage("WAVE TENSION", "Resolverの共通State APIから終盤音楽へ移行します。", "ADAPTIVE STATE");
   }
 
@@ -340,19 +335,19 @@ async function finishWave() {
 async function endGame() {
   state = "result";
   clearNodes();
-  await applyMusicState(runtime, "result", { quantize: "immediate", seconds: 0.30 });
+  await music.state("result", { quantize: "immediate", seconds: 0.30 });
   const success = hits >= 20 || score >= 1200;
   try {
-    await playMusicOutcome(runtime, success);
+    await music.outcome(success);
   } catch (error) {
     console.error(error);
   }
 
   resultTitle.textContent = success ? "SHIFT MASTERED" : "SHIFT COMPLETE";
-  resultMessage.textContent = `4ウェーブでHIT ${hits}、MISS ${misses}。最終Packは${runtime.entry.name}。`;
+  resultMessage.textContent = `4ウェーブでHIT ${hits}、MISS ${misses}。最終Packは${music.entry.name}。`;
   finalScore.textContent = score.toLocaleString("ja-JP");
   finalHits.textContent = String(hits);
-  finalEngine.textContent = runtime.engine.toUpperCase();
+  finalEngine.textContent = music.engine.toUpperCase();
   resultOverlay.hidden = false;
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
@@ -361,8 +356,8 @@ async function endGame() {
 function resetGame() {
   window.clearInterval(timerId);
   timerId = null;
-  stopMusicRuntime(runtime);
-  runtime = null;
+  music?.stop();
+  music = null;
   pendingPackId = null;
   state = "ready";
   wave = 1;
@@ -400,9 +395,11 @@ async function startGame() {
 }
 
 async function applyAudioState() {
-  if (!runtime?.manager) return;
-  await runtime.manager.setMusicEnabled(masterSoundEnabled && bgmToggle.checked);
-  await runtime.manager.setSfxEnabled(masterSoundEnabled && sfxToggle.checked);
+  if (!music) return;
+  await music.audio({
+    musicEnabled: masterSoundEnabled && bgmToggle.checked,
+    sfxEnabled: masterSoundEnabled && sfxToggle.checked,
+  });
   soundButton.setAttribute("aria-pressed", String(masterSoundEnabled));
   soundButton.textContent = masterSoundEnabled ? "♪" : "×";
 }
@@ -410,7 +407,7 @@ async function applyAudioState() {
 soundButton.addEventListener("click", async () => {
   masterSoundEnabled = !masterSoundEnabled;
   await applyAudioState();
-  if (masterSoundEnabled && sfxToggle.checked) runtime?.manager?.sfx?.("toggle");
+  if (masterSoundEnabled && sfxToggle.checked) music?.cue("toggle");
 });
 
 bgmToggle.addEventListener("change", async () => {
@@ -425,13 +422,13 @@ bgmVolume.addEventListener("input", () => {
   const value = Number(bgmVolume.value) / 100;
   bgmVolumeValue.textContent = bgmVolume.value;
   saveMusicSettings({ bgmVolume: value });
-  runtime?.manager?.setMusicVolume?.(value);
+  void music?.audio({ musicVolume: value });
 });
 sfxVolume.addEventListener("input", () => {
   const value = Number(sfxVolume.value) / 100;
   sfxVolumeValue.textContent = sfxVolume.value;
   saveMusicSettings({ sfxVolume: value });
-  runtime?.manager?.setSfxVolume?.(value);
+  void music?.audio({ sfxVolume: value });
 });
 
 startButton.addEventListener("click", startGame);
