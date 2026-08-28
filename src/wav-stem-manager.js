@@ -1,5 +1,5 @@
 import { rememberAudioFormat } from "./music-format-resolver.js";
-import { getAudioBytes, preloadAudioUrls, getAudioAssetCacheInfo } from "./audio-asset-cache.js";
+import { getAudioBytes, preloadAudioUrls, getAudioAssetCacheInfo, getPersistentAudioCacheInfo } from "./audio-asset-cache.js";
 
 const STEMS = ["drums", "bass", "chords", "melody", "sparkle"];
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value)));
@@ -54,6 +54,7 @@ export class WavStemMusicManager {
       requested: 0,
       loaded: 0,
       error: null,
+      persistent: null,
     };
   }
 
@@ -211,6 +212,7 @@ export class WavStemMusicManager {
         requested: 0,
         loaded: 0,
         error: null,
+        persistent: await getPersistentAudioCacheInfo(),
       };
       return this.getPreloadInfo();
     }
@@ -224,23 +226,25 @@ export class WavStemMusicManager {
     };
 
     this.preloadPromise = preloadAudioUrls(urls, { concurrency })
-      .then((result) => {
+      .then(async (result) => {
         this.preloadState = {
           state: "ready",
           format,
           requested: result.requested,
           loaded: result.loaded,
           error: null,
+          persistent: await getPersistentAudioCacheInfo(),
         };
         return this.getPreloadInfo();
       })
-      .catch((error) => {
+      .catch(async (error) => {
         this.preloadState = {
           state: "error",
           format,
           requested: urls.length,
           loaded: 0,
           error: error?.message || String(error),
+          persistent: await getPersistentAudioCacheInfo(),
         };
         throw error;
       })
