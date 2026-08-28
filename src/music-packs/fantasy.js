@@ -1,3 +1,5 @@
+import { defineMusicPackManifest } from "../music-pack-manifest.js";
+
 export const fantasyPack = {
   id: "fantasy",
   name: "Fantasy Table",
@@ -38,3 +40,17 @@ export const fantasyPack = {
     pulse: { type: "square", gain: 0.014, duration: 0.025 },
   },
 };
+
+
+export const fantasyManifest = defineMusicPackManifest({
+  id: fantasyPack.id,
+  name: fantasyPack.name,
+  shortName: "Fantasy",
+  description: "やさしい幻想",
+  engine: "procedural",
+  version: "1.0.0",
+  states: ["normal","tension","result"],
+  stems: [],
+  stingers: [],
+  tags: ["fantasy","gentle","procedural"],
+});
