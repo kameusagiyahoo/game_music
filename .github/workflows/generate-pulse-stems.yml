@@ -1,10 +1,11 @@
-name: Generate Pulse WAV stems
+name: Generate Pulse multi-format audio
 
 on:
   workflow_dispatch:
   push:
     paths:
       - "tools/generate_pulse_stems.py"
+      - "src/music-packs/pulse.js"
       - ".github/workflows/generate-pulse-stems.yml"
 
 permissions:
@@ -18,19 +19,32 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Generate synchronized WAV stems and stingers
         run: python tools/generate_pulse_stems.py
+      - name: Encode OGG and AAC/M4A variants
+        run: |
+          set -euo pipefail
+          for src in assets/stems/pulse/*.wav; do
+            base="${src%.wav}"
+            ffmpeg -y -loglevel error -i "$src" -c:a libvorbis -q:a 4 "${base}.ogg"
+            ffmpeg -y -loglevel error -i "$src" -c:a aac -b:a 128k "${base}.m4a"
+          done
+          for src in assets/stingers/pulse/*.wav; do
+            base="${src%.wav}"
+            ffmpeg -y -loglevel error -i "$src" -c:a libvorbis -q:a 4 "${base}.ogg"
+            ffmpeg -y -loglevel error -i "$src" -c:a aac -b:a 128k "${base}.m4a"
+          done
       - name: Commit generated audio
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add assets/stems/pulse/*.wav
-          if compgen -G "assets/stingers/pulse/*.wav" > /dev/null; then
-            git add assets/stingers/pulse/*.wav
-          fi
+          git add assets/stems/pulse/*.{wav,ogg,m4a}
+          git add assets/stingers/pulse/*.{wav,ogg,m4a}
           if git diff --cached --quiet; then
-            echo "WAV audio already up to date"
+            echo "Pulse audio already up to date"
           else
-            git commit -m "Generate Pulse WAV stems and stingers"
+            git commit -m "Generate Pulse multi-format audio"
             git push
           fi
