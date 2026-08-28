@@ -391,6 +391,100 @@ CIでは `tools/check_music_preload_cache.mjs` が以下を検証します。
 - Victory Stinger再生時にも追加network fetchが発生しない
 - 共有cache hitが発生する
 
+### v15 — Persistent Audio Cache
+
+v14のMemory Cacheに加えて、Cache StorageとService Workerで音源をブラウザへ永続保存します。
+
+```text
+First visit
+    |
+    v
+music.preload()
+    |
+    +--> Memory Cache
+    |
+    +--> Cache Storage
+           game-music-audio-v15
+    |
+    v
+close page
+
+Next visit
+    |
+    v
+Cache Storage hit
+    |
+    v
+Memory Cache
+    |
+    | user taps START
+    v
+decodeAudioData()
+    |
+    v
+playback
+```
+
+Service Worker:
+
+```text
+music-sw.js
+  |
+  +-- intercept only /assets/stems/
+  +-- intercept only /assets/stingers/
+  +-- cache-first
+  +-- HTML / JS / CSSには干渉しない
+```
+
+音源URLにはMusic Pack versionを自動付与します。
+
+```text
+drums.m4a?gmv=1.1.0
+             |
+Pack v1.2.0
+             v
+drums.m4a?gmv=1.2.0
+```
+
+同一pathnameの古い `gmv` entryは新version保存時に削除するため、古い音源を誤再利用せず、不要なversion cacheも蓄積し続けません。
+
+Cache StorageとService Workerは同じ `game-music-audio-v15` cacheを共有するため、同一音源を二重保存しません。
+
+v15でもiOSのAutoplay Policyは変更しません。ネットワーク取得はページ表示後に可能ですが、AudioContextのresume / 音声再生開始はユーザー操作後です。
+
+Capabilities:
+
+```js
+music.info().capabilities.preload === true;
+music.info().capabilities.memoryAssetCache === true;
+music.info().capabilities.persistentAudioCache === true;
+music.info().capabilities.serviceWorkerCache === true;
+```
+
+Preload結果:
+
+```js
+const info = await music.preload({ stingers: true });
+
+info.persistent;
+// {
+//   supported: true,
+//   name: "game-music-audio-v15",
+//   entries: 7
+// }
+```
+
+Resolver Labでは `PRELOADED 7/7 · PERSISTENT 7` のように永続保存件数も表示します。
+
+CIでは `tools/check_music_persistent_cache.mjs` が以下を検証します。
+
+- 初回preloadで7 assetだけnetwork取得
+- Memory Cacheを全消去してページ再訪相当の状態を再現
+- 2回目preloadがCache Storageから7 assetを復元
+- 2回目のnetwork fetchが0
+- Runtime音源URLへManifestのPack versionが付与される
+- Browser cache moduleとService Workerのcache名が一致
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -445,6 +539,7 @@ Validation:
 - `tools/check_music_formats.mjs`
 - `tools/check_music_runtime_fallback.mjs`
 - `tools/check_music_preload_cache.mjs`
+- `tools/check_music_persistent_cache.mjs`
 - `.github/workflows/music-architecture-check.yml`
 
 ## Structure
@@ -463,6 +558,7 @@ src/
 ├── music-facade.js
 ├── music-pack-manifest.js
 ├── audio-asset-cache.js
+├── music-service-worker.js
 └── music-packs/
     ├── fantasy.js
     ├── neon.js
@@ -487,7 +583,6 @@ assets/
 
 - Game 06追加
 - procedural Packの実Audio Stem版生成
-- Service Worker / persistent Cache Storage
 - Stingerを小節頭 / beat頭へQuantize
 - Transition専用Whoosh / Fill
 - 44.1 kHz stereo stemsへの差し替え
