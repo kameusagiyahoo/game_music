@@ -261,6 +261,53 @@ Music Asset Resolver
 
 Engine固有機能はRuntime生成後のCapabilitiesに応じて利用し、Manager選択そのものはResolverへ集約します。
 
+## Music Engine v10 — Common Facade API
+
+Game 01〜05はMusic Managerを直接操作せず、`src/music-facade.js` の共通APIだけを利用します。
+
+```js
+music.start("normal");
+music.state("tension");
+music.cue("hit");
+music.outcome(true);
+music.stop();
+```
+
+高度機能もFacade越しに利用します。
+
+```js
+music.layer("build", { quantize: "bar" });
+music.pack("neon", { quantize: "bar" });
+music.audio({ musicVolume: 0.8, sfxVolume: 0.7 });
+music.cancel("pack");
+music.info();
+```
+
+構造:
+
+```text
+Game 01〜05
+    |
+    v
+MusicFacade
+    |
+    v
+Music Asset Resolver
+    |
+    +--> MusicManager
+    |
+    +--> WavStemMusicManager
+```
+
+ゲームコードでは以下を禁止しています。
+
+- `createMusicRuntime()` の直接使用
+- `.manager` 参照
+- `MusicManager` / `WavStemMusicManager` の直接import
+- `play / transitionTo / setLayerPreset / playStinger / sfx` などManager APIの直接呼び出し
+
+`Music Architecture Check` がGitHub Actionsでこの境界とJavaScript構文を検証します。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Music Engineだけを直接操作する検証画面。
@@ -304,6 +351,7 @@ src/
 ├── wav-stem-manager.js
 ├── music-registry.js
 ├── music-asset-resolver.js
+├── music-facade.js
 └── music-packs/
     ├── fantasy.js
     ├── neon.js
@@ -325,7 +373,9 @@ assets/
 
 ## Next candidates
 
-- Game State APIをさらにFacade化して `manager.*` 呼び出しを縮小
+- Game 06追加
+- Music Pack manifest / version管理
+
 - WAV / OGG / AACのブラウザ対応Format Resolver
 - procedural PackのWAV Stem版生成
 - WAV / OGG / AACのブラウザ対応Format Resolver
