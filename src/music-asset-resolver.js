@@ -1,5 +1,6 @@
 import { MusicManager } from "./music-manager.js";
 import { WavStemMusicManager } from "./wav-stem-manager.js";
+import { resolvePackAudioFormat } from "./music-format-resolver.js";
 import {
   GAME_DEFAULT_PACKS,
   MUSIC_ENGINES,
@@ -16,6 +17,7 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     layerMix: true,
     wavStems: false,
     stingers: false,
+    formatResolver: false,
   }),
   [MUSIC_ENGINES.WAV_STEM]: Object.freeze({
     quantizedModeTransition: false,
@@ -23,6 +25,7 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     layerMix: true,
     wavStems: true,
     stingers: true,
+    formatResolver: true,
   }),
 });
 
@@ -55,10 +58,15 @@ export function createMusicRuntime({
   engine,
   callbacks = {},
   settings = getMusicSettings(),
+  formatOptions = {},
 } = {}) {
   const entry = resolveMusicAsset({ gameId, packId, engine });
+  const formatResolution = entry.engine === MUSIC_ENGINES.WAV_STEM
+    ? resolvePackAudioFormat(entry.pack, formatOptions)
+    : { pack: entry.pack, selection: null };
+
   const options = {
-    pack: entry.pack,
+    pack: formatResolution.pack,
     onModeChange: callbacks.onModeChange,
     onSync: callbacks.onSync,
     onLayerChange: callbacks.onLayerChange,
@@ -81,6 +89,8 @@ export function createMusicRuntime({
     engine: entry.engine,
     manager,
     settings,
+    audioFormat: formatResolution.selection?.format || null,
+    audioFormatSelection: formatResolution.selection || null,
     capabilities: { ...(MUSIC_CAPABILITIES[entry.engine] || {}) },
   };
 }
@@ -175,6 +185,9 @@ export function getRuntimeDescriptor(runtime) {
     schemaVersion: runtime.entry?.schemaVersion || null,
     facadeApi: runtime.entry?.facadeApi || null,
     engine: runtime.engine || null,
+    formats: [...(runtime.entry?.formats || [])],
+    audioFormat: runtime.audioFormat || null,
+    audioFormatSelection: runtime.audioFormatSelection ? { ...runtime.audioFormatSelection } : null,
     states: [...(runtime.entry?.states || [])],
     stems: [...(runtime.entry?.stems || [])],
     stingers: [...(runtime.entry?.stingers || [])],
