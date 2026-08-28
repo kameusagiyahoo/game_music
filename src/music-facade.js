@@ -34,6 +34,15 @@ export class MusicFacade {
   async state(name, options = {}) { return applyMusicState(this.runtime, name, options); }
   cue(name) { this.runtime.manager?.sfx?.(name); }
   async outcome(value, options = {}) { return playMusicOutcome(this.runtime, normalizeOutcome(value), options); }
+
+  async preload(options = {}) {
+    const manager = this.runtime.manager;
+    if (typeof manager.preload !== "function") {
+      return { state: "not-needed", engine: this.runtime.engine };
+    }
+    return manager.preload(options);
+  }
+
   stop() { stopMusicRuntime(this.runtime); }
 
   async audio({ musicEnabled, sfxEnabled, musicVolume, sfxVolume } = {}) {
@@ -104,4 +113,16 @@ export function createMusicFacade({
 } = {}) {
   const runtime = createMusicRuntime({ gameId, packId, engine, callbacks, settings, formatOptions });
   return new MusicFacade(runtime);
+}
+
+export async function preloadMusicAssets({
+  gameId,
+  packId,
+  engine,
+  settings = getMusicSettings(),
+  formatOptions = {},
+  preloadOptions = {},
+} = {}) {
+  const facade = createMusicFacade({ gameId, packId, engine, settings, formatOptions });
+  return facade.preload(preloadOptions);
 }
