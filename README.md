@@ -332,6 +332,65 @@ Resolver Labでは再生開始後に最終採用FORMATへ表示を更新し、fa
 
 CIでは `tools/check_music_runtime_fallback.mjs` がM4A decode失敗を擬似的に発生させ、OGGへfallbackして5 Stemの再生準備が完了することを検証します。
 
+### v14 — Audio Preload / Memory Cache
+
+ページ表示後に、再生予定のwav-stem Packをネットワーク先読みします。iOS / Safariの自動再生制限には触れず、AudioContextの開始はユーザー操作後のままです。
+
+```text
+Page load / Pack select
+        |
+        v
+music.preload()
+        |
+        v
+Audio Asset Memory Cache
+  5 Stems + Stingers
+        |
+        | user taps START
+        v
+AudioContext resume
+        |
+        v
+cached bytes -> decodeAudioData()
+        |
+        v
+synchronized playback
+```
+
+共有キャッシュは `src/audio-asset-cache.js` で管理します。同じURLへのpreloadとSTARTが重なっても同じPromiseを共有するため、二重fetchしません。
+
+Facade API:
+
+```js
+await music.preload({ stingers: true });
+
+music.info().preload;
+// {
+//   state: "ready",
+//   format: "m4a",
+//   requested: 7,
+//   loaded: 7,
+//   cache: { entries, ready, bytes, hits, misses, ... }
+// }
+```
+
+Facade API versionはpreload追加に伴い `1.1.0` へminor updateしました。既存Packが要求するFacade API `1.0.0` とは後方互換です。
+
+利用箇所:
+
+- Pulse Forge: ページ表示直後に5 Stem + 2 Stingerをpreload
+- Aether Shift: wav-stem Packを選択 / 次Waveへ予約した時点でpreload
+- Resolver Lab: Pack選択時にpreloadし、START前にPRELOADED状態を表示
+
+START後に選択形式のdecodeが失敗した場合はv13のRuntime Decode Fallbackがそのまま動作し、次形式のbytesを取得して再試行します。
+
+CIでは `tools/check_music_preload_cache.mjs` が以下を検証します。
+
+- preload時に7 audio assetsを取得
+- START時にStemの追加network fetchが発生しない
+- Victory Stinger再生時にも追加network fetchが発生しない
+- 共有cache hitが発生する
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -385,6 +444,7 @@ Validation:
 - `tools/check_music_manifests.mjs`
 - `tools/check_music_formats.mjs`
 - `tools/check_music_runtime_fallback.mjs`
+- `tools/check_music_preload_cache.mjs`
 - `.github/workflows/music-architecture-check.yml`
 
 ## Structure
@@ -402,6 +462,7 @@ src/
 ├── music-format-resolver.js
 ├── music-facade.js
 ├── music-pack-manifest.js
+├── audio-asset-cache.js
 └── music-packs/
     ├── fantasy.js
     ├── neon.js
@@ -426,7 +487,7 @@ assets/
 
 - Game 06追加
 - procedural Packの実Audio Stem版生成
-- Service Worker / preload / audio cache
+- Service Worker / persistent Cache Storage
 - Stingerを小節頭 / beat頭へQuantize
 - Transition専用Whoosh / Fill
 - 44.1 kHz stereo stemsへの差し替え
