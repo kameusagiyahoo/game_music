@@ -129,7 +129,8 @@ function buildRuntime(packId) {
       renderRuntime();
       const ready = getRuntimeDescriptor(builtRuntime);
       const readyFormat = ready?.audioFormat ? ` · ${ready.audioFormat.toUpperCase()}` : "";
-      statusText.textContent = `${builtRuntime.entry.name}${readyFormat} · PRELOADED ${info.loaded}/${info.requested}`;
+      const persistentCount = info?.persistent?.entries ?? 0;
+      statusText.textContent = `${builtRuntime.entry.name}${readyFormat} · PRELOADED ${info.loaded}/${info.requested} · PERSISTENT ${persistentCount}`;
     }).catch((error) => {
       if (runtime !== builtRuntime || playing) return;
       console.warn(error);
