@@ -1,4 +1,4 @@
-import { createMusicRuntime } from "./music-asset-resolver.js";
+import { createMusicFacade } from "./music-facade.js";
 import {
   GAME_IDS,
   getMusicSettings,
@@ -48,15 +48,14 @@ let timerId = null;
 let masterSoundEnabled = true;
 
 const sharedSettings = getMusicSettings();
-const runtime = createMusicRuntime({
+const music = createMusicFacade({
   gameId: GAME_IDS.MYSTIC_MATCH,
   callbacks: {
     onModeChange(label) { musicState.textContent = label; },
   },
   settings: sharedSettings,
 });
-const packEntry = runtime.entry;
-const music = runtime.manager;
+const packEntry = music.entry;
 applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
 
 const best = Number(localStorage.getItem("mystic-match-best") || 0);
@@ -118,7 +117,7 @@ function resetGame() {
 
 async function startGame() {
   resetGame();
-  await music.play("normal");
+  await music.start("normal");
   state = "playing";
   startedAt = performance.now();
   startButton.disabled = true;
@@ -133,7 +132,7 @@ async function startGame() {
       state = "tension";
       document.body.classList.add("is-tension");
       setMessage("残り10秒", "BGMがクロスフェードして加速します。", "TENSION");
-      music.transitionTo("tension", 0.55);
+      void music.state("tension", { quantize: "immediate", seconds: 0.55 });
     }
 
     if (remaining <= 0) {
@@ -153,7 +152,7 @@ function flipCard(card) {
   if (item.matched || card === firstCard || card.classList.contains("is-flipped")) return;
 
   card.classList.add("is-flipped");
-  music.sfx("flip");
+  music.cue("flip");
   if (!firstCard) { firstCard = card; return; }
 
   secondCard = card;
@@ -172,7 +171,7 @@ function flipCard(card) {
     secondCard.disabled = true;
     pairs += 1;
     pairsValue.textContent = String(pairs);
-    music.sfx("match");
+    music.cue("match");
     firstCard = null;
     secondCard = null;
     lockBoard = false;
@@ -180,7 +179,7 @@ function flipCard(card) {
     return;
   }
 
-  music.sfx("miss");
+  music.cue("miss");
   window.setTimeout(() => {
     firstCard?.classList.remove("is-flipped");
     secondCard?.classList.remove("is-flipped");
@@ -201,7 +200,7 @@ function endGame(clear) {
   state = "result";
   document.body.classList.remove("is-tension");
   lockBoard = true;
-  music.transitionTo("result", 0.7);
+  void music.state("result", { quantize: "immediate", seconds: 0.7 });
 
   const score = calculateScore(clear);
   const elapsed = Math.min(GAME_TIME, (performance.now() - startedAt) / 1000);
@@ -221,12 +220,14 @@ function endGame(clear) {
   resultOverlay.hidden = false;
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
-  music.sfx(clear ? "win" : "lose");
+  music.cue(clear ? "win" : "lose");
 }
 
 async function applyAudioState() {
-  await music.setMusicEnabled(masterSoundEnabled && bgmToggle.checked);
-  await music.setSfxEnabled(masterSoundEnabled && sfxToggle.checked);
+  await music.audio({
+    musicEnabled: masterSoundEnabled && bgmToggle.checked,
+    sfxEnabled: masterSoundEnabled && sfxToggle.checked,
+  });
   soundButton.setAttribute("aria-pressed", String(masterSoundEnabled));
   soundButton.textContent = masterSoundEnabled ? "♪" : "×";
 }
@@ -234,7 +235,7 @@ async function applyAudioState() {
 soundButton.addEventListener("click", async () => {
   masterSoundEnabled = !masterSoundEnabled;
   await applyAudioState();
-  if (masterSoundEnabled && sfxToggle.checked) music.sfx("toggle");
+  if (masterSoundEnabled && sfxToggle.checked) music.cue("toggle");
 });
 
 bgmToggle.addEventListener("change", async () => {
@@ -247,12 +248,12 @@ sfxToggle.addEventListener("change", async () => {
 });
 bgmVolume.addEventListener("input", () => {
   bgmVolumeValue.textContent = bgmVolume.value;
-  music.setMusicVolume(Number(bgmVolume.value) / 100);
+  void music.audio({ musicVolume: Number(bgmVolume.value) / 100 });
   saveMusicSettings({ bgmVolume: Number(bgmVolume.value) / 100 });
 });
 sfxVolume.addEventListener("input", () => {
   sfxVolumeValue.textContent = sfxVolume.value;
-  music.setSfxVolume(Number(sfxVolume.value) / 100);
+  void music.audio({ sfxVolume: Number(sfxVolume.value) / 100 });
   saveMusicSettings({ sfxVolume: Number(sfxVolume.value) / 100 });
 });
 
