@@ -10,31 +10,47 @@ GAME_FILES = [
 ]
 
 FORBIDDEN = (
-    'from "./music-manager.js"',
-    'from "./wav-stem-manager.js"',
-    'from "../../src/music-manager.js"',
-    'from "../../src/wav-stem-manager.js"',
+    "music-manager.js",
+    "wav-stem-manager.js",
+    "createMusicRuntime(",
+    ".manager",
+    "music.play(",
+    "music.transitionTo(",
+    "music.setLayerPreset(",
+    "music.playStinger(",
+    "music.sfx(",
+    "music.switchPack(",
+    "music.setPack(",
+    "music.getPackInfo(",
+    "music.setMusicEnabled(",
+    "music.setSfxEnabled(",
+    "music.setMusicVolume(",
+    "music.setSfxVolume(",
+    "music.cancelPending",
 )
-REQUIRED = "createMusicRuntime"
+
+REQUIRED = "createMusicFacade"
 
 errors = []
 for path in GAME_FILES:
     if not path.exists():
         errors.append(f"{path}: missing")
         continue
+
     text = path.read_text(encoding="utf-8")
     for token in FORBIDDEN:
         if token in text:
-            errors.append(f"{path}: direct engine import is forbidden: {token}")
+            errors.append(f"{path}: facade boundary violation: {token}")
+
     if REQUIRED not in text:
         errors.append(f"{path}: {REQUIRED}() is required")
 
 if errors:
-    print("Music architecture boundary check FAILED")
+    print("Music facade boundary check FAILED")
     for error in errors:
         print(f"- {error}")
     sys.exit(1)
 
-print("Music architecture boundary check PASSED")
+print("Music facade boundary check PASSED")
 for path in GAME_FILES:
     print(f"- {path}")
