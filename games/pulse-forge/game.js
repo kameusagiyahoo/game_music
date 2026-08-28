@@ -255,28 +255,36 @@ function resetGame() {
   judgement.className = "";
   syncState.textContent = "BAR — / BEAT —";
   pendingState.textContent = "—";
-  setMessage("光った炉心をビートに合わせて叩く", `5本のWAVステムが同じ再生位置を共有します。Pack: ${packEntry.name}`);
+  setMessage("光った炉心をビートに合わせて叩く", `5本の同期Audio Stemが同じ再生位置を共有します。Pack: ${packEntry.name}`);
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
 }
 
 async function startGame() {
   resetGame();
+
+void music.preload({ stingers: true }).then((info) => {
+  if (state === "ready" && info?.state === "ready") {
+    musicState.textContent = `PRELOADED · ${String(info.format || "audio").toUpperCase()}`;
+  }
+}).catch((error) => {
+  console.warn("audio preload failed; START will retry", error);
+});
   startButton.disabled = true;
-  startButton.textContent = "WAV読込中…";
+  startButton.textContent = "AUDIO準備中…";
   try {
     await music.start("normal");
   } catch (error) {
     console.error(error);
     startButton.disabled = false;
     startButton.textContent = "ゲーム開始";
-    setMessage("WAVの読み込みに失敗", "GitHub Pagesの反映後に再読み込みしてください。", "AUDIO LOAD ERROR");
+    setMessage("音源の読み込みに失敗", "フォーマットfallback後も読み込めませんでした。再読み込みして再試行してください。", "AUDIO LOAD ERROR");
     return;
   }
   state = "playing";
   startedAt = performance.now();
   startButton.textContent = "鍛造中";
-  setMessage("ビートに同期せよ", "Energyを上げると、次の小節から実WAVステムのMixが変化します。", "PLAYING / WAV STEM SYNC");
+  setMessage("ビートに同期せよ", "Energyを上げると、次の小節から同期StemのMixが変化します。", "PLAYING / ADAPTIVE STEM SYNC");
 
   timerId = window.setInterval(() => {
     const elapsed = (performance.now() - startedAt) / 1000;
