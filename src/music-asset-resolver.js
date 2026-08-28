@@ -18,6 +18,7 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     wavStems: false,
     stingers: false,
     formatResolver: false,
+    runtimeDecodeFallback: false,
   }),
   [MUSIC_ENGINES.WAV_STEM]: Object.freeze({
     quantizedModeTransition: false,
@@ -26,6 +27,7 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     wavStems: true,
     stingers: true,
     formatResolver: true,
+    runtimeDecodeFallback: true,
   }),
 });
 
@@ -63,7 +65,7 @@ export function createMusicRuntime({
   const entry = resolveMusicAsset({ gameId, packId, engine });
   const formatResolution = entry.engine === MUSIC_ENGINES.WAV_STEM
     ? resolvePackAudioFormat(entry.pack, formatOptions)
-    : { pack: entry.pack, selection: null };
+    : { pack: entry.pack, selection: null, candidates: [] };
 
   const options = {
     pack: formatResolution.pack,
@@ -71,6 +73,7 @@ export function createMusicRuntime({
     onSync: callbacks.onSync,
     onLayerChange: callbacks.onLayerChange,
     onPackChange: callbacks.onPackChange,
+    onFormatChange: callbacks.onFormatChange,
   };
 
   let manager;
@@ -91,6 +94,7 @@ export function createMusicRuntime({
     settings,
     audioFormat: formatResolution.selection?.format || null,
     audioFormatSelection: formatResolution.selection || null,
+    audioFormatCandidates: [...(formatResolution.candidates || [])],
     capabilities: { ...(MUSIC_CAPABILITIES[entry.engine] || {}) },
   };
 }
@@ -155,12 +159,12 @@ export async function playMusicOutcome(runtime, success, options = {}) {
 
   if (runtime.capabilities?.stingers && typeof manager.playStinger === "function") {
     const name = success ? "victory" : "gameover";
-    await manager.playStinger(name, {
+    const result = await manager.playStinger(name, {
       duck: Number(options.duck ?? 0.28),
       attack: Number(options.attack ?? 0.06),
       release: Number(options.release ?? 0.32),
     });
-    return { type: "stinger", name };
+    return { type: "stinger", name, format: result?.format || null };
   }
 
   if (typeof manager.sfx === "function") {
@@ -178,6 +182,9 @@ export function stopMusicRuntime(runtime) {
 
 export function getRuntimeDescriptor(runtime) {
   if (!runtime) return null;
+  const formatInfo = runtime.manager?.getAudioFormatInfo?.() || null;
+  const activeFormat = formatInfo?.format || runtime.audioFormat || null;
+
   return {
     packId: runtime.entry?.id || null,
     packName: runtime.entry?.name || null,
@@ -186,7 +193,12 @@ export function getRuntimeDescriptor(runtime) {
     facadeApi: runtime.entry?.facadeApi || null,
     engine: runtime.engine || null,
     formats: [...(runtime.entry?.formats || [])],
-    audioFormat: runtime.audioFormat || null,
+    audioFormat: activeFormat,
+    stingerAudioFormat: formatInfo?.stingerFormat || activeFormat,
+    audioFormatCandidates: [
+      ...(formatInfo?.candidates || runtime.audioFormatCandidates || []),
+    ],
+    audioFormatAttempts: (formatInfo?.attempts || []).map((attempt) => ({ ...attempt })),
     audioFormatSelection: runtime.audioFormatSelection ? { ...runtime.audioFormatSelection } : null,
     states: [...(runtime.entry?.states || [])],
     stems: [...(runtime.entry?.stems || [])],
