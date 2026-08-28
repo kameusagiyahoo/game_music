@@ -167,11 +167,14 @@ export function getAudioFormatCandidates(pack, {
   // canPlayType() is only a hint. Runtime decode fallback deliberately keeps
   // every declared format in the retry chain, even when the probe says "no".
   // This avoids false negatives while still trying the most likely format first.
+  const selectedIndex = priority.indexOf(selection.format);
+  const afterSelected = selectedIndex >= 0 ? priority.slice(selectedIndex + 1) : priority;
+  const beforeSelected = selectedIndex > 0 ? priority.slice(0, selectedIndex) : [];
+
   const ordered = unique([
     selection.format,
-    ...(useSession ? [getCachedAudioFormat(pack)] : []),
-    preferredFormat,
-    ...priority,
+    ...afterSelected,
+    ...beforeSelected,
     ...available,
   ]).filter((format) => available.includes(format));
 
