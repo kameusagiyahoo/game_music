@@ -14,6 +14,7 @@ const packGrid = $("#packGrid");
 const packCount = $("#packCount");
 const runtimePack = $("#runtimePack");
 const runtimeEngine = $("#runtimeEngine");
+const runtimeFormat = $("#runtimeFormat");
 const runtimeMode = $("#runtimeMode");
 const runtimeSync = $("#runtimeSync");
 const capabilityEngine = $("#capabilityEngine");
@@ -47,8 +48,8 @@ function renderPacks() {
   packGrid.innerHTML = entries.map((entry) => `
     <button class="resolver-pack ${entry.id === selectedId ? "is-selected" : ""}" data-pack="${entry.id}" type="button">
       <span class="engine-pill ${entry.engine}">${engineLabel(entry.engine)}</span>
-      <strong>${entry.name}</strong>
-      <small>${entry.description}</small>
+      <strong>${entry.name} · v${entry.version}</strong>
+      <small>${entry.description}${entry.formats.length ? ` · ${entry.formats.map((value) => value.toUpperCase()).join(" / ")}` : ""}</small>
     </button>
   `).join("");
 
@@ -73,6 +74,7 @@ function renderRuntime() {
   const descriptor = getRuntimeDescriptor(runtime);
   runtimePack.textContent = descriptor?.packName || "—";
   runtimeEngine.textContent = descriptor ? engineLabel(descriptor.engine) : "—";
+  runtimeFormat.textContent = descriptor?.audioFormat ? descriptor.audioFormat.toUpperCase() : "N/A";
   renderCapabilities();
   renderModeButtons();
   renderSpecialButtons();
@@ -109,7 +111,9 @@ function buildRuntime(packId) {
     },
   });
   renderRuntime();
-  statusText.textContent = `${runtime.entry.name} READY`;
+  const descriptor = getRuntimeDescriptor(runtime);
+  const formatLabel = descriptor?.audioFormat ? ` · ${descriptor.audioFormat.toUpperCase()}` : "";
+  statusText.textContent = `${runtime.entry.name}${formatLabel} READY`;
 }
 
 function selectPack(id) {
@@ -172,11 +176,14 @@ function renderSpecialButtons() {
 async function playSelected() {
   if (!runtime || runtime.entry.id !== selectedId) buildRuntime(selectedId);
   playButton.disabled = true;
-  statusText.textContent = runtime.engine === "wav-stem" ? "LOADING WAV STEMS…" : "STARTING…";
+  const descriptor = getRuntimeDescriptor(runtime);
+  statusText.textContent = runtime.engine === "wav-stem"
+    ? `LOADING ${descriptor?.audioFormat?.toUpperCase() || "AUDIO"} STEMS…`
+    : "STARTING…";
   try {
     await runtime.manager.play("normal");
     playing = true;
-    statusText.textContent = `${runtime.entry.name} PLAYING`;
+    statusText.textContent = `${runtime.entry.name}${descriptor?.audioFormat ? ` · ${descriptor.audioFormat.toUpperCase()}` : ""} PLAYING`;
   } catch (error) {
     console.error(error);
     statusText.textContent = `ERROR · ${error.message}`;
