@@ -285,7 +285,52 @@ music.info().formats;
 - M4A / OGG非対応 -> WAVを選択
 - Stem URLとStinger URLが選択形式へ切り替わる
 
-なおv12は `canPlayType()` に基づく事前選択です。実際の `decodeAudioData()` が失敗した場合に次形式へ再試行するRuntime fallbackは次段階です。
+なおv12は `canPlayType()` に基づく事前選択です。v13ではこの事前選択の後段に実decode fallbackを追加しています。
+
+### v13 — Runtime Decode Fallback
+
+`WavStemMusicManager` が実際の `fetch()` / `decodeAudioData()` 失敗を検知し、次の形式へ自動再試行します。
+
+```text
+Browser selection
+M4A
+ |
+ v
+fetch + decode 失敗
+ |
+ v
+OGG
+ |
+ v
+fetch + decode 成功
+ |
+ v
+5 Stemを同じOGG形式で確定
+ |
+ v
+再生開始
+```
+
+重要なルール:
+
+- Stemは1本ずつ別形式へ落とさず、5本すべて同じ形式で成功した場合だけ採用
+- 初期選択がM4Aなら基本順序は `M4A -> OGG -> WAV`
+- 初期選択がOGGなら `OGG -> WAV -> M4A`
+- Stingerも独立してruntime fallback
+- 成功したStem形式は `sessionStorage` にPack単位で記憶
+- 同一セッションの次回起動では前回成功形式を優先
+- `music.info().audioFormat` は予測値ではなく実decode成功形式を返す
+- `music.info().audioFormatAttempts` で失敗履歴を確認可能
+
+Capabilities:
+
+```js
+music.info().capabilities.runtimeDecodeFallback === true;
+```
+
+Resolver Labでは再生開始後に最終採用FORMATへ表示を更新し、fallbackが発生した場合は試行回数も表示します。
+
+CIでは `tools/check_music_runtime_fallback.mjs` がM4A decode失敗を擬似的に発生させ、OGGへfallbackして5 Stemの再生準備が完了することを検証します。
 
 ## Music Debug / Mixer
 
@@ -339,6 +384,7 @@ Validation:
 - `tools/check_music_boundary.py`
 - `tools/check_music_manifests.mjs`
 - `tools/check_music_formats.mjs`
+- `tools/check_music_runtime_fallback.mjs`
 - `.github/workflows/music-architecture-check.yml`
 
 ## Structure
@@ -378,7 +424,6 @@ assets/
 
 ## Next candidates
 
-- Runtime decode failure時に `M4A -> OGG -> WAV` を再試行
 - Game 06追加
 - procedural Packの実Audio Stem版生成
 - Service Worker / preload / audio cache
