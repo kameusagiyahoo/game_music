@@ -1,4 +1,4 @@
-import { createMusicRuntime } from "../../src/music-asset-resolver.js";
+import { createMusicFacade } from "../../src/music-facade.js";
 import {
   GAME_IDS,
   MUSIC_ENGINES,
@@ -14,7 +14,7 @@ const $ = (selector) => document.querySelector(selector);
 const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 const proceduralEntries = listMusicPacks({ engine: MUSIC_ENGINES.PROCEDURAL });
-const PACKS = Object.fromEntries(proceduralEntries.map((entry) => [entry.id, entry.pack]));
+const PACKS = Object.fromEntries(proceduralEntries.map((entry) => [entry.id, entry]));
 
 const startButton = $("#startButton");
 const retryButton = $("#retryButton");
@@ -68,12 +68,12 @@ function renderPackRegistry() {
 }
 
 function renderPackButtons(info = {}) {
-  const activeInfo = info.id ? info : music.getPackInfo();
-  currentPack.textContent = activeInfo.name || music.getPackInfo().name;
+  const activeInfo = info.id ? info : music.info();
+  currentPack.textContent = activeInfo.name || music.info().name;
   pendingPack.textContent = activeInfo.pendingName || "—";
   document.querySelectorAll(".pack-button").forEach((button) => {
     const id = button.dataset.pack;
-    button.classList.toggle("is-active", id === (activeInfo.id || music.getPackInfo().id));
+    button.classList.toggle("is-active", id === (activeInfo.id || music.info().id));
     button.classList.toggle("is-pending", id === activeInfo.pendingId);
   });
 }
@@ -81,7 +81,7 @@ function renderPackButtons(info = {}) {
 renderPackRegistry();
 const sharedSettings = getMusicSettings();
 let music;
-const runtime = createMusicRuntime({
+const facade = createMusicFacade({
   gameId: GAME_IDS.RUNE_RELAY,
   engine: MUSIC_ENGINES.PROCEDURAL,
   callbacks: {
@@ -98,7 +98,7 @@ const runtime = createMusicRuntime({
   },
   settings: sharedSettings,
 });
-music = runtime.manager;
+music = facade;
 applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
 
 function setMessage(title, body, kicker = "MEMORY / PACK SWITCH") {
@@ -169,7 +169,7 @@ function flashPad(pad, className) {
 }
 
 function handleCorrectInput(pad) {
-  music.sfx("hit");
+  music.cue("hit");
   flashPad(pad, "is-hit");
   inputIndex += 1;
   renderSequenceProgress(inputIndex);
@@ -192,7 +192,7 @@ function handleMiss(pad) {
   acceptingInput = false;
   streak = 0;
   score = Math.max(0, score - 120);
-  music.sfx("miss");
+  music.cue("miss");
   flashPad(pad, "is-miss");
   updateStatus();
   setMessage("WRONG RUNE", "同じ列をもう一度表示します。", "SEQUENCE RESET");
@@ -210,15 +210,15 @@ function tapPad(index, pad) {
 function requestTension() {
   if (tensionRequested) return;
   tensionRequested = true;
-  const packInfo = music.getPackInfo();
+  const packInfo = music.info();
   if (packInfo.pendingId && PACKS[packInfo.pendingId]) {
-    void music.switchPack(PACKS[packInfo.pendingId], {
+    void music.pack(packInfo.pendingId, {
       quantize: "bar",
       crossfadeBeats: 1.5,
       mode: "tension",
     });
   } else {
-    void music.transitionTo("tension", { quantize: "bar", crossfadeBeats: 1.5 });
+    void music.state("tension", { quantize: "bar", crossfadeBeats: 1.5 });
   }
   setMessage("FINAL RUN", "残り10秒。次の小節からTENSIONへ移行します。", "TENSION QUEUED");
 }
@@ -244,14 +244,14 @@ function resetGame() {
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
   updateStatus();
-  renderPackButtons(music.getPackInfo());
+  renderPackButtons(music.info());
 }
 
 async function startGame() {
   resetGame();
   startButton.disabled = true;
   startButton.textContent = "起動中…";
-  await music.play("normal");
+  await music.start("normal");
   state = "playing";
   startedAt = performance.now();
   startButton.textContent = "RELAY中";
@@ -275,15 +275,15 @@ function endGame() {
   timerId = null;
   remaining = 0;
   clearPadEffects();
-  music.cancelPendingPackSwitch();
-  music.cancelPendingTransition();
-  void music.transitionTo("result", 0.6);
-  music.sfx(round >= 7 ? "win" : "lose");
+  music.cancel("pack");
+  music.cancel("state");
+  void music.state("result", { quantize: "immediate", seconds: 0.6 });
+  void music.outcome(round >= 7);
   updateStatus();
 
   const previousBest = Number(localStorage.getItem("rune-relay-best") || 0);
   if (score > previousBest) localStorage.setItem("rune-relay-best", String(score));
-  const info = music.getPackInfo();
+  const info = music.info();
   resultTitle.textContent = score > previousBest ? "NEW RELAY!" : "RELAY COMPLETE";
   resultMessage.textContent = `${sequence.length}個の列まで到達。現在のSTREAKは${streak}。`;
   finalScore.textContent = score.toLocaleString("ja-JP");
@@ -295,28 +295,30 @@ function endGame() {
 }
 
 async function choosePack(id) {
-  const pack = PACKS[id];
-  if (!pack) return;
+  const entry = PACKS[id];
+  if (!entry) return;
   saveMusicSettings({ proceduralPackId: id });
-  const info = music.getPackInfo();
+  const info = music.info();
 
   if (state === "playing") {
     if (id === info.id) {
-      if (info.pendingId) music.cancelPendingPackSwitch();
+      if (info.pendingId) music.cancel("pack");
       return;
     }
     const mode = remaining <= TENSION_AT ? "tension" : "normal";
-    await music.switchPack(pack, { quantize: "bar", crossfadeBeats: 2, mode });
-    setMessage(`${pack.name} を予約`, "現在の小節が終わるとMusic Packを切り替えます。", "PACK SWITCH QUEUED");
+    await music.pack(id, { quantize: "bar", crossfadeBeats: 2, mode });
+    setMessage(`${entry.name} を予約`, "現在の小節が終わるとMusic Packを切り替えます。", "PACK SWITCH QUEUED");
   } else {
-    music.setPack(pack);
-    renderPackButtons(music.getPackInfo());
+    await music.pack(id, { immediate: true });
+    renderPackButtons(music.info());
   }
 }
 
 async function applyAudioState() {
-  await music.setMusicEnabled(masterSoundEnabled && bgmToggle.checked);
-  await music.setSfxEnabled(masterSoundEnabled && sfxToggle.checked);
+  await music.audio({
+    musicEnabled: masterSoundEnabled && bgmToggle.checked,
+    sfxEnabled: masterSoundEnabled && sfxToggle.checked,
+  });
   soundButton.setAttribute("aria-pressed", String(masterSoundEnabled));
   soundButton.textContent = masterSoundEnabled ? "♪" : "×";
 }
@@ -330,7 +332,7 @@ packButtonsContainer.addEventListener("click", (event) => {
 soundButton.addEventListener("click", async () => {
   masterSoundEnabled = !masterSoundEnabled;
   await applyAudioState();
-  if (masterSoundEnabled && sfxToggle.checked) music.sfx("toggle");
+  if (masterSoundEnabled && sfxToggle.checked) music.cue("toggle");
 });
 
 bgmToggle.addEventListener("change", async () => {
@@ -343,12 +345,12 @@ sfxToggle.addEventListener("change", async () => {
 });
 bgmVolume.addEventListener("input", () => {
   bgmVolumeValue.textContent = bgmVolume.value;
-  music.setMusicVolume(Number(bgmVolume.value) / 100);
+  void music.audio({ musicVolume: Number(bgmVolume.value) / 100 });
   saveMusicSettings({ bgmVolume: Number(bgmVolume.value) / 100 });
 });
 sfxVolume.addEventListener("input", () => {
   sfxVolumeValue.textContent = sfxVolume.value;
-  music.setSfxVolume(Number(sfxVolume.value) / 100);
+  void music.audio({ sfxVolume: Number(sfxVolume.value) / 100 });
   saveMusicSettings({ sfxVolume: Number(sfxVolume.value) / 100 });
 });
 startButton.addEventListener("click", startGame);
@@ -356,4 +358,4 @@ retryButton.addEventListener("click", startGame);
 
 makeInitialSequence();
 updateStatus();
-renderPackButtons(music.getPackInfo());
+renderPackButtons(music.info());
