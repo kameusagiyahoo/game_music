@@ -10,6 +10,7 @@ on:
       - "tools/check_music_manifests.mjs"
       - "tools/check_music_formats.mjs"
       - "tools/check_music_runtime_fallback.mjs"
+      - "tools/check_music_preload_cache.mjs"
       - ".github/workflows/music-architecture-check.yml"
   pull_request:
     paths:
@@ -20,6 +21,7 @@ on:
       - "tools/check_music_manifests.mjs"
       - "tools/check_music_formats.mjs"
       - "tools/check_music_runtime_fallback.mjs"
+      - "tools/check_music_preload_cache.mjs"
       - ".github/workflows/music-architecture-check.yml"
 
 jobs:
@@ -38,6 +40,7 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check src/music-pack-manifest.js
+          node --check src/audio-asset-cache.js
           node --check src/music-format-resolver.js
           node --check src/wav-stem-manager.js
           node --check src/music-registry.js
@@ -55,3 +58,5 @@ jobs:
         run: node tools/check_music_formats.mjs
       - name: Check Runtime Decode Fallback
         run: node tools/check_music_runtime_fallback.mjs
+      - name: Check Audio Preload Cache
+        run: node tools/check_music_preload_cache.mjs
