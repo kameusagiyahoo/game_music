@@ -52,10 +52,49 @@ async function readPersistentResponse(key) {
   }
 }
 
+async function pruneOlderAssetVersions(cache, key) {
+  if (!cache?.keys || !cache?.delete) return;
+
+  let target;
+  try {
+    target = new URL(key, globalThis.location?.href || "https://music-cache.invalid/");
+  } catch (_) {
+    return;
+  }
+
+  const targetVersion = target.searchParams.get("gmv");
+  if (!targetVersion) return;
+
+  try {
+    const requests = await cache.keys();
+    await Promise.all(requests.map(async (request) => {
+      const requestUrl = typeof request === "string" ? request : request?.url;
+      if (!requestUrl) return;
+
+      let cached;
+      try {
+        cached = new URL(requestUrl, target.href);
+      } catch (_) {
+        return;
+      }
+
+      if (
+        cached.origin === target.origin &&
+        cached.pathname === target.pathname &&
+        cached.searchParams.get("gmv") &&
+        cached.searchParams.get("gmv") !== targetVersion
+      ) {
+        await cache.delete(request);
+      }
+    }));
+  } catch (_) {}
+}
+
 async function writePersistentResponse(key, response) {
   const cache = await openPersistentCache();
   if (!cache?.put || !response?.clone) return false;
   try {
+    await pruneOlderAssetVersions(cache, key);
     await cache.put(key, response.clone());
     persistentWrites += 1;
     return true;
