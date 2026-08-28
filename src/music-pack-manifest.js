@@ -1,4 +1,4 @@
-export const MUSIC_PACK_SCHEMA_VERSION = "1.0.0";
+export const MUSIC_PACK_SCHEMA_VERSION = "1.1.0";
 export const MUSIC_FACADE_API_VERSION = "1.0.0";
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
@@ -12,6 +12,7 @@ export function defineMusicPackManifest(input = {}) {
     states: [],
     stems: [],
     stingers: [],
+    formats: [],
     facadeApi: MUSIC_FACADE_API_VERSION,
     ...input,
   };
@@ -22,6 +23,7 @@ export function defineMusicPackManifest(input = {}) {
     states: Object.freeze([...(manifest.states || [])]),
     stems: Object.freeze([...(manifest.stems || [])]),
     stingers: Object.freeze([...(manifest.stingers || [])]),
+    formats: Object.freeze([...(manifest.formats || [])]),
     tags: Object.freeze([...(manifest.tags || [])]),
   });
 }
@@ -45,6 +47,9 @@ export function validateMusicPackManifest(manifest, pack = null) {
   if (!Array.isArray(manifest?.states) || manifest.states.length === 0) {
     errors.push("states must contain at least one state");
   }
+  if (!Array.isArray(manifest?.formats)) {
+    errors.push("formats must be an array");
+  }
 
   if (pack) {
     if (pack.id !== manifest.id) {
@@ -59,20 +64,36 @@ export function validateMusicPackManifest(manifest, pack = null) {
       if (!packStates.has(state)) errors.push(`declared state not found in pack.modes: ${state}`);
     }
 
-    const stemNames = Object.keys(pack.audioStems?.files || {});
+    const fallbackStemNames = Object.keys(pack.audioStems?.files || {});
+    const formatStemMaps = Object.values(pack.audioStems?.formats || {}).map((item) => item?.files || {});
+    const stemNames = fallbackStemNames.length
+      ? fallbackStemNames
+      : Object.keys(formatStemMaps[0] || {});
     for (const stem of manifest.stems || []) {
-      if (!stemNames.includes(stem)) errors.push(`declared stem not found in pack.audioStems.files: ${stem}`);
+      if (!stemNames.includes(stem)) errors.push(`declared stem not found in pack audio files: ${stem}`);
     }
     for (const stem of stemNames) {
       if (!(manifest.stems || []).includes(stem)) errors.push(`pack stem missing from manifest: ${stem}`);
     }
 
-    const stingerNames = Object.keys(pack.stingers?.files || {});
+    const fallbackStingerNames = Object.keys(pack.stingers?.files || {});
+    const formatStingerMaps = Object.values(pack.stingers?.formats || {}).map((item) => item?.files || {});
+    const stingerNames = fallbackStingerNames.length
+      ? fallbackStingerNames
+      : Object.keys(formatStingerMaps[0] || {});
     for (const stinger of manifest.stingers || []) {
-      if (!stingerNames.includes(stinger)) errors.push(`declared stinger not found in pack.stingers.files: ${stinger}`);
+      if (!stingerNames.includes(stinger)) errors.push(`declared stinger not found in pack audio files: ${stinger}`);
     }
     for (const stinger of stingerNames) {
       if (!(manifest.stingers || []).includes(stinger)) errors.push(`pack stinger missing from manifest: ${stinger}`);
+    }
+
+    const availableFormats = new Set([
+      ...Object.keys(pack.audioStems?.formats || {}),
+      ...Object.keys(pack.stingers?.formats || {}),
+    ]);
+    for (const format of manifest.formats || []) {
+      if (!availableFormats.has(format)) errors.push(`declared format not found in pack: ${format}`);
     }
   }
 
@@ -95,6 +116,7 @@ export function createRegistryEntry(manifest, pack) {
     states: manifest.states,
     stems: manifest.stems,
     stingers: manifest.stingers,
+    formats: manifest.formats,
     tags: manifest.tags,
     facadeApi: manifest.facadeApi,
     manifest,
