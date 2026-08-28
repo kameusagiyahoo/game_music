@@ -31,9 +31,11 @@ URL: https://kameusagiyahoo.github.io/game_music/games/orbit-rush/
 
 音楽の拍に同期して4方向の炉心を叩く40秒のリズム / 反射ゲーム。
 
-- 5本の実WAVステムを同一AudioContext時刻で同期スタート
+- 5本の同期Stemを同一AudioContext時刻でスタート
+- Pulse Pack v1.1.0はM4A / OGG / WAVを収録
+- Browser Format Resolverが対応形式を自動選択
 - Energyに応じて次小節からStem Mixを変更
-- Victory / Game Over専用WAV Stinger
+- Victory / Game Over専用Stinger
 - Stinger中はBGMをduckし、終了後に元の音量へ復帰
 - Registry上では `wav-stem` engineとして管理
 - `createMusicFacade()` がResolver経由でWAV Stem Runtimeを自動生成
@@ -64,10 +66,11 @@ URL: https://kameusagiyahoo.github.io/game_music/games/rune-relay/
 - procedural ↔ WAV Stemでもゲームロジックを変更せずRuntime交換
 - ゲーム側は `normal / tension / result` の共通Stateだけを送信
 - WAV EngineではStateがFocus / Overdrive / Result Stem Mixへ自動変換
-- 勝敗演出もStinger対応EngineならWAV Stinger、それ以外はSEへ自動フォールバック
+- 勝敗演出もStinger対応EngineならAudio Stinger、それ以外はSEへ自動フォールバック
 - 共通BGM / SE設定を利用
 
 URL: https://kameusagiyahoo.github.io/game_music/games/aether-shift/
+
 ## Global Music Settings
 
 全ゲーム共通の音楽設定画面。
@@ -79,7 +82,8 @@ URL: https://kameusagiyahoo.github.io/game_music/games/aether-shift/
 - procedural engineの共通Music Pack
 - `ゲーム推奨 / Fantasy / Neon / Clockwork`
 - WAV Stem engineの登録Pack表示
-- Registry件数 / engine別件数表示
+- Pack version / states / stems / stingers / formats表示
+- Manifest schema / Facade API version表示
 - 設定初期化
 
 URL: https://kameusagiyahoo.github.io/game_music/settings/music/
@@ -88,7 +92,7 @@ URL: https://kameusagiyahoo.github.io/game_music/settings/music/
 
 ## Music Pack Registry
 
-`src/music-registry.js` がMusic Packと共通設定のSource of Truthです。
+`src/music-registry.js` がManifestからRegistry entryを生成します。
 
 ```text
 Music Registry
@@ -99,14 +103,13 @@ Music Registry
 │  └─ Clockwork Grove
 │
 └─ wav-stem
-   └─ Pulse Forge WAV
+   └─ Pulse Forge WAV v1.1.0
+      └─ M4A / OGG / WAV
 ```
 
 ## Music Asset Resolver
 
-`src/music-asset-resolver.js` がRegistryと再生Engineの間を仲介します。
-
-ゲームや検証画面はPack IDまたはGame IDだけを渡し、Resolverが適切なManagerを生成します。
+`src/music-asset-resolver.js` がRegistryと再生Engineの間を仲介します。wav-stem Packでは、Manager生成前にMusic Format Resolverも通ります。
 
 ```text
 Game / Tool
@@ -115,37 +118,16 @@ Game / Tool
     v
 Music Asset Resolver
     |
-    +--> Registry entry: engine = procedural
-    |        -> MusicManager
+    +--> procedural -> MusicManager
     |
-    +--> Registry entry: engine = wav-stem
-             -> WavStemMusicManager
+    +--> wav-stem
+             |
+             v
+       Music Format Resolver
+             |
+             v
+       WavStemMusicManager
 ```
-
-主なAPI:
-
-```js
-resolveMusicAsset({ gameId, packId, engine });
-createMusicRuntime({ gameId, packId, callbacks, settings });
-getRuntimeDescriptor(runtime);
-applyMusicState(runtime, state, options);
-playMusicOutcome(runtime, success, options);
-stopMusicRuntime(runtime);
-```
-
-`createMusicRuntime()` の戻り値:
-
-```js
-{
-  entry,
-  engine,
-  manager,
-  settings,
-  capabilities
-}
-```
-
-Capabilitiesには、Pack切替・Layer Mix・WAV Stem・Stingerなど、そのEngineが扱える機能を持たせています。
 
 ## Asset Resolver Lab
 
@@ -154,32 +136,15 @@ Packの再生方式を意識せず、4つの登録Packを同じ画面から試�
 - Fantasy -> proceduralを自動選択
 - Neon -> proceduralを自動選択
 - Clockwork -> proceduralを自動選択
-- Pulse WAV -> wav-stemを自動選択
+- Pulse -> wav-stemを自動選択
+- PulseではM4A / OGG / WAVの選択結果をFORMAT欄に表示
 - Engine capabilitiesを表示
 - PackごとのModeを自動生成
-- WAV PackではStem Mix preset / Stingerも自動表示
-- 共通BGM / SE設定をそのまま利用
+- WAV Stem PackではStem Mix preset / Stingerも自動表示
 
 URL: https://kameusagiyahoo.github.io/game_music/debug/resolver/
 
-## Music Engine v8
-
-```text
-                       Music Registry
-                    /                  \
-          procedural                    wav-stem
-              \                         /
-               \                       /
-                Music Asset Resolver
-                         |
-              createMusicRuntime()
-                         |
-              +----------+----------+
-              |                     |
-        MusicManager        WavStemMusicManager
-              |                     |
-       generated audio          WAV assets
-```
+## Music Engine history
 
 ### v1
 - Music Pack分離
@@ -202,7 +167,7 @@ URL: https://kameusagiyahoo.github.io/game_music/debug/resolver/
 
 ### v5
 - `playStinger(name)`
-- Victory / Game Over WAV Stinger
+- Victory / Game Over Stinger
 - BGM ducking / release
 - Music Debug / Mixer画面
 
@@ -216,52 +181,19 @@ URL: https://kameusagiyahoo.github.io/game_music/debug/resolver/
 - Packをengine種別で一元登録
 - Gameごとの推奨PackをRegistryで管理
 - 全ゲーム共通のBGM / SE設定
-- `/settings/music/` 共通Settings画面
 
 ### v8
 - `src/music-asset-resolver.js`
-- Pack IDからEngineを自動判定
-- Game IDから既定Engineを自動判定
+- Pack ID / Game IDからEngineを自動判定
 - `createMusicRuntime()` でManager生成を共通化
-- EngineごとのCapabilities定義
-- `/debug/resolver/` Asset Resolver Lab
-- procedural / WAVを同じ選択UIから再生可能
-- `applyMusicState()` でEngine固有のMode / Stem Preset差を吸収
-- `playMusicOutcome()` でWAV Stinger / procedural SEを自動選択
-- Game 05でウェーブ境界のEngine hot-swapを実証
+- Engine capabilities定義
+- Asset Resolver Lab
 
-## Music Engine v9 — Runtime API Unification
+### v9
+- Game 01〜05の音楽初期化をResolver経由へ統一
+- Architecture Checkを追加
 
-Game 01〜05の音楽初期化をすべて `createMusicRuntime()` に統一しました。
-
-```text
-Game 01 Mystic Match
-Game 02 Orbit Rush
-Game 03 Pulse Forge
-Game 04 Rune Relay
-Game 05 Aether Shift
-        |
-        | createMusicRuntime()
-        v
-Music Asset Resolver
-        |
-        +--> procedural -> MusicManager
-        |
-        +--> wav-stem   -> WavStemMusicManager
-```
-
-ゲームコードからの直接 `new MusicManager()` / `new WavStemMusicManager()` は禁止します。
-
-境界を守るため、以下を追加しています。
-
-- `tools/check_music_boundary.py`
-- `.github/workflows/music-architecture-check.yml`
-- Game 01〜05に `createMusicRuntime()` が存在することを検証
-- GameコードからManager実装ファイルを直接importしていないことを検証
-
-Engine固有機能はRuntime生成後のCapabilitiesに応じて利用し、Manager選択そのものはResolverへ集約します。
-
-## Music Engine v10 — Common Facade API
+### v10 — Common Facade API
 
 Game 01〜05はMusic Managerを直接操作せず、`src/music-facade.js` の共通APIだけを利用します。
 
@@ -273,7 +205,7 @@ music.outcome(true);
 music.stop();
 ```
 
-高度機能もFacade越しに利用します。
+高度機能:
 
 ```js
 music.layer("build", { quantize: "bar" });
@@ -283,90 +215,81 @@ music.cancel("pack");
 music.info();
 ```
 
-構造:
+### v11 — Versioned Music Pack Manifest
 
-```text
-Game 01〜05
-    |
-    v
-MusicFacade
-    |
-    v
-Music Asset Resolver
-    |
-    +--> MusicManager
-    |
-    +--> WavStemMusicManager
-```
+各Music Packは音楽データだけでなくversioned Manifestを持ちます。ManifestがPack metadataのSource of Truthです。
 
-ゲームコードでは以下を禁止しています。
-
-- `createMusicRuntime()` の直接使用
-- `.manager` 参照
-- `MusicManager` / `WavStemMusicManager` の直接import
-- `play / transitionTo / setLayerPreset / playStinger / sfx` などManager APIの直接呼び出し
-
-`Music Architecture Check` がGitHub Actionsでこの境界とJavaScript構文を検証します。
-
-## Music Engine v11 — Versioned Music Pack Manifest
-
-各Music Packは音楽データだけでなく、versioned Manifestを持ちます。
+Pulse v1.1.0の例:
 
 ```js
 {
-  schemaVersion: "1.0.0",
+  schemaVersion: "1.1.0",
   id: "pulse",
-  version: "1.0.0",
+  version: "1.1.0",
   name: "Pulse Forge WAV",
   engine: "wav-stem",
   states: ["normal", "build", "overdrive", "result"],
   stems: ["drums", "bass", "chords", "melody", "sparkle"],
   stingers: ["victory", "gameover"],
+  formats: ["m4a", "ogg", "wav"],
   facadeApi: "1.0.0"
 }
 ```
 
-構造:
+CIでは `tools/check_music_manifests.mjs` がSemVer、Pack/Manifest整合性、State、Stem、Stinger、Format completeness、Schema/API互換性を検証します。
+
+### v12 — Browser Audio Format Resolver
+
+`src/music-format-resolver.js` がブラウザの `canPlayType()` を使い、wav-stem Packの音源形式を自動選択します。
 
 ```text
-Music Pack
-├─ pack data
-└─ manifest
-     ↓
-createRegistryEntry()
-     ↓
-Music Registry
-     ↓
-Resolver / Facade / Settings
+Pulse Manifest
+formats = M4A / OGG / WAV
+        |
+        v
+Browser canPlayType()
+        |
+        +--> M4A / AAC
+        |      unavailable
+        v
+        +--> OGG / Vorbis
+        |      unavailable
+        v
+        +--> WAV fallback
+        |
+        v
+AudioContext.decodeAudioData()
 ```
 
-ManifestがSource of Truthになるため、Registry側でPack名・説明・version・Engine・state一覧を重複記述しません。
+既定優先順位:
 
-追加API:
+```text
+M4A(AAC) -> OGG(Vorbis) -> WAV
+```
+
+M4Aを先頭にすることでiPhone / Safari系で使いやすい構成にしつつ、OGGとWAVをfallbackとして残します。
+
+追加API / metadata:
 
 ```js
-getMusicPackManifest(id);
-listMusicPackManifests();
-getMusicRegistrySnapshot();
-music.info(); // version / schema / states / stems / stingersも返す
+resolvePackAudioFormat(pack);
+detectAudioFormatSupport();
+music.info().audioFormat;
+music.info().formats;
 ```
 
-Settings画面では各Packのversion、state数、Stem数、Stinger数、Manifest schema version、Facade API versionを確認できます。
+`tools/check_music_formats.mjs` が以下をCIで検証します。
 
-CIでは `tools/check_music_manifests.mjs` が以下を検証します。
+- M4A対応 -> M4Aを選択
+- M4A非対応 / OGG対応 -> OGGを選択
+- M4A / OGG非対応 -> WAVを選択
+- Stem URLとStinger URLが選択形式へ切り替わる
 
-- Pack versionがSemVer形式
-- Manifest ID / Nameと実Packが一致
-- 宣言したstateが `pack.modes` に存在
-- Stem / Stinger宣言と実ファイル定義が一致
-- Manifest schema互換性
-- Facade API互換性
-- Music Packファイル数とRegistry登録数の不一致
-- Gameごとのdefault Packが実在
+なおv12は `canPlayType()` に基づく事前選択です。実際の `decodeAudioData()` が失敗した場合に次形式へ再試行するRuntime fallbackは次段階です。
 
 ## Music Debug / Mixer
 
-ゲームロジックを介さずWAV Music Engineだけを直接操作する検証画面。
+ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
 
 URL: https://kameusagiyahoo.github.io/game_music/debug/mixer/
 
@@ -374,28 +297,49 @@ URL: https://kameusagiyahoo.github.io/game_music/debug/mixer/
 
 ```text
 tools/generate_pulse_stems.py
-        ↓
-GitHub Actions
-        ↓
+        |
+        v
+WAV source
+        |
+        v
+GitHub Actions + ffmpeg
+        |
+        +--> .m4a (AAC 128 kbps)
+        +--> .ogg (Vorbis)
+        +--> .wav (fallback/source)
+        |
+        v
+GitHub Pages
+        |
+        v
+Music Format Resolver
+        |
+        v
+WavStemMusicManager
+```
+
+生成対象:
+
+```text
 assets/
 ├── stems/pulse/
-│   ├── drums.wav
-│   ├── bass.wav
-│   ├── chords.wav
-│   ├── melody.wav
-│   └── sparkle.wav
+│   ├── drums.{m4a,ogg,wav}
+│   ├── bass.{m4a,ogg,wav}
+│   ├── chords.{m4a,ogg,wav}
+│   ├── melody.{m4a,ogg,wav}
+│   └── sparkle.{m4a,ogg,wav}
 └── stingers/pulse/
-    ├── victory.wav
-    └── gameover.wav
-        ↓
-GitHub Pages
-        ↓
-WavStemMusicManager
+    ├── victory.{m4a,ogg,wav}
+    └── gameover.{m4a,ogg,wav}
 ```
 
 Workflow: `.github/workflows/generate-pulse-stems.yml`
 
-Manifest validation: `tools/check_music_manifests.mjs` / `.github/workflows/music-architecture-check.yml`
+Validation:
+- `tools/check_music_boundary.py`
+- `tools/check_music_manifests.mjs`
+- `tools/check_music_formats.mjs`
+- `.github/workflows/music-architecture-check.yml`
 
 ## Structure
 
@@ -409,6 +353,7 @@ src/
 ├── wav-stem-manager.js
 ├── music-registry.js
 ├── music-asset-resolver.js
+├── music-format-resolver.js
 ├── music-facade.js
 ├── music-pack-manifest.js
 └── music-packs/
@@ -424,7 +369,8 @@ debug/
 games/
 ├── orbit-rush/
 ├── pulse-forge/
-└── rune-relay/
+├── rune-relay/
+└── aether-shift/
 assets/
 ├── stems/pulse/
 └── stingers/pulse/
@@ -432,11 +378,10 @@ assets/
 
 ## Next candidates
 
+- Runtime decode failure時に `M4A -> OGG -> WAV` を再試行
 - Game 06追加
-
-- WAV / OGG / AACのブラウザ対応Format Resolver
-- procedural PackのWAV Stem版生成
-- WAV / OGG / AACのブラウザ対応Format Resolver
+- procedural Packの実Audio Stem版生成
+- Service Worker / preload / audio cache
 - Stingerを小節頭 / beat頭へQuantize
 - Transition専用Whoosh / Fill
 - 44.1 kHz stereo stemsへの差し替え
