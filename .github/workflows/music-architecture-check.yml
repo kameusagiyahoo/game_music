@@ -9,6 +9,7 @@ on:
       - "tools/check_music_boundary.py"
       - "tools/check_music_manifests.mjs"
       - "tools/check_music_formats.mjs"
+      - "tools/check_music_runtime_fallback.mjs"
       - ".github/workflows/music-architecture-check.yml"
   pull_request:
     paths:
@@ -18,6 +19,7 @@ on:
       - "tools/check_music_boundary.py"
       - "tools/check_music_manifests.mjs"
       - "tools/check_music_formats.mjs"
+      - "tools/check_music_runtime_fallback.mjs"
       - ".github/workflows/music-architecture-check.yml"
 
 jobs:
@@ -37,6 +39,7 @@ jobs:
         run: |
           node --check src/music-pack-manifest.js
           node --check src/music-format-resolver.js
+          node --check src/wav-stem-manager.js
           node --check src/music-registry.js
           node --check src/music-asset-resolver.js
           node --check src/music-facade.js
@@ -50,3 +53,5 @@ jobs:
         run: node tools/check_music_manifests.mjs
       - name: Check Music Format Resolver
         run: node tools/check_music_formats.mjs
+      - name: Check Runtime Decode Fallback
+        run: node tools/check_music_runtime_fallback.mjs
