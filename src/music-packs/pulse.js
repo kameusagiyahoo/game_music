@@ -1,3 +1,5 @@
+import { defineMusicPackManifest } from "../music-pack-manifest.js";
+
 const stemUrl = (name) => new URL(`../../assets/stems/pulse/${name}.wav`, import.meta.url).href;
 const stingerUrl = (name) => new URL(`../../assets/stingers/pulse/${name}.wav`, import.meta.url).href;
 
@@ -40,3 +42,17 @@ export const pulsePack = {
     result: { label: "RESULT · Cooling Steel", bpm: 112 },
   },
 };
+
+
+export const pulseManifest = defineMusicPackManifest({
+  id: pulsePack.id,
+  name: pulsePack.name,
+  shortName: "Pulse WAV",
+  description: "5本の同期WAV Stem",
+  engine: "wav-stem",
+  version: "1.0.0",
+  states: ["normal","build","overdrive","result"],
+  stems: ["drums","bass","chords","melody","sparkle"],
+  stingers: ["victory","gameover"],
+  tags: ["pulse","wav","stems","adaptive"],
+});
