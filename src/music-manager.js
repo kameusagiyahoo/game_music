@@ -28,6 +28,7 @@ export class MusicManager {
     this.pendingPackSwitch = null;
     this.pendingLayerMix = null;
     this.pendingLayerPreset = null;
+    this.pendingLayerQuantize = null;
     this.layerPreset = null;
     this.layerMix = this.#fullMix();
     this.musicEnabled = true;
@@ -125,6 +126,7 @@ export class MusicManager {
     this.pendingPackSwitch = null;
     this.pendingLayerMix = null;
     this.pendingLayerPreset = null;
+    this.pendingLayerQuantize = null;
     this.layerPreset = this.pack?.defaultLayerPreset || null;
     this.layerMix = this.#initialMix(mode);
     this.#replaceMusicBus(false);
@@ -142,13 +144,18 @@ export class MusicManager {
       ? { quantize: "immediate", seconds: options }
       : { quantize: "immediate", crossfadeBeats: 2, ...options };
 
-    if (config.quantize === "bar" && this.running) {
+    if ((config.quantize === "beat" || config.quantize === "bar") && this.running) {
       this.pendingTransition = {
         mode,
+        quantize: config.quantize,
         crossfadeBeats: Math.max(0.25, Number(config.crossfadeBeats ?? 2)),
       };
       this.#sync();
-      return;
+      return {
+        mode,
+        pending: true,
+        quantize: config.quantize,
+      };
     }
 
     const seconds = Number(config.seconds ?? this.#beatsToSeconds(config.crossfadeBeats ?? 2));
@@ -175,12 +182,17 @@ export class MusicManager {
     const config = { quantize: "immediate", fadeBeats: 1, ...options };
     const target = this.#normalizeMix({ ...this.layerMix, ...mix });
 
-    if (config.quantize === "bar" && this.running) {
+    if ((config.quantize === "beat" || config.quantize === "bar") && this.running) {
       this.pendingLayerMix = target;
       this.pendingLayerPreset = config.preset || null;
+      this.pendingLayerQuantize = config.quantize;
       this.#announceLayers();
       this.#sync();
-      return;
+      return {
+        pending: true,
+        quantize: config.quantize,
+        preset: config.preset || null,
+      };
     }
 
     const seconds = Number(config.seconds ?? this.#beatsToSeconds(config.fadeBeats ?? 1));
@@ -190,6 +202,7 @@ export class MusicManager {
   cancelPendingLayerMix() {
     this.pendingLayerMix = null;
     this.pendingLayerPreset = null;
+    this.pendingLayerQuantize = null;
     this.#announceLayers();
     this.#sync();
   }
@@ -204,6 +217,7 @@ export class MusicManager {
     this.pendingPackSwitch = null;
     this.pendingLayerMix = null;
     this.pendingLayerPreset = null;
+    this.pendingLayerQuantize = null;
     if (this.timer) window.clearTimeout(this.timer);
     this.timer = null;
     this.step = 0;
@@ -335,6 +349,8 @@ export class MusicManager {
       pendingPackName: this.pendingPackSwitch?.pack?.name || null,
       layerPreset: this.layerPreset,
       pendingLayerPreset: this.pendingLayerPreset,
+      pendingLayerQuantize: this.pendingLayerQuantize,
+      pendingTransitionQuantize: this.pendingTransition?.quantize || null,
       layerMix: { ...this.layerMix },
     });
   }
@@ -381,23 +397,37 @@ export class MusicManager {
     }
   }
 
-  #applyPendingAtBar() {
-    if (this.pendingPackSwitch) {
+  #applyPendingAtBoundary(barStep) {
+    const atBeat = barStep % STEPS_PER_BEAT === 0;
+    const atBar = barStep === 0;
+
+    if (atBar && this.pendingPackSwitch) {
       const { pack, mode, crossfadeBeats } = this.pendingPackSwitch;
       const seconds = this.#beatsToSeconds(crossfadeBeats);
       this.#applyPackSwitch(pack, mode, seconds, false);
-    } else if (this.pendingTransition) {
-      const { mode, crossfadeBeats } = this.pendingTransition;
-      const seconds = this.#beatsToSeconds(crossfadeBeats);
-      this.#applyTransition(mode, seconds, false);
+    }
+
+    if (this.pendingTransition) {
+      const quantize = this.pendingTransition.quantize || "bar";
+      const matches = quantize === "beat" ? atBeat : atBar;
+      if (matches) {
+        const { mode, crossfadeBeats } = this.pendingTransition;
+        const seconds = this.#beatsToSeconds(crossfadeBeats);
+        this.#applyTransition(mode, seconds, false);
+      }
     }
 
     if (this.pendingLayerMix) {
-      const target = this.pendingLayerMix;
-      const preset = this.pendingLayerPreset;
-      this.pendingLayerMix = null;
-      this.pendingLayerPreset = null;
-      this.#applyLayerMix(target, this.#beatsToSeconds(1), preset);
+      const quantize = this.pendingLayerQuantize || "bar";
+      const matches = quantize === "beat" ? atBeat : atBar;
+      if (matches) {
+        const target = this.pendingLayerMix;
+        const preset = this.pendingLayerPreset;
+        this.pendingLayerMix = null;
+        this.pendingLayerPreset = null;
+        this.pendingLayerQuantize = null;
+        this.#applyLayerMix(target, this.#beatsToSeconds(1), preset);
+      }
     }
   }
 
@@ -463,7 +493,9 @@ export class MusicManager {
     if (this.context.state === "suspended") this.context.resume().catch(() => {});
 
     const barStep = this.step % STEPS_PER_BAR;
-    if (barStep === 0 && (this.pendingPackSwitch || this.pendingTransition || this.pendingLayerMix)) this.#applyPendingAtBar();
+    if (this.pendingPackSwitch || this.pendingTransition || this.pendingLayerMix) {
+      this.#applyPendingAtBoundary(barStep);
+    }
 
     const patternStep = this.step % 16;
     this.#scheduleStep(patternStep, this.context.currentTime + 0.012);
