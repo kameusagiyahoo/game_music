@@ -43,15 +43,18 @@ function unique(values) {
 }
 
 export function getAvailableAudioFormats(pack) {
-  const stemFormats = Object.keys(pack?.audioStems?.formats || {});
-  const stingerFormats = Object.keys(pack?.stingers?.formats || {});
+  const sections = [
+    Object.keys(pack?.audioStems?.formats || {}),
+    Object.keys(pack?.stingers?.formats || {}),
+    Object.keys(pack?.transitionCues?.formats || {}),
+  ].filter((formats) => formats.length);
 
-  if (!stemFormats.length && !stingerFormats.length) return [AUDIO_FORMATS.WAV];
-  if (!stemFormats.length) return unique(stingerFormats);
-  if (!stingerFormats.length) return unique(stemFormats);
+  if (!sections.length) return [AUDIO_FORMATS.WAV];
 
-  const stingerSet = new Set(stingerFormats);
-  return stemFormats.filter((format) => stingerSet.has(format));
+  const [first, ...rest] = sections;
+  return unique(first).filter((format) =>
+    rest.every((formats) => formats.includes(format))
+  );
 }
 
 export function getCachedAudioFormat(pack) {
@@ -106,7 +109,7 @@ export function selectAudioFormat(pack, {
 } = {}) {
   const available = getAvailableAudioFormats(pack);
 
-  if (!pack?.audioStems?.formats && !pack?.stingers?.formats) {
+  if (!pack?.audioStems?.formats && !pack?.stingers?.formats && !pack?.transitionCues?.formats) {
     return {
       format: AUDIO_FORMATS.WAV,
       reason: "legacy-files",
@@ -187,6 +190,7 @@ export function getAudioFormatCandidates(pack, {
 export function applyAudioFormatToPack(pack, format, selection = null, candidates = null) {
   const stemFormat = pack?.audioStems?.formats?.[format];
   const stingerFormat = pack?.stingers?.formats?.[format];
+  const transitionFormat = pack?.transitionCues?.formats?.[format];
 
   return {
     ...pack,
@@ -205,13 +209,19 @@ export function applyAudioFormatToPack(pack, format, selection = null, candidate
       selectedFormat: format,
       selectedMime: stingerFormat?.mime || null,
     } : pack?.stingers,
+    transitionCues: pack?.transitionCues ? {
+      ...pack.transitionCues,
+      files: transitionFormat?.files || pack.transitionCues.files,
+      selectedFormat: format,
+      selectedMime: transitionFormat?.mime || null,
+    } : pack?.transitionCues,
   };
 }
 
 export function resolvePackAudioFormat(pack, options = {}) {
   const { selection, candidates } = getAudioFormatCandidates(pack, options);
 
-  if (!pack?.audioStems?.formats && !pack?.stingers?.formats) {
+  if (!pack?.audioStems?.formats && !pack?.stingers?.formats && !pack?.transitionCues?.formats) {
     return {
       pack: applyAudioFormatToPack(pack, selection.format, selection, candidates),
       selection,
