@@ -1,4 +1,4 @@
-export const MUSIC_PACK_SCHEMA_VERSION = "1.2.0";
+export const MUSIC_PACK_SCHEMA_VERSION = "1.3.0";
 export const MUSIC_FACADE_API_VERSION = "1.3.0";
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
@@ -13,6 +13,7 @@ export function defineMusicPackManifest(input = {}) {
     stems: [],
     stingers: [],
     transitionCues: [],
+    masteringProfile: null,
     formats: [],
     facadeApi: MUSIC_FACADE_API_VERSION,
     ...input,
@@ -55,6 +56,9 @@ export function validateMusicPackManifest(manifest, pack = null) {
   if (!Array.isArray(manifest?.transitionCues)) {
     errors.push("transitionCues must be an array");
   }
+  if (manifest?.masteringProfile != null && typeof manifest.masteringProfile !== "string") {
+    errors.push("masteringProfile must be a string or null");
+  }
 
   if (pack) {
     if (pack.id !== manifest.id) {
@@ -62,6 +66,16 @@ export function validateMusicPackManifest(manifest, pack = null) {
     }
     if (pack.name !== manifest.name) {
       errors.push(`manifest name ${manifest.name} does not match pack name ${pack.name}`);
+    }
+
+    if (manifest.masteringProfile) {
+      if (!pack.mastering?.profile) {
+        errors.push(`manifest mastering profile ${manifest.masteringProfile} missing from pack.mastering`);
+      } else if (pack.mastering.profile !== manifest.masteringProfile) {
+        errors.push(
+          `manifest mastering profile ${manifest.masteringProfile} does not match pack ${pack.mastering.profile}`
+        );
+      }
     }
 
     const packStates = new Set(Object.keys(pack.modes || {}));
@@ -136,6 +150,7 @@ export function createRegistryEntry(manifest, pack) {
     stems: manifest.stems,
     stingers: manifest.stingers,
     transitionCues: manifest.transitionCues,
+    masteringProfile: manifest.masteringProfile,
     formats: manifest.formats,
     tags: manifest.tags,
     facadeApi: manifest.facadeApi,
