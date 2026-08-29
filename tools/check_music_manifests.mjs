@@ -79,6 +79,6 @@ console.log(`Schema: v${snapshot.schemaVersion}`);
 console.log(`Facade API: v${snapshot.facadeApi}`);
 for (const entry of packs) {
   console.log(
-    `- ${entry.id}@${entry.version} [${entry.engine}] states=${entry.states.join(",")} stems=${entry.stems.length} stingers=${entry.stingers.length} transitionCues=${entry.transitionCues.length} formats=${entry.formats.join(",") || "n/a"}`
+    `- ${entry.id}@${entry.version} [${entry.engine}] states=${entry.states.join(",")} stems=${entry.stems.length} stingers=${entry.stingers.length} transitionCues=${entry.transitionCues.length} master=${entry.masteringProfile || "n/a"} formats=${entry.formats.join(",") || "n/a"}`
   );
 }
