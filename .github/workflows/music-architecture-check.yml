@@ -12,6 +12,7 @@ on:
       - "tools/check_music_runtime_fallback.mjs"
       - "tools/check_music_preload_cache.mjs"
       - "tools/check_music_persistent_cache.mjs"
+      - "tools/check_music_quantization.mjs"
       - ".github/workflows/music-architecture-check.yml"
   pull_request:
     paths:
@@ -24,6 +25,7 @@ on:
       - "tools/check_music_runtime_fallback.mjs"
       - "tools/check_music_preload_cache.mjs"
       - "tools/check_music_persistent_cache.mjs"
+      - "tools/check_music_quantization.mjs"
       - ".github/workflows/music-architecture-check.yml"
 
 jobs:
@@ -56,6 +58,7 @@ jobs:
           node --check games/rune-relay/game.js
           node --check games/aether-shift/game.js
           node --check debug/resolver/resolver.js
+          node --check debug/mixer/mixer.js
       - name: Check Music Pack manifests
         run: node tools/check_music_manifests.mjs
       - name: Check Music Format Resolver
@@ -66,3 +69,5 @@ jobs:
         run: node tools/check_music_preload_cache.mjs
       - name: Check Persistent Audio Cache
         run: node tools/check_music_persistent_cache.mjs
+      - name: Check Beat and Bar Quantization
+        run: node tools/check_music_quantization.mjs
