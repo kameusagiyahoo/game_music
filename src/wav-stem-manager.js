@@ -2,6 +2,9 @@ import { rememberAudioFormat } from "./music-format-resolver.js";
 import { getAudioBytes, preloadAudioUrls, getAudioAssetCacheInfo, getPersistentAudioCacheInfo } from "./audio-asset-cache.js";
 
 const STEMS = ["drums", "bass", "chords", "melody", "sparkle"];
+const STEPS_PER_BEAT = 2;
+const BEATS_PER_BAR = 4;
+const STEPS_PER_BAR = STEPS_PER_BEAT * BEATS_PER_BAR;
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value)));
 
 export class WavStemMusicManager {
@@ -32,6 +35,9 @@ export class WavStemMusicManager {
 
     this.pendingLayerMix = null;
     this.pendingLayerPreset = null;
+    this.pendingLayerQuantize = null;
+    this.pendingModeTransition = null;
+    this.pendingStinger = null;
     this.layerPreset = pack?.defaultLayerPreset || null;
     this.layerMix = this.#initialMix();
 
@@ -113,6 +119,9 @@ export class WavStemMusicManager {
     this.lastStep = -1;
     this.pendingLayerMix = null;
     this.pendingLayerPreset = null;
+    this.pendingLayerQuantize = null;
+    this.pendingModeTransition = null;
+    this.pendingStinger = null;
     this.layerPreset = this.pack?.defaultLayerPreset || null;
     this.layerMix = this.#initialMix();
     this.duckAmount = 1;
@@ -140,15 +149,47 @@ export class WavStemMusicManager {
     this.timer = window.setInterval(() => this.#clock(), 20);
   }
 
-  async transitionTo(mode) {
-    if (!this.pack?.modes?.[mode]) return;
+  async transitionTo(mode, options = {}) {
+    if (!this.pack?.modes?.[mode]) return null;
+    await this.init();
+
+    const config = { quantize: "immediate", ...options };
+    if (
+      this.running &&
+      (config.quantize === "beat" || config.quantize === "bar")
+    ) {
+      this.pendingModeTransition = {
+        mode,
+        quantize: config.quantize,
+      };
+      this.#announce();
+      this.#sync(this.lastStep < 0 ? 0 : this.lastStep);
+      return {
+        mode,
+        pending: true,
+        quantize: config.quantize,
+      };
+    }
+
+    this.pendingModeTransition = null;
     this.mode = mode;
     this.#announce();
     this.#sync(this.lastStep < 0 ? 0 : this.lastStep);
+    return {
+      mode,
+      pending: false,
+      quantize: "immediate",
+    };
   }
 
   setMode(mode) {
     return this.transitionTo(mode);
+  }
+
+  cancelPendingTransition() {
+    this.pendingModeTransition = null;
+    this.#announce();
+    if (this.lastStep >= 0) this.#sync(this.lastStep);
   }
 
   async setLayerPreset(name, options = {}) {
@@ -162,12 +203,20 @@ export class WavStemMusicManager {
     const config = { quantize: "immediate", fadeBeats: 1, ...options };
     const target = this.#normalizeMix({ ...this.layerMix, ...mix });
 
-    if (config.quantize === "bar" && this.running) {
+    if (
+      this.running &&
+      (config.quantize === "beat" || config.quantize === "bar")
+    ) {
       this.pendingLayerMix = target;
       this.pendingLayerPreset = config.preset || null;
+      this.pendingLayerQuantize = config.quantize;
       this.#announceLayers();
       this.#sync(this.lastStep < 0 ? 0 : this.lastStep);
-      return;
+      return {
+        pending: true,
+        quantize: config.quantize,
+        preset: config.preset || null,
+      };
     }
 
     const seconds = Number(config.seconds ?? this.#beatsToSeconds(config.fadeBeats ?? 1));
@@ -177,12 +226,47 @@ export class WavStemMusicManager {
   cancelPendingLayerMix() {
     this.pendingLayerMix = null;
     this.pendingLayerPreset = null;
+    this.pendingLayerQuantize = null;
     this.#announceLayers();
     if (this.lastStep >= 0) this.#sync(this.lastStep);
   }
 
   getLayerMix() {
     return { ...this.layerMix };
+  }
+
+  getQuantizedTime(quantize = "immediate", fromTime = null) {
+    if (!this.context) return 0;
+
+    const now = this.context.currentTime;
+    const minimumLead = 0.02;
+    if (
+      !this.running ||
+      (quantize !== "beat" && quantize !== "bar") ||
+      !Number.isFinite(this.transportStart)
+    ) {
+      return Math.max(now + 0.015, Number(fromTime ?? now));
+    }
+
+    const bpm = Number(this.pack?.audioStems?.bpm || 112);
+    const beatSeconds = 60 / bpm;
+    const quantum = quantize === "bar" ? beatSeconds * BEATS_PER_BAR : beatSeconds;
+    const reference = Math.max(Number(fromTime ?? now), now + minimumLead);
+    const elapsed = Math.max(0, reference - this.transportStart);
+    const index = Math.ceil(elapsed / quantum);
+    return this.transportStart + index * quantum;
+  }
+
+  getStingerInfo() {
+    const scheduledAt = Number(this.pendingStinger?.scheduledAt || 0);
+    const now = Number(this.context?.currentTime || 0);
+    return {
+      name: this.pendingStinger?.name || null,
+      quantize: this.pendingStinger?.quantize || null,
+      scheduledAt: scheduledAt || null,
+      pending: Boolean(this.stingerSource && scheduledAt > now),
+      playing: Boolean(this.stingerSource && (!scheduledAt || scheduledAt <= now)),
+    };
   }
 
   getAudioFormatInfo() {
@@ -284,7 +368,12 @@ export class WavStemMusicManager {
       layerMix: { ...this.layerMix },
       stemBuffersReady: STEMS.every((name) => Boolean(this.buffers[name])),
       loadedStingers: Object.keys(this.stingerBuffers),
-      stingerPlaying: Boolean(this.stingerSource),
+      stingerPlaying: this.getStingerInfo().playing,
+      stingerPending: this.getStingerInfo().pending,
+      pendingStinger: this.getStingerInfo(),
+      pendingMode: this.pendingModeTransition?.mode || null,
+      pendingModeQuantize: this.pendingModeTransition?.quantize || null,
+      pendingLayerQuantize: this.pendingLayerQuantize,
       audioFormat: this.selectedAudioFormat,
       stingerAudioFormat: this.stingerAudioFormat,
       audioFormatCandidates: [...this.audioFormatCandidates],
@@ -307,6 +396,9 @@ export class WavStemMusicManager {
     this.lastStep = -1;
     this.pendingLayerMix = null;
     this.pendingLayerPreset = null;
+    this.pendingLayerQuantize = null;
+    this.pendingModeTransition = null;
+    this.pendingStinger = null;
     this.duckAmount = 1;
     if (this.context) this.#applyMusicRootGain(0.04);
 
@@ -372,28 +464,47 @@ export class WavStemMusicManager {
     const duck = Math.max(0.08, Math.min(1, Number(options.duck ?? 0.30)));
     const attack = Math.max(0.01, Number(options.attack ?? 0.07));
     const release = Math.max(0.02, Number(options.release ?? 0.28));
+    const quantize = options.quantize === "beat" || options.quantize === "bar"
+      ? options.quantize
+      : "immediate";
+    const scheduledAt = this.getQuantizedTime(quantize);
+
     this.duckAmount = duck;
-    this.#applyMusicRootGain(attack);
+    this.#scheduleMusicDuck(scheduledAt, attack);
 
     const source = this.context.createBufferSource();
     source.buffer = buffer;
     source.connect(this.stingerBus);
     this.stingerSource = source;
+    this.pendingStinger = {
+      name,
+      quantize,
+      scheduledAt,
+    };
 
     source.onended = () => {
       if (this.stingerSource !== source) return;
       this.stingerSource = null;
+      this.pendingStinger = null;
       this.duckAmount = 1;
       this.#applyMusicRootGain(release);
     };
 
-    source.start(this.context.currentTime + 0.015);
-    return { name, duration: buffer.duration, format: this.stingerAudioFormat };
+    source.start(scheduledAt);
+    return {
+      name,
+      duration: buffer.duration,
+      format: this.stingerAudioFormat,
+      quantize,
+      scheduledAt,
+      delaySeconds: Math.max(0, scheduledAt - this.context.currentTime),
+    };
   }
 
   stopStinger(options = {}) {
     const source = this.stingerSource;
     this.stingerSource = null;
+    this.pendingStinger = null;
     if (source) {
       try { source.onended = null; } catch (_) {}
       try { source.stop(); } catch (_) {}
@@ -403,6 +514,13 @@ export class WavStemMusicManager {
       this.duckAmount = 1;
       if (this.context) this.#applyMusicRootGain(0.12);
     }
+  }
+
+  cancelPendingStinger() {
+    const info = this.getStingerInfo();
+    if (!info.pending) return false;
+    this.stopStinger({ restoreMusic: true });
+    return true;
   }
 
   sfx(name) {
@@ -575,25 +693,46 @@ export class WavStemMusicManager {
     if (this.lastStep >= 0 && step > this.lastStep + 1) this.lastStep = step - 1;
     this.lastStep = step;
 
-    if (step % 8 === 0 && this.pendingLayerMix) {
-      const target = this.pendingLayerMix;
-      const preset = this.pendingLayerPreset;
-      this.pendingLayerMix = null;
-      this.pendingLayerPreset = null;
-      this.#applyLayerMix(target, this.#beatsToSeconds(1), preset);
+    const barStep = ((step % STEPS_PER_BAR) + STEPS_PER_BAR) % STEPS_PER_BAR;
+    const atBeat = barStep % STEPS_PER_BEAT === 0;
+    const atBar = barStep === 0;
+
+    if (this.pendingModeTransition) {
+      const quantize = this.pendingModeTransition.quantize || "bar";
+      if ((quantize === "beat" && atBeat) || (quantize === "bar" && atBar)) {
+        this.mode = this.pendingModeTransition.mode;
+        this.pendingModeTransition = null;
+        this.#announce();
+      }
+    }
+
+    if (this.pendingLayerMix) {
+      const quantize = this.pendingLayerQuantize || "bar";
+      if ((quantize === "beat" && atBeat) || (quantize === "bar" && atBar)) {
+        const target = this.pendingLayerMix;
+        const preset = this.pendingLayerPreset;
+        this.pendingLayerMix = null;
+        this.pendingLayerPreset = null;
+        this.pendingLayerQuantize = null;
+        this.#applyLayerMix(target, this.#beatsToSeconds(1), preset);
+      }
     }
 
     this.#sync(step);
   }
 
   #sync(step) {
-    const barStep = ((step % 8) + 8) % 8;
+    const barStep = ((step % STEPS_PER_BAR) + STEPS_PER_BAR) % STEPS_PER_BAR;
     this.onSync({
       bar: Math.floor(Math.max(0, step) / 8) + 1,
-      beat: Math.floor(barStep / 2) + 1,
-      subdivision: barStep % 2,
+      beat: Math.floor(barStep / STEPS_PER_BEAT) + 1,
+      subdivision: barStep % STEPS_PER_BEAT,
       mode: this.mode,
+      pendingMode: this.pendingModeTransition?.mode || null,
+      pendingModeQuantize: this.pendingModeTransition?.quantize || null,
       pendingLayerPreset: this.pendingLayerPreset,
+      pendingLayerQuantize: this.pendingLayerQuantize,
+      pendingStinger: this.getStingerInfo(),
       layerPreset: this.layerPreset,
       layerMix: { ...this.layerMix },
       engine: "wav",
@@ -605,7 +744,8 @@ export class WavStemMusicManager {
     const label = this.pack?.modes?.[this.mode]?.label || this.mode;
     this.onModeChange(`${label} · WAV STEMS · ${this.selectedAudioFormat.toUpperCase()}`, {
       mode: this.mode,
-      pendingMode: null,
+      pendingMode: this.pendingModeTransition?.mode || null,
+      pendingModeQuantize: this.pendingModeTransition?.quantize || null,
       engine: "wav",
       format: this.selectedAudioFormat,
     });
@@ -617,6 +757,7 @@ export class WavStemMusicManager {
       preset: this.layerPreset,
       pendingMix: this.pendingLayerMix ? { ...this.pendingLayerMix } : null,
       pendingPreset: this.pendingLayerPreset,
+      pendingQuantize: this.pendingLayerQuantize,
       engine: "wav",
       format: this.selectedAudioFormat,
     });
