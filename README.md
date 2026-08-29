@@ -32,7 +32,7 @@ URL: https://kameusagiyahoo.github.io/game_music/games/orbit-rush/
 音楽の拍に同期して4方向の炉心を叩く40秒のリズム / 反射ゲーム。
 
 - 5本の同期Stemを同一AudioContext時刻でスタート
-- Pulse Pack v1.2.0はM4A / OGG / WAVを収録
+- Pulse Pack v1.3.0は44.1 kHz stereoのM4A / OGG / WAVを収録
 - Browser Format Resolverが対応形式を自動選択
 - Energyに応じて次小節からStem Mixを変更
 - Victory / Game Over専用Stinger
@@ -103,7 +103,7 @@ Music Registry
 │  └─ Clockwork Grove
 │
 └─ wav-stem
-   └─ Pulse Forge WAV v1.2.0
+   └─ Pulse Forge WAV v1.3.0
       └─ M4A / OGG / WAV
 ```
 
@@ -225,7 +225,7 @@ Pulse v1.1.0の例:
 {
   schemaVersion: "1.2.0",
   id: "pulse",
-  version: "1.2.0",
+  version: "1.3.0",
   name: "Pulse Forge WAV",
   engine: "wav-stem",
   states: ["normal", "build", "overdrive", "result"],
@@ -576,7 +576,7 @@ CIの `tools/check_music_quantization.mjs` では以下を実Transport時刻で�
 
 ### v17 — Transition Fill / Whoosh Engine
 
-Pulse Pack v1.2.0に、状態遷移専用の実Audio Cueを4種類追加しています。
+Pulse Pack v1.3.0に、状態遷移専用の実Audio Cueを4種類追加しています。
 
 ```text
 fill    = short drum fill
@@ -716,6 +716,83 @@ CIの `tools/check_music_transition_cues.mjs` では以下を検証します。
 
 Resolver Labでは4種類のCueを個別に試聴できます。
 
+### v18 — 44.1 kHz Stereo Audio Upgrade
+
+Pulse Pack v1.3.0では、5 Stem / 2 Stinger / 4 Transition Cueをすべて44.1 kHz・2ch Stereoへ再生成しています。
+
+```text
+44,100 Hz
+2 channels
+16-bit PCM source WAV
+M4A / AAC 160 kbps
+OGG / Vorbis q5
+```
+
+Stemは単純なdual-monoではなく、Stemごとに異なるstereo widthとmicro-delayを持ちます。
+
+```text
+Bass      = narrow stereo
+Drums     = moderate stereo
+Melody    = medium stereo
+Chords    = wide stereo
+Sparkle   = widest stereo
+```
+
+同期Stemではmicro-delayを循環参照で生成するため、左右差を作ってもフレーム数とループ周期は変わりません。
+
+Pulseの4小節Loopは112 BPM / 44.1 kHzでちょうど以下になります。
+
+```text
+16 beats
+378,000 frames
+8.571428... seconds
+```
+
+5 Stemすべてが同じ378,000 framesを持つことをCIで検証します。
+
+Stinger / Transition CueもStereo化しています。
+
+```text
+Victory / Game Over
+Fill / Whoosh / Riser / Impact
+```
+
+特にWhoosh / Riserは広め、Impact / Bass系は狭めにして、低域の定位を中央寄りに保ちます。
+
+生成Pipeline:
+
+```text
+Python synthesis
+    |
+    v
+44.1 kHz stereo WAV
+    |
+    +--> WAV 16-bit PCM
+    +--> OGG Vorbis q5
+    +--> M4A AAC 160 kbps
+    |
+    v
+ffprobe profile validation
+    |
+    v
+GitHub Pages
+```
+
+Generation Workflowは全生成ファイルについて `ffprobe` を実行し、44,100 Hz / 2ch以外を拒否します。
+
+さらに `tools/check_pulse_audio_profile.py` がリポジトリ内の実WAVを検査します。
+
+- sample rate = 44,100 Hz
+- channels = 2
+- PCM = 16-bit
+- 5 Stem = 378,000 framesで完全一致
+- 左右チャンネルに実差分がありdual-monoではない
+- Stinger / Transition CueもStereo
+
+Pulse Pack versionを1.3.0へ上げたため、v15のPersistent Cacheでは `?gmv=1.3.0` となり、旧音源cacheから自動的に世代更新されます。
+
+Engine APIやゲーム側の呼び出し方法は変更していません。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -778,6 +855,7 @@ Validation:
 - `tools/check_music_persistent_cache.mjs`
 - `tools/check_music_quantization.mjs`
 - `tools/check_music_transition_cues.mjs`
+- `tools/check_pulse_audio_profile.py`
 - `.github/workflows/music-architecture-check.yml`
 
 ## Structure
@@ -822,4 +900,3 @@ assets/
 
 - Game 06追加
 - procedural Packの実Audio Stem版生成
-- 44.1 kHz stereo stemsへの差し替え
