@@ -359,10 +359,10 @@ async function finishWave() {
 async function endGame() {
   state = "result";
   clearNodes();
-  await music.state("result", { quantize: "immediate", seconds: 0.30 });
+  await music.state("result", { quantize: "bar", seconds: 0.30 });
   const success = hits >= 20 || score >= 1200;
   try {
-    await music.outcome(success);
+    await music.outcome(success, { quantize: "bar" });
   } catch (error) {
     console.error(error);
   }
