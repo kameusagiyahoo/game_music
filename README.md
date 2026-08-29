@@ -232,7 +232,7 @@ Pulse v1.1.0の例:
   stems: ["drums", "bass", "chords", "melody", "sparkle"],
   stingers: ["victory", "gameover"],
   formats: ["m4a", "ogg", "wav"],
-  facadeApi: "1.0.0"
+  facadeApi: "1.2.0"
 }
 ```
 
@@ -374,7 +374,7 @@ music.info().preload;
 // }
 ```
 
-Facade API versionはpreload追加に伴い `1.1.0` へminor updateしました。既存Packが要求するFacade API `1.0.0` とは後方互換です。
+Facade API versionはv14で `1.1.0` へ更新され、v16のquantized Stinger対応で現在は `1.2.0` です。
 
 利用箇所:
 
@@ -485,6 +485,94 @@ CIでは `tools/check_music_persistent_cache.mjs` が以下を検証します。
 - Runtime音源URLへManifestのPack versionが付与される
 - Browser cache moduleとService Workerのcache名が一致
 
+### v16 — Beat / Bar Quantized Stingers & Transitions
+
+Mode transition、Layer Mix、WAV Stingerを同じTransport境界へ予約できます。
+
+```js
+await music.state("result", {
+  quantize: "bar"
+});
+
+await music.outcome(true, {
+  quantize: "bar"
+});
+```
+
+対応値:
+
+```text
+immediate
+beat
+bar
+```
+
+WAV Stingerは `setTimeout()` ではなくAudioContext時刻へ直接予約します。
+
+```text
+Result確定
+    |
+    v
+現在のTransport位置
+    |
+    +--> NEXT BEAT
+    |
+    +--> NEXT BAR
+             |
+             v
+AudioBufferSource.start(exactAudioContextTime)
+             |
+             v
+Victory / Game Over Stinger
+```
+
+BGM duckもStinger開始境界に合わせ、attack時間ぶんだけ手前からGain rampを予約します。
+
+WAV Engineでは以下を同じTransportへQuantizeできます。
+
+- Mode transition
+- Layer preset / layer mix
+- Victory / Game Over Stinger
+
+procedural EngineのMode transition / Layer Mixも `beat / bar` を利用できます。
+
+Facade:
+
+```js
+music.state("tension", { quantize: "beat" });
+music.outcome("victory", { quantize: "bar" });
+music.cancel("stinger");
+```
+
+`music.info()` では予約中Stingerも確認できます。
+
+```js
+music.info().stinger;
+// {
+//   name: "victory",
+//   quantize: "bar",
+//   scheduledAt: 12.957,
+//   pending: true,
+//   playing: false
+// }
+```
+
+Pulse ForgeとAether ShiftのResultでは、Result Stateと勝敗Stingerを次小節頭へ揃える構成に変更しています。
+
+Resolver LabではStingerをNEXT BEATへ予約し、WAV MixerではQUANTIZE ON時にNEXT BARへ予約して挙動を確認できます。
+
+Facade API versionは `1.2.0` です。
+
+CIの `tools/check_music_quantization.mjs` では以下を実Transport時刻で検証します。
+
+- WAV next-beat / next-bar時刻計算
+- WAV Mode transitionが次Beatで適用される
+- WAV Layer presetが同じBeatで適用される
+- Stingerの `AudioBufferSource.start()` が次小節時刻になる
+- BGM duck rampがStinger境界で完了する
+- 予約中Stingerをcancelできる
+- procedural Mode transitionが次Beatで適用される
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -540,6 +628,7 @@ Validation:
 - `tools/check_music_runtime_fallback.mjs`
 - `tools/check_music_preload_cache.mjs`
 - `tools/check_music_persistent_cache.mjs`
+- `tools/check_music_quantization.mjs`
 - `.github/workflows/music-architecture-check.yml`
 
 ## Structure
@@ -583,6 +672,5 @@ assets/
 
 - Game 06追加
 - procedural Packの実Audio Stem版生成
-- Stingerを小節頭 / beat頭へQuantize
 - Transition専用Whoosh / Fill
 - 44.1 kHz stereo stemsへの差し替え
