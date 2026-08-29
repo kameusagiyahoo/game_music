@@ -7,7 +7,9 @@ import struct
 import wave
 from pathlib import Path
 
-SAMPLE_RATE = 22050
+SAMPLE_RATE = 44100
+CHANNELS = 2
+BIT_DEPTH = 16
 BPM = 112
 BARS = 4
 BEATS_PER_BAR = 4
@@ -55,17 +57,79 @@ def add_tone(buf: list[float], start: float, duration: float, freq: float, amp: 
         buf[start_i + i] += sample * amp * envelope
 
 
-def write_wav(path: Path, samples: list[float]) -> None:
-    peak = max(max(abs(v) for v in samples), 1e-9)
+def stereoize(
+    samples: list[float],
+    width: float,
+    delay_ms: float,
+    *,
+    circular: bool,
+) -> tuple[list[float], list[float]]:
+    """Create deterministic stereo without changing the sample count.
+
+    Looping stems use circular micro-delays so the stereo image remains
+    periodic across the loop boundary. One-shot assets use zero-padded
+    delays to avoid wrapping their tail into the attack.
+    """
+    count = len(samples)
+    if count == 0:
+        return [], []
+
+    width = max(0.0, min(0.72, width))
+    delay = max(1, round(delay_ms * SAMPLE_RATE / 1000.0))
+    dry = 1.0 - width * 0.42
+    side = width * 0.58
+
+    left = [0.0] * count
+    right = [0.0] * count
+
+    for i, value in enumerate(samples):
+        if circular:
+            left_source = samples[(i - delay) % count]
+            right_source = samples[(i + delay) % count]
+        else:
+            left_source = samples[i - delay] if i >= delay else 0.0
+            right_source = samples[i + delay] if i + delay < count else 0.0
+
+        # A slow, deterministic pan drift prevents pure dual-mono while
+        # remaining periodic for loop assets.
+        phase = 2.0 * math.pi * i / max(1, count)
+        pan = math.sin(phase * 2.0) * width * 0.12
+        left[i] = value * (dry - pan) + left_source * side
+        right[i] = value * (dry + pan) + right_source * side
+
+    return left, right
+
+
+def write_wav(
+    path: Path,
+    samples: list[float],
+    *,
+    width: float = 0.24,
+    delay_ms: float = 3.0,
+    circular: bool = False,
+) -> None:
+    left, right = stereoize(samples, width, delay_ms, circular=circular)
+    peak = max(
+        max((abs(v) for v in left), default=0.0),
+        max((abs(v) for v in right), default=0.0),
+        1e-9,
+    )
     scale = 0.88 / peak
     pcm = bytearray()
-    for value in samples:
-        sample = max(-1.0, min(1.0, value * scale))
-        pcm.extend(struct.pack("<h", round(sample * 32767)))
+
+    for left_value, right_value in zip(left, right):
+        left_sample = max(-1.0, min(1.0, left_value * scale))
+        right_sample = max(-1.0, min(1.0, right_value * scale))
+        pcm.extend(struct.pack(
+            "<hh",
+            round(left_sample * 32767),
+            round(right_sample * 32767),
+        ))
+
     path.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(path), "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
+        wav.setnchannels(CHANNELS)
+        wav.setsampwidth(BIT_DEPTH // 8)
         wav.setframerate(SAMPLE_RATE)
         wav.writeframes(bytes(pcm))
 
@@ -270,17 +334,41 @@ def main() -> None:
         "melody": make_melody(),
         "sparkle": make_sparkle(),
     }
+    stem_stereo = {
+        "drums": (0.22, 2.4),
+        "bass": (0.08, 1.2),
+        "chords": (0.46, 5.2),
+        "melody": (0.34, 3.8),
+        "sparkle": (0.58, 6.8),
+    }
     for name, samples in stems.items():
-        write_wav(STEM_OUT / f"{name}.wav", samples)
-        print(f"generated stem: {name}.wav")
+        width, delay_ms = stem_stereo[name]
+        write_wav(
+            STEM_OUT / f"{name}.wav",
+            samples,
+            width=width,
+            delay_ms=delay_ms,
+            circular=True,
+        )
+        print(f"generated stereo stem: {name}.wav")
 
     stingers = {
         "victory": make_victory_stinger(),
         "gameover": make_gameover_stinger(),
     }
+    stinger_stereo = {
+        "victory": (0.42, 4.8),
+        "gameover": (0.30, 3.6),
+    }
     for name, samples in stingers.items():
-        write_wav(STINGER_OUT / f"{name}.wav", samples)
-        print(f"generated stinger: {name}.wav")
+        width, delay_ms = stinger_stereo[name]
+        write_wav(
+            STINGER_OUT / f"{name}.wav",
+            samples,
+            width=width,
+            delay_ms=delay_ms,
+        )
+        print(f"generated stereo stinger: {name}.wav")
 
     transitions = {
         "fill": make_fill_transition(),
@@ -288,11 +376,28 @@ def main() -> None:
         "riser": make_riser_transition(),
         "impact": make_impact_transition(),
     }
+    transition_stereo = {
+        "fill": (0.38, 3.6),
+        "whoosh": (0.62, 7.0),
+        "riser": (0.56, 6.2),
+        "impact": (0.26, 2.8),
+    }
     for name, samples in transitions.items():
-        write_wav(TRANSITION_OUT / f"{name}.wav", samples)
-        print(f"generated transition: {name}.wav")
+        width, delay_ms = transition_stereo[name]
+        write_wav(
+            TRANSITION_OUT / f"{name}.wav",
+            samples,
+            width=width,
+            delay_ms=delay_ms,
+        )
+        print(f"generated stereo transition: {name}.wav")
 
-    print(f"stems: {BARS} bars / {BPM} BPM / {SAMPLE_RATE} Hz / {DURATION:.6f}s")
+    print(
+        f"audio profile: {SAMPLE_RATE} Hz / {CHANNELS} ch / {BIT_DEPTH}-bit PCM"
+    )
+    print(
+        f"stems: {BARS} bars / {BPM} BPM / {SAMPLES} frames / {DURATION:.6f}s"
+    )
 
 
 if __name__ == "__main__":
