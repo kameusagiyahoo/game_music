@@ -6,6 +6,7 @@ on:
       - "src/**"
       - "games/**"
       - "debug/**"
+      - "settings/**"
       - "tools/check_music_boundary.py"
       - "tools/check_music_manifests.mjs"
       - "tools/check_music_formats.mjs"
@@ -20,6 +21,7 @@ on:
       - "src/**"
       - "games/**"
       - "debug/**"
+      - "settings/**"
       - "tools/check_music_boundary.py"
       - "tools/check_music_manifests.mjs"
       - "tools/check_music_formats.mjs"
@@ -61,6 +63,7 @@ jobs:
           node --check games/aether-shift/game.js
           node --check debug/resolver/resolver.js
           node --check debug/mixer/mixer.js
+          node --check settings/music/settings.js
       - name: Check Music Pack manifests
         run: node tools/check_music_manifests.mjs
       - name: Check Music Format Resolver
