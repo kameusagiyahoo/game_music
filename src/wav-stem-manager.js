@@ -796,6 +796,26 @@ export class WavStemMusicManager {
     this.#ramp(this.musicRoot.gain, Math.max(0.0001, target), seconds);
   }
 
+  #scheduleMusicDuck(scheduledAt, attack) {
+    if (!this.context || !this.musicRoot) return;
+
+    const param = this.musicRoot.gain;
+    const now = this.context.currentTime;
+    const target = this.musicEnabled
+      ? Math.max(0.0001, this.musicVolume * this.duckAmount)
+      : 0.0001;
+    const duckStart = Math.max(now, scheduledAt - attack);
+    const current = Math.max(param.value, 0.0001);
+
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(current, now);
+    if (duckStart > now) param.setValueAtTime(current, duckStart);
+    param.exponentialRampToValueAtTime(
+      target,
+      Math.max(duckStart + 0.01, scheduledAt),
+    );
+  }
+
   #ramp(param, value, seconds) {
     const now = this.context.currentTime;
     param.cancelScheduledValues(now);
