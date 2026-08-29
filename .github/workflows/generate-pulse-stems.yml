@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: pulse-audio-generation
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   generate:
