@@ -73,6 +73,7 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     memoryAssetCache: false,
     persistentAudioCache: false,
     serviceWorkerCache: false,
+    mastering: false,
   }),
   [MUSIC_ENGINES.WAV_STEM]: Object.freeze({
     quantizedModeTransition: true,
@@ -88,6 +89,7 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     memoryAssetCache: true,
     persistentAudioCache: true,
     serviceWorkerCache: true,
+    mastering: true,
   }),
 });
 
@@ -320,6 +322,8 @@ export function getRuntimeDescriptor(runtime) {
     preload: runtime.manager?.getPreloadInfo?.() || null,
     stinger: runtime.manager?.getStingerInfo?.() || null,
     transitionCue: runtime.manager?.getTransitionCueInfo?.() || null,
+    mastering: runtime.manager?.getMasteringInfo?.() || null,
+    masteringProfile: runtime.entry?.masteringProfile || null,
     states: [...(runtime.entry?.states || [])],
     stems: [...(runtime.entry?.stems || [])],
     stingers: [...(runtime.entry?.stingers || [])],
