@@ -118,7 +118,7 @@ if (networkAfterSecondLoad !== networkAfterFirstLoad) {
 if (secondCache.persistentHits < 11) errors.push(`expected >=11 persistent hits, got ${secondCache.persistentHits}`);
 if (secondCache.persistentEntries < 11) errors.push(`expected >=11 memory entries restored from persistent cache, got ${secondCache.persistentEntries}`);
 
-if (!versionedUrl.includes("gmv=1.3.0")) {
+if (!versionedUrl.includes("gmv=1.4.0")) {
   errors.push(`runtime asset URL is not Pack-versioned: ${versionedUrl}`);
 }
 
