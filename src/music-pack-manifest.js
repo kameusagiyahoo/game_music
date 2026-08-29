@@ -1,5 +1,5 @@
-export const MUSIC_PACK_SCHEMA_VERSION = "1.1.0";
-export const MUSIC_FACADE_API_VERSION = "1.2.0";
+export const MUSIC_PACK_SCHEMA_VERSION = "1.2.0";
+export const MUSIC_FACADE_API_VERSION = "1.3.0";
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
@@ -12,6 +12,7 @@ export function defineMusicPackManifest(input = {}) {
     states: [],
     stems: [],
     stingers: [],
+    transitionCues: [],
     formats: [],
     facadeApi: MUSIC_FACADE_API_VERSION,
     ...input,
@@ -23,6 +24,7 @@ export function defineMusicPackManifest(input = {}) {
     states: Object.freeze([...(manifest.states || [])]),
     stems: Object.freeze([...(manifest.stems || [])]),
     stingers: Object.freeze([...(manifest.stingers || [])]),
+    transitionCues: Object.freeze([...(manifest.transitionCues || [])]),
     formats: Object.freeze([...(manifest.formats || [])]),
     tags: Object.freeze([...(manifest.tags || [])]),
   });
@@ -49,6 +51,9 @@ export function validateMusicPackManifest(manifest, pack = null) {
   }
   if (!Array.isArray(manifest?.formats)) {
     errors.push("formats must be an array");
+  }
+  if (!Array.isArray(manifest?.transitionCues)) {
+    errors.push("transitionCues must be an array");
   }
 
   if (pack) {
@@ -88,9 +93,23 @@ export function validateMusicPackManifest(manifest, pack = null) {
       if (!(manifest.stingers || []).includes(stinger)) errors.push(`pack stinger missing from manifest: ${stinger}`);
     }
 
+    const fallbackTransitionCueNames = Object.keys(pack.transitionCues?.files || {});
+    const formatTransitionCueMaps = Object.values(pack.transitionCues?.formats || {}).map((item) => item?.files || {});
+    const transitionCueNames = fallbackTransitionCueNames.length
+      ? fallbackTransitionCueNames
+      : Object.keys(formatTransitionCueMaps[0] || {});
+
+    for (const cue of manifest.transitionCues || []) {
+      if (!transitionCueNames.includes(cue)) errors.push(`declared transition cue not found in pack audio files: ${cue}`);
+    }
+    for (const cue of transitionCueNames) {
+      if (!(manifest.transitionCues || []).includes(cue)) errors.push(`pack transition cue missing from manifest: ${cue}`);
+    }
+
     const availableFormats = new Set([
       ...Object.keys(pack.audioStems?.formats || {}),
       ...Object.keys(pack.stingers?.formats || {}),
+      ...Object.keys(pack.transitionCues?.formats || {}),
     ]);
     for (const format of manifest.formats || []) {
       if (!availableFormats.has(format)) errors.push(`declared format not found in pack: ${format}`);
@@ -116,6 +135,7 @@ export function createRegistryEntry(manifest, pack) {
     states: manifest.states,
     stems: manifest.stems,
     stingers: manifest.stingers,
+    transitionCues: manifest.transitionCues,
     formats: manifest.formats,
     tags: manifest.tags,
     facadeApi: manifest.facadeApi,
