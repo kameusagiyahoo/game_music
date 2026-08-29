@@ -12,6 +12,12 @@ const stingerFiles = (ext) => ({
   victory: audioUrl("stingers", "victory", ext),
   gameover: audioUrl("stingers", "gameover", ext),
 });
+const transitionFiles = (ext) => ({
+  fill: audioUrl("transitions", "fill", ext),
+  whoosh: audioUrl("transitions", "whoosh", ext),
+  riser: audioUrl("transitions", "riser", ext),
+  impact: audioUrl("transitions", "impact", ext),
+});
 
 export const pulsePack = {
   id: "pulse",
@@ -39,6 +45,21 @@ export const pulsePack = {
     },
   },
 
+  transitionCues: {
+    files: transitionFiles("wav"),
+    formats: {
+      m4a: { mime: 'audio/mp4; codecs="mp4a.40.2"', files: transitionFiles("m4a") },
+      ogg: { mime: 'audio/ogg; codecs="vorbis"', files: transitionFiles("ogg") },
+      wav: { mime: "audio/wav", files: transitionFiles("wav") },
+    },
+    modeMap: {
+      normal: { cue: "whoosh", position: "before" },
+      build: { cue: "riser", position: "before" },
+      overdrive: { cue: "fill", position: "before" },
+      result: { cue: "impact", position: "at" },
+    },
+  },
+
   layerPresets: {
     focus: { drums: 0.22, bass: 0.42, chords: 0.68, melody: 0.48, sparkle: 0.0 },
     build: { drums: 0.56, bass: 0.74, chords: 0.82, melody: 0.78, sparkle: 0.28 },
@@ -58,12 +79,13 @@ export const pulseManifest = defineMusicPackManifest({
   id: pulsePack.id,
   name: pulsePack.name,
   shortName: "Pulse WAV",
-  description: "5本の同期Stem / multi-format",
+  description: "5本の同期Stem / multi-format / transition cues",
   engine: "wav-stem",
-  version: "1.1.0",
+  version: "1.2.0",
   states: ["normal", "build", "overdrive", "result"],
   stems: ["drums", "bass", "chords", "melody", "sparkle"],
   stingers: ["victory", "gameover"],
+  transitionCues: ["fill", "whoosh", "riser", "impact"],
   formats: ["m4a", "ogg", "wav"],
-  tags: ["pulse", "wav", "ogg", "aac", "stems", "adaptive"],
+  tags: ["pulse", "wav", "ogg", "aac", "stems", "adaptive", "transition-cues"],
 });
