@@ -31,6 +31,8 @@ jobs:
         run: python tools/generate_pulse_stems.py
       - name: Validate generated WAV stereo profile
         run: python tools/check_pulse_audio_profile.py
+      - name: Validate generated mastering targets
+        run: python tools/check_pulse_mastering.py
       - name: Encode OGG and AAC/M4A variants
         run: |
           set -euo pipefail
