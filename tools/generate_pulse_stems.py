@@ -18,6 +18,7 @@ DURATION = BARS * BAR
 SAMPLES = round(DURATION * SAMPLE_RATE)
 STEM_OUT = Path("assets/stems/pulse")
 STINGER_OUT = Path("assets/stingers/pulse")
+TRANSITION_OUT = Path("assets/transitions/pulse")
 
 MELODY = [69, None, 72, None, 76, None, 72, None, 67, None, 71, None, 74, None, 71, None]
 BASS = [45, 41, 43, 40]
@@ -167,6 +168,100 @@ def make_gameover_stinger() -> list[float]:
     return buf
 
 
+def make_fill_transition() -> list[float]:
+    duration = 0.82
+    count = round(duration * SAMPLE_RATE)
+    buf = [0.0] * count
+    rng = random.Random(17)
+
+    hits = [0.0, 0.20, 0.38, 0.53, 0.65, 0.73]
+    for index, start in enumerate(hits):
+        start_i = round(start * SAMPLE_RATE)
+        hit_n = min(round(0.12 * SAMPLE_RATE), count - start_i)
+        for i in range(max(0, hit_n)):
+            t = i / SAMPLE_RATE
+            freq = 68.0 + 95.0 * math.exp(-20.0 * t)
+            amp = 0.11 + index * 0.018
+            buf[start_i + i] += math.sin(2 * math.pi * freq * t) * math.exp(-24 * t) * amp
+
+        noise_n = min(round(0.055 * SAMPLE_RATE), count - start_i)
+        for i in range(max(0, noise_n)):
+            buf[start_i + i] += rng.uniform(-1.0, 1.0) * math.exp(-58 * i / SAMPLE_RATE) * (0.018 + index * 0.003)
+
+    add_tone(buf, 0.58, 0.22, midi(81), 0.032, "triangle")
+    add_tone(buf, 0.68, 0.14, midi(88), 0.030, "sine")
+    return buf
+
+
+def make_whoosh_transition() -> list[float]:
+    duration = 0.72
+    count = round(duration * SAMPLE_RATE)
+    buf = [0.0] * count
+    rng = random.Random(23)
+    previous = 0.0
+
+    for i in range(count):
+        t = i / SAMPLE_RATE
+        progress = i / max(1, count - 1)
+        white = rng.uniform(-1.0, 1.0)
+        high = white - previous
+        previous = white
+        envelope = math.sin(math.pi * progress) ** 1.4
+        buf[i] += high * envelope * (0.018 + 0.085 * progress)
+
+        freq = 260.0 + 1700.0 * (progress ** 2)
+        buf[i] += math.sin(2 * math.pi * freq * t) * envelope * 0.018
+
+    return buf
+
+
+def make_riser_transition() -> list[float]:
+    duration = 1.12
+    count = round(duration * SAMPLE_RATE)
+    buf = [0.0] * count
+    rng = random.Random(31)
+    previous = 0.0
+
+    for i in range(count):
+        t = i / SAMPLE_RATE
+        progress = i / max(1, count - 1)
+        envelope = min(1.0, progress * 1.3) * max(0.0, 1.0 - max(0.0, progress - 0.92) / 0.08)
+
+        freq = 110.0 * (2.0 ** (progress * 3.0))
+        buf[i] += math.sin(2 * math.pi * freq * t) * 0.030 * envelope
+        buf[i] += math.sin(2 * math.pi * freq * 2.01 * t) * 0.013 * envelope
+
+        white = rng.uniform(-1.0, 1.0)
+        high = white - previous
+        previous = white
+        buf[i] += high * (0.010 + 0.050 * progress) * envelope
+
+    add_tone(buf, 0.82, 0.30, midi(81), 0.028, "triangle")
+    add_tone(buf, 0.95, 0.17, midi(88), 0.030, "sine")
+    return buf
+
+
+def make_impact_transition() -> list[float]:
+    duration = 0.95
+    count = round(duration * SAMPLE_RATE)
+    buf = [0.0] * count
+    rng = random.Random(47)
+
+    for i in range(count):
+        t = i / SAMPLE_RATE
+        low_freq = 48.0 + 72.0 * math.exp(-16.0 * t)
+        buf[i] += math.sin(2 * math.pi * low_freq * t) * math.exp(-5.2 * t) * 0.22
+
+        if t < 0.14:
+            buf[i] += rng.uniform(-1.0, 1.0) * math.exp(-28 * t) * 0.07
+
+    for note in (45, 52, 57):
+        add_tone(buf, 0.03, 0.72, midi(note), 0.032, "sine")
+
+    add_tone(buf, 0.00, 0.20, midi(81), 0.028, "triangle")
+    return buf
+
+
 def main() -> None:
     stems = {
         "drums": make_drums(),
@@ -186,6 +281,16 @@ def main() -> None:
     for name, samples in stingers.items():
         write_wav(STINGER_OUT / f"{name}.wav", samples)
         print(f"generated stinger: {name}.wav")
+
+    transitions = {
+        "fill": make_fill_transition(),
+        "whoosh": make_whoosh_transition(),
+        "riser": make_riser_transition(),
+        "impact": make_impact_transition(),
+    }
+    for name, samples in transitions.items():
+        write_wav(TRANSITION_OUT / f"{name}.wav", samples)
+        print(f"generated transition: {name}.wav")
 
     print(f"stems: {BARS} bars / {BPM} BPM / {SAMPLE_RATE} Hz / {DURATION:.6f}s")
 
