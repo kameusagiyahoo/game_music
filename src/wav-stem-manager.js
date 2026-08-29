@@ -6,6 +6,7 @@ const STEPS_PER_BEAT = 2;
 const BEATS_PER_BAR = 4;
 const STEPS_PER_BAR = STEPS_PER_BEAT * BEATS_PER_BAR;
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value)));
+const dbToGain = (db) => 10 ** (Number(db) / 20);
 
 export class WavStemMusicManager {
   constructor({ pack, onModeChange, onSync, onLayerChange, onFormatChange } = {}) {
@@ -17,6 +18,8 @@ export class WavStemMusicManager {
 
     this.context = null;
     this.master = null;
+    this.masterTrim = null;
+    this.limiter = null;
     this.musicRoot = null;
     this.stingerBus = null;
     this.transitionBus = null;
@@ -76,30 +79,35 @@ export class WavStemMusicManager {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       this.context = new AudioContext();
       this.master = this.context.createGain();
+      this.masterTrim = this.context.createGain();
+      this.limiter = this.context.createDynamicsCompressor();
       this.musicRoot = this.context.createGain();
       this.stingerBus = this.context.createGain();
       this.transitionBus = this.context.createGain();
       this.sfxBus = this.context.createGain();
-      const compressor = this.context.createDynamicsCompressor();
+
+      const mastering = this.#masteringConfig();
 
       this.master.gain.value = 1;
+      this.masterTrim.gain.value = dbToGain(mastering.headroomDb);
       this.musicRoot.gain.value = this.musicEnabled ? this.musicVolume : 0.0001;
       this.stingerBus.gain.value = this.musicEnabled ? this.musicVolume : 0.0001;
       this.transitionBus.gain.value = this.musicEnabled ? this.musicVolume : 0.0001;
       this.sfxBus.gain.value = this.sfxEnabled ? this.sfxVolume : 0.0001;
 
-      compressor.threshold.value = -16;
-      compressor.knee.value = 18;
-      compressor.ratio.value = 5;
-      compressor.attack.value = 0.006;
-      compressor.release.value = 0.18;
+      this.limiter.threshold.value = mastering.limiter.thresholdDb;
+      this.limiter.knee.value = mastering.limiter.kneeDb;
+      this.limiter.ratio.value = mastering.limiter.ratio;
+      this.limiter.attack.value = mastering.limiter.attack;
+      this.limiter.release.value = mastering.limiter.release;
 
       this.musicRoot.connect(this.master);
       this.stingerBus.connect(this.master);
       this.transitionBus.connect(this.master);
       this.sfxBus.connect(this.master);
-      this.master.connect(compressor);
-      compressor.connect(this.context.destination);
+      this.master.connect(this.masterTrim);
+      this.masterTrim.connect(this.limiter);
+      this.limiter.connect(this.context.destination);
 
       STEMS.forEach((name) => {
         const bus = this.context.createGain();
@@ -322,6 +330,19 @@ export class WavStemMusicManager {
     };
   }
 
+  getMasteringInfo() {
+    const config = this.#masteringConfig();
+    return {
+      profile: config.profile,
+      headroomDb: config.headroomDb,
+      trimGain: this.masterTrim?.gain?.value ?? dbToGain(config.headroomDb),
+      limiter: {
+        ...config.limiter,
+        reductionDb: Number(this.limiter?.reduction ?? 0),
+      },
+    };
+  }
+
   async preload({ stingers = true, transitions = true, concurrency = 4 } = {}) {
     if (this.preloadPromise) return this.preloadPromise;
 
@@ -425,6 +446,7 @@ export class WavStemMusicManager {
       audioFormat: this.selectedAudioFormat,
       stingerAudioFormat: this.stingerAudioFormat,
       transitionCueAudioFormat: this.transitionCueAudioFormat,
+      mastering: this.getMasteringInfo(),
       audioFormatCandidates: [...this.audioFormatCandidates],
       audioFormatAttempts: this.audioFormatAttempts.map((attempt) => ({ ...attempt })),
     };
