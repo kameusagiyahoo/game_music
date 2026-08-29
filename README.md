@@ -32,7 +32,7 @@ URL: https://kameusagiyahoo.github.io/game_music/games/orbit-rush/
 音楽の拍に同期して4方向の炉心を叩く40秒のリズム / 反射ゲーム。
 
 - 5本の同期Stemを同一AudioContext時刻でスタート
-- Pulse Pack v1.1.0はM4A / OGG / WAVを収録
+- Pulse Pack v1.2.0はM4A / OGG / WAVを収録
 - Browser Format Resolverが対応形式を自動選択
 - Energyに応じて次小節からStem Mixを変更
 - Victory / Game Over専用Stinger
@@ -103,7 +103,7 @@ Music Registry
 │  └─ Clockwork Grove
 │
 └─ wav-stem
-   └─ Pulse Forge WAV v1.1.0
+   └─ Pulse Forge WAV v1.2.0
       └─ M4A / OGG / WAV
 ```
 
@@ -223,16 +223,17 @@ Pulse v1.1.0の例:
 
 ```js
 {
-  schemaVersion: "1.1.0",
+  schemaVersion: "1.2.0",
   id: "pulse",
-  version: "1.1.0",
+  version: "1.2.0",
   name: "Pulse Forge WAV",
   engine: "wav-stem",
   states: ["normal", "build", "overdrive", "result"],
   stems: ["drums", "bass", "chords", "melody", "sparkle"],
   stingers: ["victory", "gameover"],
+  transitionCues: ["fill", "whoosh", "riser", "impact"],
   formats: ["m4a", "ogg", "wav"],
-  facadeApi: "1.2.0"
+  facadeApi: "1.3.0"
 }
 ```
 
@@ -374,11 +375,11 @@ music.info().preload;
 // }
 ```
 
-Facade API versionはv14で `1.1.0` へ更新され、v16のquantized Stinger対応で現在は `1.2.0` です。
+Facade API versionはv14で `1.1.0`、v16で `1.2.0`、v17のTransition Cue API追加で現在は `1.3.0` です。
 
 利用箇所:
 
-- Pulse Forge: ページ表示直後に5 Stem + 2 Stingerをpreload
+- Pulse Forge: ページ表示直後に5 Stem + 2 Stinger + 4 Transition Cueをpreload
 - Aether Shift: wav-stem Packを選択 / 次Waveへ予約した時点でpreload
 - Resolver Lab: Pack選択時にpreloadし、START前にPRELOADED状態を表示
 
@@ -474,13 +475,13 @@ info.persistent;
 // }
 ```
 
-Resolver Labでは `PRELOADED 7/7 · PERSISTENT 7` のように永続保存件数も表示します。
+Resolver Labでは `PRELOADED 11/11 · PERSISTENT 11` のように永続保存件数も表示します。
 
 CIでは `tools/check_music_persistent_cache.mjs` が以下を検証します。
 
-- 初回preloadで7 assetだけnetwork取得
+- 初回preloadで11 assetだけnetwork取得
 - Memory Cacheを全消去してページ再訪相当の状態を再現
-- 2回目preloadがCache Storageから7 assetを復元
+- 2回目preloadがCache Storageから11 assetを復元
 - 2回目のnetwork fetchが0
 - Runtime音源URLへManifestのPack versionが付与される
 - Browser cache moduleとService Workerのcache名が一致
@@ -573,6 +574,148 @@ CIの `tools/check_music_quantization.mjs` では以下を実Transport時刻で�
 - 予約中Stingerをcancelできる
 - procedural Mode transitionが次Beatで適用される
 
+### v17 — Transition Fill / Whoosh Engine
+
+Pulse Pack v1.2.0に、状態遷移専用の実Audio Cueを4種類追加しています。
+
+```text
+fill    = short drum fill
+whoosh  = noise + upward sweep
+riser   = tonal / noise build-up
+impact  = low-frequency transition hit
+```
+
+各CueはStem / Stingerと同様に3形式です。
+
+```text
+M4A / AAC
+OGG / Vorbis
+WAV
+```
+
+Manifest Schema v1.2.0では `transitionCues` を正式metadataとして管理します。
+
+```js
+transitionCues: [
+  "fill",
+  "whoosh",
+  "riser",
+  "impact"
+]
+```
+
+Pulse Packのmodeごとの既定Cue:
+
+```text
+normal     <- whoosh / before
+build      <- riser  / before
+overdrive  <- fill   / before
+result     <- impact / at
+```
+
+`before` はCueの終了時刻をBeat / Bar境界へ合わせます。
+
+```text
+Fill start
+    |
+    | 0.82 sec
+    v
+NEXT BAR
+    |
+    +-- Mode transition
+    +-- Layer transition
+    +-- Victory / Game Over Stinger
+```
+
+`at` はCueそのものを境界時刻から開始します。
+
+```text
+NEXT BAR
+   |
+   +-- Impact start
+   +-- Result state
+   +-- Result mix
+   +-- Victory / Game Over
+```
+
+WAV Engineでは `AudioBufferSource.start(AudioContextTime)` を使ってCueを予約し、State transition側にも同じ `scheduledAt` を共有します。
+
+共通FacadeではState変更時にPackのmodeMapからTransition Cueを自動選択します。
+
+```js
+await music.state("tension", {
+  quantize: "bar"
+});
+```
+
+Pulseでは内部的にFillが自動挿入されます。自動演出を無効化する場合:
+
+```js
+await music.state("tension", {
+  quantize: "bar",
+  transitionCue: false
+});
+```
+
+明示的なCue再生も可能です。
+
+```js
+await music.transitionCue("riser", {
+  quantize: "bar",
+  position: "before"
+});
+
+music.cancel("transitionCue");
+```
+
+Result State後に `music.outcome()` を呼ぶ場合、v17では直前のState transition時刻を保持し、Victory / Game Over Stingerを同じ境界へ自動整列します。
+
+Capabilities:
+
+```js
+music.info().capabilities.transitionCues === true;
+```
+
+Pulseのpreload対象は以下の11 assetです。
+
+```text
+5 synchronized stems
+2 result stingers
+4 transition cues
+-------------------
+11 assets
+```
+
+Transition CueもMemory Cache / Persistent Cache / Service Worker / Runtime Format Fallbackの対象です。
+
+音源生成:
+
+```text
+tools/generate_pulse_stems.py
+        |
+        +-- stems
+        +-- stingers
+        +-- fill / whoosh / riser / impact
+        |
+        v
+GitHub Actions + ffmpeg
+        |
+        +-- M4A
+        +-- OGG
+        +-- WAV
+```
+
+CIの `tools/check_music_transition_cues.mjs` では以下を検証します。
+
+- Overdriveの既定CueがFill / before
+- Fillの終了時刻がState transition境界と一致
+- Mode / Layer transitionが同じ `scheduledAt` を共有
+- Victory Stingerが同一境界へ整列
+- Impactが次小節頭から開始
+- AudioBufferSourceの予約時刻が計画時刻と一致
+
+Resolver Labでは4種類のCueを個別に試聴できます。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -614,9 +757,14 @@ assets/
 │   ├── chords.{m4a,ogg,wav}
 │   ├── melody.{m4a,ogg,wav}
 │   └── sparkle.{m4a,ogg,wav}
-└── stingers/pulse/
-    ├── victory.{m4a,ogg,wav}
-    └── gameover.{m4a,ogg,wav}
+├── stingers/pulse/
+│   ├── victory.{m4a,ogg,wav}
+│   └── gameover.{m4a,ogg,wav}
+└── transitions/pulse/
+    ├── fill.{m4a,ogg,wav}
+    ├── whoosh.{m4a,ogg,wav}
+    ├── riser.{m4a,ogg,wav}
+    └── impact.{m4a,ogg,wav}
 ```
 
 Workflow: `.github/workflows/generate-pulse-stems.yml`
@@ -629,6 +777,7 @@ Validation:
 - `tools/check_music_preload_cache.mjs`
 - `tools/check_music_persistent_cache.mjs`
 - `tools/check_music_quantization.mjs`
+- `tools/check_music_transition_cues.mjs`
 - `.github/workflows/music-architecture-check.yml`
 
 ## Structure
@@ -665,12 +814,12 @@ games/
 └── aether-shift/
 assets/
 ├── stems/pulse/
-└── stingers/pulse/
+├── stingers/pulse/
+└── transitions/pulse/
 ```
 
 ## Next candidates
 
 - Game 06追加
 - procedural Packの実Audio Stem版生成
-- Transition専用Whoosh / Fill
 - 44.1 kHz stereo stemsへの差し替え
