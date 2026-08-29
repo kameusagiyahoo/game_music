@@ -789,6 +789,49 @@ export class WavStemMusicManager {
     );
   }
 
+  async #loadTransitionCueBuffer(name, fallbackFile) {
+    if (this.transitionCueBuffers[name]) return this.transitionCueBuffers[name];
+
+    const candidates = [...new Set([
+      this.transitionCueAudioFormat,
+      ...this.#orderedFormatCandidates(),
+    ].filter(Boolean))];
+    let lastError = null;
+
+    for (const format of candidates) {
+      try {
+        const files = this.#filesForFormat("transitionCues", format);
+        const file = files?.[name] || (format === this.selectedAudioFormat ? fallbackFile : null);
+        if (!file) throw new Error(`${format} missing transition cue ${name}`);
+
+        const data = await getAudioBytes(file);
+        const buffer = await this.context.decodeAudioData(data);
+
+        this.transitionCueBuffers[name] = buffer;
+        this.transitionCueAudioFormat = format;
+        this.onFormatChange({
+          ...this.getAudioFormatInfo(),
+          stage: "transition-cue",
+          name,
+        });
+        return buffer;
+      } catch (error) {
+        lastError = error;
+        this.audioFormatAttempts.push({
+          stage: "transition-cue",
+          format,
+          name,
+          message: error?.message || String(error),
+        });
+        console.warn(`[Music] ${format} transition cue decode failed; trying fallback`, error);
+      }
+    }
+
+    throw new Error(
+      `Failed to load transition cue ${name} after ${candidates.join(" → ")}: ${lastError?.message || "unknown error"}`
+    );
+  }
+
   #orderedFormatCandidates() {
     return [...new Set([
       this.selectedAudioFormat,
