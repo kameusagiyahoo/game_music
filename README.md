@@ -103,7 +103,7 @@ Music Registry
 │  └─ Clockwork Grove
 │
 └─ wav-stem
-   └─ Pulse Forge WAV v1.3.0
+   └─ Pulse Forge WAV v1.4.0
       └─ M4A / OGG / WAV
 ```
 
@@ -219,19 +219,20 @@ music.info();
 
 各Music Packは音楽データだけでなくversioned Manifestを持ちます。ManifestがPack metadataのSource of Truthです。
 
-Pulse v1.1.0の例:
+現在のPulse Manifest例:
 
 ```js
 {
-  schemaVersion: "1.2.0",
+  schemaVersion: "1.3.0",
   id: "pulse",
-  version: "1.3.0",
+  version: "1.4.0",
   name: "Pulse Forge WAV",
   engine: "wav-stem",
   states: ["normal", "build", "overdrive", "result"],
   stems: ["drums", "bass", "chords", "melody", "sparkle"],
   stingers: ["victory", "gameover"],
   transitionCues: ["fill", "whoosh", "riser", "impact"],
+  masteringProfile: "game-balanced-v1",
   formats: ["m4a", "ogg", "wav"],
   facadeApi: "1.3.0"
 }
@@ -369,8 +370,8 @@ music.info().preload;
 // {
 //   state: "ready",
 //   format: "m4a",
-//   requested: 7,
-//   loaded: 7,
+//   requested: 11,
+//   loaded: 11,
 //   cache: { entries, ready, bytes, hits, misses, ... }
 // }
 ```
@@ -387,7 +388,7 @@ START後に選択形式のdecodeが失敗した場合はv13のRuntime Decode Fal
 
 CIでは `tools/check_music_preload_cache.mjs` が以下を検証します。
 
-- preload時に7 audio assetsを取得
+- preload時に11 audio assetsを取得
 - START時にStemの追加network fetchが発生しない
 - Victory Stinger再生時にも追加network fetchが発生しない
 - 共有cache hitが発生する
@@ -433,6 +434,7 @@ music-sw.js
   |
   +-- intercept only /assets/stems/
   +-- intercept only /assets/stingers/
+  +-- intercept only /assets/transitions/
   +-- cache-first
   +-- HTML / JS / CSSには干渉しない
 ```
@@ -471,7 +473,7 @@ info.persistent;
 // {
 //   supported: true,
 //   name: "game-music-audio-v15",
-//   entries: 7
+//   entries: 11
 // }
 ```
 
@@ -793,6 +795,137 @@ Pulse Pack versionを1.3.0へ上げたため、v15のPersistent Cacheでは `?gm
 
 Engine APIやゲーム側の呼び出し方法は変更していません。
 
+### v19 — Loudness / Mastering Engine
+
+Pulse Pack v1.4.0では、生成音源とRuntime Master Busの両方へMasteringを導入しています。
+
+```text
+Source synthesis
+      |
+      v
+per-asset RMS target
+      +
+peak ceiling
+      |
+      v
+44.1 kHz stereo assets
+      |
+      v
+runtime layer mix
+      |
+      v
+-3 dB headroom trim
+      |
+      v
+-1.5 dB peak limiter
+      |
+      v
+AudioContext destination
+```
+
+生成時は全Assetを同じ音量へ揃えません。役割ごとにRMS targetとPeak Ceilingを設定します。
+
+```text
+Stem
+Drums     RMS target -20 dBFS / peak ceiling -5 dBFS
+Bass      RMS target -21 dBFS / peak ceiling -6 dBFS
+Chords    RMS target -22 dBFS / peak ceiling -7 dBFS
+Melody    RMS target -21 dBFS / peak ceiling -6 dBFS
+Sparkle   RMS target -24 dBFS / peak ceiling -8 dBFS
+
+Stinger
+Victory   RMS target -16.5 dBFS / peak ceiling -2.5 dBFS
+Game Over RMS target -18.0 dBFS / peak ceiling -3.0 dBFS
+
+Transition
+Fill      RMS target -18.5 dBFS / peak ceiling -4.0 dBFS
+Whoosh    RMS target -20.0 dBFS / peak ceiling -5.0 dBFS
+Riser     RMS target -19.0 dBFS / peak ceiling -4.5 dBFS
+Impact    RMS target -16.5 dBFS / peak ceiling -2.5 dBFS
+```
+
+Masteringは「RMS targetへ近づけるGain」と「Peak Ceilingを守るGain」の小さい方を採用します。したがってDrumsやFillのようにTransientが大きい素材ではPeak Ceilingが先に効き、無理に平均音量を持ち上げません。
+
+Pulse Pack metadata:
+
+```js
+mastering: {
+  profile: "game-balanced-v1",
+  headroomDb: -3.0,
+  limiter: {
+    thresholdDb: -1.5,
+    kneeDb: 0,
+    ratio: 20,
+    attack: 0.003,
+    release: 0.12
+  }
+}
+```
+
+Runtime Master Bus:
+
+```text
+Music Stem buses
+Stinger bus
+Transition Cue bus
+SFX bus
+      |
+      v
+Master
+      |
+      v
+Headroom Trim (-3 dB)
+      |
+      v
+Peak Limiter (-1.5 dB / 20:1)
+      |
+      v
+Output
+```
+
+以前の常時強めに掛かるCompressorではなく、通常Mixはなるべく保持し、Stinger / Impact / Overdriveが重なった瞬間のPeak保護を主目的にしています。
+
+Runtime情報:
+
+```js
+music.info().mastering;
+// {
+//   profile: "game-balanced-v1",
+//   headroomDb: -3,
+//   trimGain: 0.7079...,
+//   limiter: {
+//     thresholdDb: -1.5,
+//     ratio: 20,
+//     attack: 0.003,
+//     release: 0.12,
+//     reductionDb: ...
+//   }
+// }
+```
+
+Capabilities:
+
+```js
+music.info().capabilities.mastering === true;
+```
+
+Music SettingsとResolver Labでは `game-balanced-v1` を確認できます。Resolver LabではHeadroomも表示します。
+
+CI:
+
+- `tools/check_music_mastering.mjs`
+  - Runtime graphが `Master -> Headroom Trim -> Limiter -> Destination`
+  - Pack metadataとRuntime設定が一致
+  - Headroom -3 dB
+  - Limiter threshold -1.5 dB / ratio 20:1
+- `tools/check_pulse_mastering.py`
+  - 11 WAV assetのRMS / Peakを実測
+  - deterministic生成結果との一致
+  - Peak Ceiling違反がない
+  - Focus / Build / Overdrive / ResultのStem合算Mixが過大でない
+
+Pulse Packをv1.4.0へ更新したため、Persistent Audio Cacheは `?gmv=1.4.0` へ自動世代更新されます。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -810,7 +943,7 @@ WAV source
         v
 GitHub Actions + ffmpeg
         |
-        +--> .m4a (AAC 128 kbps)
+        +--> .m4a (AAC 160 kbps)
         +--> .ogg (Vorbis)
         +--> .wav (fallback/source)
         |
@@ -855,7 +988,9 @@ Validation:
 - `tools/check_music_persistent_cache.mjs`
 - `tools/check_music_quantization.mjs`
 - `tools/check_music_transition_cues.mjs`
+- `tools/check_music_mastering.mjs`
 - `tools/check_pulse_audio_profile.py`
+- `tools/check_pulse_mastering.py`
 - `.github/workflows/music-architecture-check.yml`
 
 ## Structure
