@@ -50,6 +50,11 @@ function versionPackAudioAssets(pack, version) {
       files: versionFileMap(pack.stingers.files, version),
       formats: versionFormatMap(pack.stingers.formats, version),
     } : pack.stingers,
+    transitionCues: pack.transitionCues ? {
+      ...pack.transitionCues,
+      files: versionFileMap(pack.transitionCues.files, version),
+      formats: versionFormatMap(pack.transitionCues.formats, version),
+    } : pack.transitionCues,
   };
 }
 
@@ -61,6 +66,7 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     wavStems: false,
     stingers: false,
     quantizedStingers: false,
+    transitionCues: false,
     formatResolver: false,
     runtimeDecodeFallback: false,
     preload: false,
@@ -75,6 +81,7 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     wavStems: true,
     stingers: true,
     quantizedStingers: true,
+    transitionCues: true,
     formatResolver: true,
     runtimeDecodeFallback: true,
     preload: true,
@@ -175,6 +182,35 @@ export async function applyMusicState(runtime, state, options = {}) {
 
   const manager = runtime.manager;
   const quantize = options.quantize || "bar";
+  let scheduledAt = Number(options.scheduledAt || 0) || null;
+  let transitionCue = null;
+
+  if (
+    runtime.capabilities?.transitionCues &&
+    options.transitionCue !== false &&
+    typeof manager.playTransitionCue === "function"
+  ) {
+    const cueConfig = options.transitionCue
+      ? { cue: String(options.transitionCue), position: options.cuePosition || "at" }
+      : manager.getTransitionCueForMode?.(mapping.mode);
+
+    if (cueConfig?.cue) {
+      try {
+        transitionCue = await manager.playTransitionCue(cueConfig.cue, {
+          quantize,
+          position: cueConfig.position || "at",
+          scheduledAt,
+        });
+        scheduledAt = transitionCue?.transitionAt || transitionCue?.scheduledAt || scheduledAt;
+      } catch (error) {
+        console.warn("[Music] Transition cue failed; continuing state transition", error);
+      }
+    }
+  }
+
+  if (!scheduledAt && runtime.engine === MUSIC_ENGINES.WAV_STEM && typeof manager.getQuantizedTime === "function") {
+    scheduledAt = manager.getQuantizedTime(quantize);
+  }
 
   if (
     mapping.preset &&
@@ -183,6 +219,7 @@ export async function applyMusicState(runtime, state, options = {}) {
   ) {
     await manager.setLayerPreset(mapping.preset, {
       quantize,
+      scheduledAt,
       fadeBeats: Number(options.fadeBeats ?? 1),
       seconds: options.seconds,
     });
@@ -202,12 +239,21 @@ export async function applyMusicState(runtime, state, options = {}) {
     } else {
       await manager.transitionTo(mapping.mode, {
         quantize,
+        scheduledAt,
         seconds: options.seconds,
       });
     }
   }
 
-  return { state, quantize, ...mapping };
+  if (scheduledAt) runtime.lastTransitionAt = scheduledAt;
+
+  return {
+    state,
+    quantize,
+    scheduledAt,
+    transitionCue,
+    ...mapping,
+  };
 }
 
 export async function playMusicOutcome(runtime, success, options = {}) {
@@ -216,11 +262,17 @@ export async function playMusicOutcome(runtime, success, options = {}) {
 
   if (runtime.capabilities?.stingers && typeof manager.playStinger === "function") {
     const name = success ? "victory" : "gameover";
+    const now = Number(manager.context?.currentTime || 0);
+    const alignedAt = Number(options.scheduledAt || 0)
+      || (runtime.lastTransitionAt && runtime.lastTransitionAt > now ? runtime.lastTransitionAt : 0)
+      || null;
+
     const result = await manager.playStinger(name, {
       duck: Number(options.duck ?? 0.28),
       attack: Number(options.attack ?? 0.06),
       release: Number(options.release ?? 0.32),
       quantize: options.quantize || "immediate",
+      scheduledAt: alignedAt,
     });
     return {
       type: "stinger",
@@ -267,9 +319,11 @@ export function getRuntimeDescriptor(runtime) {
     audioFormatSelection: runtime.audioFormatSelection ? { ...runtime.audioFormatSelection } : null,
     preload: runtime.manager?.getPreloadInfo?.() || null,
     stinger: runtime.manager?.getStingerInfo?.() || null,
+    transitionCue: runtime.manager?.getTransitionCueInfo?.() || null,
     states: [...(runtime.entry?.states || [])],
     stems: [...(runtime.entry?.stems || [])],
     stingers: [...(runtime.entry?.stingers || [])],
+    transitionCues: [...(runtime.entry?.transitionCues || [])],
     capabilities: { ...(runtime.capabilities || {}) },
   };
 }
