@@ -124,7 +124,7 @@ function buildRuntime(packId) {
   const builtRuntime = runtime;
   if (typeof builtRuntime.manager?.preload === "function") {
     statusText.textContent = `${builtRuntime.entry.name}${formatLabel} · PRELOADING…`;
-    void builtRuntime.manager.preload({ stingers: true }).then((info) => {
+    void builtRuntime.manager.preload({ stingers: true, transitions: true }).then((info) => {
       if (runtime !== builtRuntime || playing) return;
       renderRuntime();
       const ready = getRuntimeDescriptor(builtRuntime);
@@ -177,6 +177,12 @@ function renderSpecialButtons() {
     items.push('<button class="special-button" data-stinger="victory" type="button">VICTORY STINGER</button>');
     items.push('<button class="special-button" data-stinger="gameover" type="button">GAME OVER STINGER</button>');
   }
+  if (runtime.capabilities.transitionCues) {
+    const cues = runtime.entry.transitionCues || [];
+    cues.forEach((cue) => {
+      items.push(`<button class="special-button" data-transition-cue="${cue}" type="button">CUE ${cue.toUpperCase()}</button>`);
+    });
+  }
   specialButtons.innerHTML = items.join("");
 
   specialButtons.querySelectorAll("[data-preset]").forEach((button) => {
@@ -195,6 +201,21 @@ function renderSpecialButtons() {
       renderRuntime();
       const delay = result?.delaySeconds > 0.03 ? ` · +${result.delaySeconds.toFixed(2)}s` : "";
       statusText.textContent = `${button.dataset.stinger.toUpperCase()} · NEXT BEAT${delay} · ${result?.format?.toUpperCase() || "AUDIO"}`;
+    });
+  });
+
+  specialButtons.querySelectorAll("[data-transition-cue]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!playing || typeof runtime.manager.playTransitionCue !== "function") return;
+      const cue = button.dataset.transitionCue;
+      const position = cue === "impact" ? "at" : "before";
+      statusText.textContent = `${cue.toUpperCase()} · SCHEDULING`;
+      const result = await runtime.manager.playTransitionCue(cue, {
+        quantize: "bar",
+        position,
+      });
+      renderRuntime();
+      statusText.textContent = `${cue.toUpperCase()} · ${position.toUpperCase()} BAR · START +${result.delaySeconds.toFixed(2)}s`;
     });
   });
 }
