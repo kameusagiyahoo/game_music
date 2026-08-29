@@ -13,6 +13,7 @@ on:
       - "tools/check_music_preload_cache.mjs"
       - "tools/check_music_persistent_cache.mjs"
       - "tools/check_music_quantization.mjs"
+      - "tools/check_music_transition_cues.mjs"
       - ".github/workflows/music-architecture-check.yml"
   pull_request:
     paths:
@@ -26,6 +27,7 @@ on:
       - "tools/check_music_preload_cache.mjs"
       - "tools/check_music_persistent_cache.mjs"
       - "tools/check_music_quantization.mjs"
+      - "tools/check_music_transition_cues.mjs"
       - ".github/workflows/music-architecture-check.yml"
 
 jobs:
@@ -71,3 +73,5 @@ jobs:
         run: node tools/check_music_persistent_cache.mjs
       - name: Check Beat and Bar Quantization
         run: node tools/check_music_quantization.mjs
+      - name: Check Transition Cue Engine
+        run: node tools/check_music_transition_cues.mjs
