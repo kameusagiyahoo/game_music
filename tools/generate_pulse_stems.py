@@ -57,6 +57,52 @@ def add_tone(buf: list[float], start: float, duration: float, freq: float, amp: 
         buf[start_i + i] += sample * amp * envelope
 
 
+def db_to_gain(db: float) -> float:
+    return 10.0 ** (db / 20.0)
+
+
+def stereo_rms_dbfs(left: list[float], right: list[float]) -> float:
+    count = min(len(left), len(right))
+    if count <= 0:
+        return -120.0
+    energy = sum((l * l + r * r) * 0.5 for l, r in zip(left, right))
+    rms = math.sqrt(max(energy / count, 1e-12))
+    return 20.0 * math.log10(max(rms, 1e-12))
+
+
+def stereo_peak_dbfs(left: list[float], right: list[float]) -> float:
+    peak = max(
+        max((abs(v) for v in left), default=0.0),
+        max((abs(v) for v in right), default=0.0),
+        1e-12,
+    )
+    return 20.0 * math.log10(peak)
+
+
+def master_stereo(
+    left: list[float],
+    right: list[float],
+    *,
+    target_rms_dbfs: float,
+    peak_ceiling_dbfs: float,
+) -> tuple[list[float], list[float], dict[str, float]]:
+    current_rms = stereo_rms_dbfs(left, right)
+    current_peak = stereo_peak_dbfs(left, right)
+
+    rms_gain = db_to_gain(target_rms_dbfs - current_rms)
+    peak_gain = db_to_gain(peak_ceiling_dbfs - current_peak)
+    gain = min(rms_gain, peak_gain)
+
+    mastered_left = [value * gain for value in left]
+    mastered_right = [value * gain for value in right]
+
+    return mastered_left, mastered_right, {
+        "gain_db": 20.0 * math.log10(max(gain, 1e-12)),
+        "rms_dbfs": stereo_rms_dbfs(mastered_left, mastered_right),
+        "peak_dbfs": stereo_peak_dbfs(mastered_left, mastered_right),
+    }
+
+
 def stereoize(
     samples: list[float],
     width: float,
@@ -107,19 +153,21 @@ def write_wav(
     width: float = 0.24,
     delay_ms: float = 3.0,
     circular: bool = False,
-) -> None:
+    target_rms_dbfs: float = -20.0,
+    peak_ceiling_dbfs: float = -3.0,
+) -> dict[str, float]:
     left, right = stereoize(samples, width, delay_ms, circular=circular)
-    peak = max(
-        max((abs(v) for v in left), default=0.0),
-        max((abs(v) for v in right), default=0.0),
-        1e-9,
+    left, right, stats = master_stereo(
+        left,
+        right,
+        target_rms_dbfs=target_rms_dbfs,
+        peak_ceiling_dbfs=peak_ceiling_dbfs,
     )
-    scale = 0.88 / peak
     pcm = bytearray()
 
     for left_value, right_value in zip(left, right):
-        left_sample = max(-1.0, min(1.0, left_value * scale))
-        right_sample = max(-1.0, min(1.0, right_value * scale))
+        left_sample = max(-1.0, min(1.0, left_value))
+        right_sample = max(-1.0, min(1.0, right_value))
         pcm.extend(struct.pack(
             "<hh",
             round(left_sample * 32767),
@@ -132,6 +180,8 @@ def write_wav(
         wav.setsampwidth(BIT_DEPTH // 8)
         wav.setframerate(SAMPLE_RATE)
         wav.writeframes(bytes(pcm))
+
+    return stats
 
 
 def make_drums() -> list[float]:
@@ -334,41 +384,51 @@ def main() -> None:
         "melody": make_melody(),
         "sparkle": make_sparkle(),
     }
-    stem_stereo = {
-        "drums": (0.22, 2.4),
-        "bass": (0.08, 1.2),
-        "chords": (0.46, 5.2),
-        "melody": (0.34, 3.8),
-        "sparkle": (0.58, 6.8),
+    stem_mastering = {
+        "drums": (0.22, 2.4, -20.0, -5.0),
+        "bass": (0.08, 1.2, -21.0, -6.0),
+        "chords": (0.46, 5.2, -22.0, -7.0),
+        "melody": (0.34, 3.8, -21.0, -6.0),
+        "sparkle": (0.58, 6.8, -24.0, -8.0),
     }
     for name, samples in stems.items():
-        width, delay_ms = stem_stereo[name]
-        write_wav(
+        width, delay_ms, target_rms, peak_ceiling = stem_mastering[name]
+        stats = write_wav(
             STEM_OUT / f"{name}.wav",
             samples,
             width=width,
             delay_ms=delay_ms,
             circular=True,
+            target_rms_dbfs=target_rms,
+            peak_ceiling_dbfs=peak_ceiling,
         )
-        print(f"generated stereo stem: {name}.wav")
+        print(
+            f"generated mastered stem: {name}.wav "
+            f"rms={stats['rms_dbfs']:.2f}dBFS peak={stats['peak_dbfs']:.2f}dBFS"
+        )
 
     stingers = {
         "victory": make_victory_stinger(),
         "gameover": make_gameover_stinger(),
     }
-    stinger_stereo = {
-        "victory": (0.42, 4.8),
-        "gameover": (0.30, 3.6),
+    stinger_mastering = {
+        "victory": (0.42, 4.8, -16.5, -2.5),
+        "gameover": (0.30, 3.6, -18.0, -3.0),
     }
     for name, samples in stingers.items():
-        width, delay_ms = stinger_stereo[name]
-        write_wav(
+        width, delay_ms, target_rms, peak_ceiling = stinger_mastering[name]
+        stats = write_wav(
             STINGER_OUT / f"{name}.wav",
             samples,
             width=width,
             delay_ms=delay_ms,
+            target_rms_dbfs=target_rms,
+            peak_ceiling_dbfs=peak_ceiling,
         )
-        print(f"generated stereo stinger: {name}.wav")
+        print(
+            f"generated mastered stinger: {name}.wav "
+            f"rms={stats['rms_dbfs']:.2f}dBFS peak={stats['peak_dbfs']:.2f}dBFS"
+        )
 
     transitions = {
         "fill": make_fill_transition(),
@@ -376,21 +436,26 @@ def main() -> None:
         "riser": make_riser_transition(),
         "impact": make_impact_transition(),
     }
-    transition_stereo = {
-        "fill": (0.38, 3.6),
-        "whoosh": (0.62, 7.0),
-        "riser": (0.56, 6.2),
-        "impact": (0.26, 2.8),
+    transition_mastering = {
+        "fill": (0.38, 3.6, -18.5, -4.0),
+        "whoosh": (0.62, 7.0, -20.0, -5.0),
+        "riser": (0.56, 6.2, -19.0, -4.5),
+        "impact": (0.26, 2.8, -16.5, -2.5),
     }
     for name, samples in transitions.items():
-        width, delay_ms = transition_stereo[name]
-        write_wav(
+        width, delay_ms, target_rms, peak_ceiling = transition_mastering[name]
+        stats = write_wav(
             TRANSITION_OUT / f"{name}.wav",
             samples,
             width=width,
             delay_ms=delay_ms,
+            target_rms_dbfs=target_rms,
+            peak_ceiling_dbfs=peak_ceiling,
         )
-        print(f"generated stereo transition: {name}.wav")
+        print(
+            f"generated mastered transition: {name}.wav "
+            f"rms={stats['rms_dbfs']:.2f}dBFS peak={stats['peak_dbfs']:.2f}dBFS"
+        )
 
     print(
         f"audio profile: {SAMPLE_RATE} Hz / {CHANNELS} ch / {BIT_DEPTH}-bit PCM"
