@@ -24,6 +24,37 @@ export const pulsePack = {
   name: "Pulse Forge WAV",
   defaultLayerPreset: "focus",
 
+  mastering: {
+    profile: "game-balanced-v1",
+    headroomDb: -3.0,
+    limiter: {
+      thresholdDb: -1.5,
+      kneeDb: 0,
+      ratio: 20,
+      attack: 0.003,
+      release: 0.12,
+    },
+    sourceTargets: {
+      stems: {
+        drums: { rmsDbfs: -20.0, peakDbfs: -5.0 },
+        bass: { rmsDbfs: -21.0, peakDbfs: -6.0 },
+        chords: { rmsDbfs: -22.0, peakDbfs: -7.0 },
+        melody: { rmsDbfs: -21.0, peakDbfs: -6.0 },
+        sparkle: { rmsDbfs: -24.0, peakDbfs: -8.0 },
+      },
+      stingers: {
+        victory: { rmsDbfs: -16.5, peakDbfs: -2.5 },
+        gameover: { rmsDbfs: -18.0, peakDbfs: -3.0 },
+      },
+      transitionCues: {
+        fill: { rmsDbfs: -18.5, peakDbfs: -4.0 },
+        whoosh: { rmsDbfs: -20.0, peakDbfs: -5.0 },
+        riser: { rmsDbfs: -19.0, peakDbfs: -4.5 },
+        impact: { rmsDbfs: -16.5, peakDbfs: -2.5 },
+      },
+    },
+  },
+
   audioStems: {
     bpm: 112,
     bars: 4,
@@ -90,13 +121,14 @@ export const pulseManifest = defineMusicPackManifest({
   id: pulsePack.id,
   name: pulsePack.name,
   shortName: "Pulse WAV",
-  description: "44.1kHz stereo / 5同期Stem / transition cues",
+  description: "44.1kHz stereo / mastered / 5同期Stem / transition cues",
   engine: "wav-stem",
-  version: "1.3.0",
+  version: "1.4.0",
   states: ["normal", "build", "overdrive", "result"],
   stems: ["drums", "bass", "chords", "melody", "sparkle"],
   stingers: ["victory", "gameover"],
   transitionCues: ["fill", "whoosh", "riser", "impact"],
+  masteringProfile: "game-balanced-v1",
   formats: ["m4a", "ogg", "wav"],
-  tags: ["pulse", "wav", "ogg", "aac", "stems", "adaptive", "transition-cues", "stereo", "44.1khz"],
+  tags: ["pulse", "wav", "ogg", "aac", "stems", "adaptive", "transition-cues", "stereo", "44.1khz", "mastered"],
 });
