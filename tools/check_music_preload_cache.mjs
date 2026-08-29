@@ -98,7 +98,7 @@ const resolved = resolvePackAudioFormat(pulsePack, {
 
 const manager = new WavStemMusicManager({ pack: resolved.pack });
 
-const preload = await manager.preload({ stingers: true });
+const preload = await manager.preload({ stingers: true, transitions: true });
 const fetchesAfterPreload = fetchCount;
 const cacheAfterPreload = getAudioAssetCacheInfo();
 
@@ -108,18 +108,24 @@ const fetchesAfterPlay = fetchCount;
 await manager.playStinger("victory");
 const fetchesAfterStinger = fetchCount;
 
+await manager.playTransitionCue("impact", { quantize: "immediate" });
+const fetchesAfterTransitionCue = fetchCount;
+
 const errors = [];
 if (preload.state !== "ready") errors.push(`expected preload ready, got ${preload.state}`);
-if (preload.requested !== 7) errors.push(`expected 7 preload assets, got ${preload.requested}`);
-if (fetchesAfterPreload !== 7) errors.push(`expected 7 network fetches during preload, got ${fetchesAfterPreload}`);
+if (preload.requested !== 11) errors.push(`expected 11 preload assets, got ${preload.requested}`);
+if (fetchesAfterPreload !== 11) errors.push(`expected 11 network fetches during preload, got ${fetchesAfterPreload}`);
 if (fetchesAfterPlay !== fetchesAfterPreload) {
   errors.push(`play triggered extra network fetches: ${fetchesAfterPreload} -> ${fetchesAfterPlay}`);
 }
 if (fetchesAfterStinger !== fetchesAfterPreload) {
   errors.push(`stinger triggered extra network fetches: ${fetchesAfterPreload} -> ${fetchesAfterStinger}`);
 }
-if (cacheAfterPreload.ready !== 7) errors.push(`expected 7 ready cache entries, got ${cacheAfterPreload.ready}`);
-if (getAudioAssetCacheInfo().hits < 6) errors.push("expected cache hits from 5 stems and victory stinger");
+if (fetchesAfterTransitionCue !== fetchesAfterPreload) {
+  errors.push(`transition cue triggered extra network fetches: ${fetchesAfterPreload} -> ${fetchesAfterTransitionCue}`);
+}
+if (cacheAfterPreload.ready !== 11) errors.push(`expected 11 ready cache entries, got ${cacheAfterPreload.ready}`);
+if (getAudioAssetCacheInfo().hits < 7) errors.push("expected cache hits from 5 stems, victory stinger, and transition cue");
 
 manager.stop();
 
@@ -133,4 +139,5 @@ console.log("Music Preload Cache Check PASSED");
 console.log(`- preload network fetches: ${fetchesAfterPreload}`);
 console.log(`- fetches after play: ${fetchesAfterPlay}`);
 console.log(`- fetches after stinger: ${fetchesAfterStinger}`);
+console.log(`- fetches after transition cue: ${fetchesAfterTransitionCue}`);
 console.log(`- cache hits: ${getAudioAssetCacheInfo().hits}`);
