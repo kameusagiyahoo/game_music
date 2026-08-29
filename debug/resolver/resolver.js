@@ -191,9 +191,10 @@ function renderSpecialButtons() {
     button.addEventListener("click", async () => {
       if (!playing || typeof runtime.manager.playStinger !== "function") return;
       statusText.textContent = `${button.dataset.stinger.toUpperCase()} STINGER`;
-      const result = await runtime.manager.playStinger(button.dataset.stinger);
+      const result = await runtime.manager.playStinger(button.dataset.stinger, { quantize: "beat" });
       renderRuntime();
-      statusText.textContent = `${button.dataset.stinger.toUpperCase()} · ${result?.format?.toUpperCase() || "AUDIO"} STINGER`;
+      const delay = result?.delaySeconds > 0.03 ? ` · +${result.delaySeconds.toFixed(2)}s` : "";
+      statusText.textContent = `${button.dataset.stinger.toUpperCase()} · NEXT BEAT${delay} · ${result?.format?.toUpperCase() || "AUDIO"}`;
     });
   });
 }
