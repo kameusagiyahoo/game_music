@@ -15,6 +15,7 @@ on:
       - "tools/check_music_persistent_cache.mjs"
       - "tools/check_music_quantization.mjs"
       - "tools/check_music_transition_cues.mjs"
+      - "tools/check_pulse_audio_profile.py"
       - ".github/workflows/music-architecture-check.yml"
   pull_request:
     paths:
@@ -30,6 +31,7 @@ on:
       - "tools/check_music_persistent_cache.mjs"
       - "tools/check_music_quantization.mjs"
       - "tools/check_music_transition_cues.mjs"
+      - "tools/check_pulse_audio_profile.py"
       - ".github/workflows/music-architecture-check.yml"
 
 jobs:
@@ -78,3 +80,5 @@ jobs:
         run: node tools/check_music_quantization.mjs
       - name: Check Transition Cue Engine
         run: node tools/check_music_transition_cues.mjs
+      - name: Check Pulse Audio Profile
+        run: python tools/check_pulse_audio_profile.py
