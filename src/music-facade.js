@@ -99,6 +99,7 @@ export class MusicFacade {
     if ((kind === "all" || kind === "pack") && typeof manager.cancelPendingPackSwitch === "function") manager.cancelPendingPackSwitch();
     if ((kind === "all" || kind === "state") && typeof manager.cancelPendingTransition === "function") manager.cancelPendingTransition();
     if ((kind === "all" || kind === "layer") && typeof manager.cancelPendingLayerMix === "function") manager.cancelPendingLayerMix();
+    if ((kind === "all" || kind === "stinger") && typeof manager.cancelPendingStinger === "function") manager.cancelPendingStinger();
   }
 
   info() {
