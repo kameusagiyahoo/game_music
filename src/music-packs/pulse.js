@@ -27,7 +27,10 @@ export const pulsePack = {
   audioStems: {
     bpm: 112,
     bars: 4,
-    sampleRate: 22050,
+    sampleRate: 44100,
+    channels: 2,
+    bitDepth: 16,
+    channelLayout: "stereo",
     files: stemFiles("wav"),
     formats: {
       m4a: { mime: 'audio/mp4; codecs="mp4a.40.2"', files: stemFiles("m4a") },
@@ -37,6 +40,10 @@ export const pulsePack = {
   },
 
   stingers: {
+    sampleRate: 44100,
+    channels: 2,
+    bitDepth: 16,
+    channelLayout: "stereo",
     files: stingerFiles("wav"),
     formats: {
       m4a: { mime: 'audio/mp4; codecs="mp4a.40.2"', files: stingerFiles("m4a") },
@@ -46,6 +53,10 @@ export const pulsePack = {
   },
 
   transitionCues: {
+    sampleRate: 44100,
+    channels: 2,
+    bitDepth: 16,
+    channelLayout: "stereo",
     files: transitionFiles("wav"),
     formats: {
       m4a: { mime: 'audio/mp4; codecs="mp4a.40.2"', files: transitionFiles("m4a") },
@@ -79,13 +90,13 @@ export const pulseManifest = defineMusicPackManifest({
   id: pulsePack.id,
   name: pulsePack.name,
   shortName: "Pulse WAV",
-  description: "5本の同期Stem / multi-format / transition cues",
+  description: "44.1kHz stereo / 5同期Stem / transition cues",
   engine: "wav-stem",
-  version: "1.2.0",
+  version: "1.3.0",
   states: ["normal", "build", "overdrive", "result"],
   stems: ["drums", "bass", "chords", "melody", "sparkle"],
   stingers: ["victory", "gameover"],
   transitionCues: ["fill", "whoosh", "riser", "impact"],
   formats: ["m4a", "ogg", "wav"],
-  tags: ["pulse", "wav", "ogg", "aac", "stems", "adaptive", "transition-cues"],
+  tags: ["pulse", "wav", "ogg", "aac", "stems", "adaptive", "transition-cues", "stereo", "44.1khz"],
 });
