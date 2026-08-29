@@ -44,8 +44,10 @@ for (const test of cases) {
   const resolved = resolvePackAudioFormat(pulsePack, options);
   const stemUrl = resolved.pack.audioStems.files.drums || "";
   const stingerUrl = resolved.pack.stingers.files.victory || "";
+  const transitionUrl = resolved.pack.transitionCues.files.fill || "";
   if (!stemUrl.endsWith(`.${test.expected}`)) errors.push(`${test.name}: drums URL does not use ${test.expected}`);
   if (!stingerUrl.endsWith(`.${test.expected}`)) errors.push(`${test.name}: victory URL does not use ${test.expected}`);
+  if (!transitionUrl.endsWith(`.${test.expected}`)) errors.push(`${test.name}: fill URL does not use ${test.expected}`);
 }
 
 if (errors.length) {
