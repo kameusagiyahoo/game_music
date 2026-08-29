@@ -84,13 +84,13 @@ const resolved = resolvePackAudioFormat(pulsePack, {
 });
 
 const first = new WavStemMusicManager({ pack: resolved.pack });
-const firstPreload = await first.preload({ stingers: true });
+const firstPreload = await first.preload({ stingers: true, transitions: true });
 const networkAfterFirstLoad = fetchCount;
 
 clearAudioAssetCache();
 
 const second = new WavStemMusicManager({ pack: resolved.pack });
-const secondPreload = await second.preload({ stingers: true });
+const secondPreload = await second.preload({ stingers: true, transitions: true });
 const networkAfterSecondLoad = fetchCount;
 const secondCache = getAudioAssetCacheInfo();
 
@@ -108,17 +108,17 @@ const serviceWorkerSource = readFileSync(new URL("../music-sw.js", import.meta.u
 const errors = [];
 
 if (firstPreload.state !== "ready") errors.push(`first preload state: ${firstPreload.state}`);
-if (firstPreload.requested !== 7) errors.push(`first preload expected 7 assets, got ${firstPreload.requested}`);
-if (networkAfterFirstLoad !== 7) errors.push(`expected 7 initial network fetches, got ${networkAfterFirstLoad}`);
+if (firstPreload.requested !== 11) errors.push(`first preload expected 11 assets, got ${firstPreload.requested}`);
+if (networkAfterFirstLoad !== 11) errors.push(`expected 11 initial network fetches, got ${networkAfterFirstLoad}`);
 
 if (secondPreload.state !== "ready") errors.push(`second preload state: ${secondPreload.state}`);
 if (networkAfterSecondLoad !== networkAfterFirstLoad) {
   errors.push(`persistent reload caused network fetches: ${networkAfterFirstLoad} -> ${networkAfterSecondLoad}`);
 }
-if (secondCache.persistentHits < 7) errors.push(`expected >=7 persistent hits, got ${secondCache.persistentHits}`);
-if (secondCache.persistentEntries < 7) errors.push(`expected >=7 memory entries restored from persistent cache, got ${secondCache.persistentEntries}`);
+if (secondCache.persistentHits < 11) errors.push(`expected >=11 persistent hits, got ${secondCache.persistentHits}`);
+if (secondCache.persistentEntries < 11) errors.push(`expected >=11 memory entries restored from persistent cache, got ${secondCache.persistentEntries}`);
 
-if (!versionedUrl.includes("gmv=1.1.0")) {
+if (!versionedUrl.includes("gmv=1.2.0")) {
   errors.push(`runtime asset URL is not Pack-versioned: ${versionedUrl}`);
 }
 
@@ -127,8 +127,8 @@ if (!serviceWorkerSource.includes(AUDIO_PERSISTENT_CACHE_NAME)) {
 }
 
 const persistentStore = stores.get(AUDIO_PERSISTENT_CACHE_NAME);
-if (!persistentStore || persistentStore.store.size !== 7) {
-  errors.push(`expected 7 persistent entries, got ${persistentStore?.store.size ?? 0}`);
+if (!persistentStore || persistentStore.store.size !== 11) {
+  errors.push(`expected 11 persistent entries, got ${persistentStore?.store.size ?? 0}`);
 }
 
 if (errors.length) {
