@@ -114,6 +114,7 @@ export function getMusicRegistrySnapshot() {
       states: entry.states,
       stems: entry.stems,
       stingers: entry.stingers,
+      transitionCues: entry.transitionCues,
       formats: entry.formats,
       facadeApi: entry.facadeApi,
     }))),
