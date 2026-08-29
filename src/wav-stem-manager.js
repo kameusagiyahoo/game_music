@@ -8,6 +8,44 @@ const STEPS_PER_BAR = STEPS_PER_BEAT * BEATS_PER_BAR;
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value)));
 const dbToGain = (db) => 10 ** (Number(db) / 20);
 
+function amplitudeToDb(value) {
+  return 20 * Math.log10(Math.max(Number(value) || 0, 1e-9));
+}
+
+function readAnalyserStats(analyser, buffer) {
+  if (!analyser || !buffer) {
+    return { peakDbfs: -180, rmsDbfs: -180, peak: 0, rms: 0 };
+  }
+
+  if (typeof analyser.getFloatTimeDomainData === "function") {
+    analyser.getFloatTimeDomainData(buffer);
+  } else if (typeof analyser.getByteTimeDomainData === "function") {
+    const bytes = new Uint8Array(buffer.length);
+    analyser.getByteTimeDomainData(bytes);
+    for (let i = 0; i < bytes.length; i += 1) {
+      buffer[i] = (bytes[i] - 128) / 128;
+    }
+  } else {
+    buffer.fill(0);
+  }
+
+  let peak = 0;
+  let energy = 0;
+  for (let i = 0; i < buffer.length; i += 1) {
+    const sample = Number(buffer[i] || 0);
+    peak = Math.max(peak, Math.abs(sample));
+    energy += sample * sample;
+  }
+  const rms = Math.sqrt(energy / Math.max(1, buffer.length));
+
+  return {
+    peakDbfs: amplitudeToDb(peak),
+    rmsDbfs: amplitudeToDb(rms),
+    peak,
+    rms,
+  };
+}
+
 export class WavStemMusicManager {
   constructor({ pack, onModeChange, onSync, onLayerChange, onFormatChange } = {}) {
     this.pack = pack;
@@ -20,6 +58,11 @@ export class WavStemMusicManager {
     this.master = null;
     this.masterTrim = null;
     this.limiter = null;
+    this.preMasterAnalyser = null;
+    this.outputAnalyser = null;
+    this.meterSink = null;
+    this.preMeterBuffer = null;
+    this.outputMeterBuffer = null;
     this.musicRoot = null;
     this.stingerBus = null;
     this.transitionBus = null;
@@ -86,6 +129,20 @@ export class WavStemMusicManager {
       this.transitionBus = this.context.createGain();
       this.sfxBus = this.context.createGain();
 
+      if (typeof this.context.createAnalyser === "function") {
+        this.preMasterAnalyser = this.context.createAnalyser();
+        this.outputAnalyser = this.context.createAnalyser();
+        this.meterSink = this.context.createGain();
+
+        for (const analyser of [this.preMasterAnalyser, this.outputAnalyser]) {
+          analyser.fftSize = 512;
+          analyser.smoothingTimeConstant = 0.62;
+        }
+        this.meterSink.gain.value = 0;
+        this.preMeterBuffer = new Float32Array(this.preMasterAnalyser.fftSize);
+        this.outputMeterBuffer = new Float32Array(this.outputAnalyser.fftSize);
+      }
+
       const mastering = this.#masteringConfig();
 
       this.master.gain.value = 1;
@@ -108,6 +165,14 @@ export class WavStemMusicManager {
       this.master.connect(this.masterTrim);
       this.masterTrim.connect(this.limiter);
       this.limiter.connect(this.context.destination);
+
+      if (this.preMasterAnalyser && this.outputAnalyser && this.meterSink) {
+        this.masterTrim.connect(this.preMasterAnalyser);
+        this.preMasterAnalyser.connect(this.meterSink);
+        this.limiter.connect(this.outputAnalyser);
+        this.outputAnalyser.connect(this.meterSink);
+        this.meterSink.connect(this.context.destination);
+      }
 
       STEMS.forEach((name) => {
         const bus = this.context.createGain();
@@ -343,6 +408,44 @@ export class WavStemMusicManager {
     };
   }
 
+  getMeterSnapshot() {
+    const supported = Boolean(
+      this.preMasterAnalyser &&
+      this.outputAnalyser &&
+      this.preMeterBuffer &&
+      this.outputMeterBuffer
+    );
+    const preLimiter = supported
+      ? readAnalyserStats(this.preMasterAnalyser, this.preMeterBuffer)
+      : { peakDbfs: -180, rmsDbfs: -180, peak: 0, rms: 0 };
+    const output = supported
+      ? readAnalyserStats(this.outputAnalyser, this.outputMeterBuffer)
+      : { peakDbfs: -180, rmsDbfs: -180, peak: 0, rms: 0 };
+
+    return {
+      supported,
+      timestamp: Number(this.context?.currentTime || 0),
+      contextState: this.context?.state || "uninitialized",
+      sampleRate: Number(this.context?.sampleRate || this.pack?.audioStems?.sampleRate || 0),
+      preLimiter,
+      output,
+      limiterReductionDb: Number(this.limiter?.reduction ?? 0),
+      headroomDb: this.#masteringConfig().headroomDb,
+      mode: this.mode,
+      layerPreset: this.layerPreset,
+      stems: Object.fromEntries(STEMS.map((name) => {
+        const gain = Number(this.layerMix?.[name] ?? 0);
+        return [name, {
+          gain,
+          active: Boolean(this.running && this.sources?.[name] && gain > 0.001),
+          bufferReady: Boolean(this.buffers?.[name]),
+        }];
+      })),
+      stinger: this.getStingerInfo(),
+      transitionCue: this.getTransitionCueInfo(),
+    };
+  }
+
   async preload({ stingers = true, transitions = true, concurrency = 4 } = {}) {
     if (this.preloadPromise) return this.preloadPromise;
 
@@ -447,6 +550,7 @@ export class WavStemMusicManager {
       stingerAudioFormat: this.stingerAudioFormat,
       transitionCueAudioFormat: this.transitionCueAudioFormat,
       mastering: this.getMasteringInfo(),
+      meter: this.getMeterSnapshot(),
       audioFormatCandidates: [...this.audioFormatCandidates],
       audioFormatAttempts: this.audioFormatAttempts.map((attempt) => ({ ...attempt })),
     };
