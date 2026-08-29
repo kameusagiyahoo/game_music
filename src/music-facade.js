@@ -36,6 +36,12 @@ export class MusicFacade {
   cue(name) { this.runtime.manager?.sfx?.(name); }
   async outcome(value, options = {}) { return playMusicOutcome(this.runtime, normalizeOutcome(value), options); }
 
+  async transitionCue(name, options = {}) {
+    const manager = this.runtime.manager;
+    if (!this.runtime.capabilities?.transitionCues || typeof manager.playTransitionCue !== "function") return null;
+    return manager.playTransitionCue(name, options);
+  }
+
   async preload(options = {}) {
     const manager = this.runtime.manager;
     const serviceWorker = await ensureMusicServiceWorker();
@@ -100,6 +106,7 @@ export class MusicFacade {
     if ((kind === "all" || kind === "state") && typeof manager.cancelPendingTransition === "function") manager.cancelPendingTransition();
     if ((kind === "all" || kind === "layer") && typeof manager.cancelPendingLayerMix === "function") manager.cancelPendingLayerMix();
     if ((kind === "all" || kind === "stinger") && typeof manager.cancelPendingStinger === "function") manager.cancelPendingStinger();
+    if ((kind === "all" || kind === "transitionCue") && typeof manager.cancelPendingTransitionCue === "function") manager.cancelPendingTransitionCue();
   }
 
   info() {
