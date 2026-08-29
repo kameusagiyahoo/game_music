@@ -60,6 +60,7 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     layerMix: true,
     wavStems: false,
     stingers: false,
+    quantizedStingers: false,
     formatResolver: false,
     runtimeDecodeFallback: false,
     preload: false,
@@ -68,11 +69,12 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     serviceWorkerCache: false,
   }),
   [MUSIC_ENGINES.WAV_STEM]: Object.freeze({
-    quantizedModeTransition: false,
+    quantizedModeTransition: true,
     quantizedPackSwitch: false,
     layerMix: true,
     wavStems: true,
     stingers: true,
+    quantizedStingers: true,
     formatResolver: true,
     runtimeDecodeFallback: true,
     preload: true,
@@ -198,11 +200,14 @@ export async function applyMusicState(runtime, state, options = {}) {
         seconds: options.seconds,
       });
     } else {
-      await manager.transitionTo(mapping.mode);
+      await manager.transitionTo(mapping.mode, {
+        quantize,
+        seconds: options.seconds,
+      });
     }
   }
 
-  return { state, ...mapping };
+  return { state, quantize, ...mapping };
 }
 
 export async function playMusicOutcome(runtime, success, options = {}) {
@@ -215,8 +220,16 @@ export async function playMusicOutcome(runtime, success, options = {}) {
       duck: Number(options.duck ?? 0.28),
       attack: Number(options.attack ?? 0.06),
       release: Number(options.release ?? 0.32),
+      quantize: options.quantize || "immediate",
     });
-    return { type: "stinger", name, format: result?.format || null };
+    return {
+      type: "stinger",
+      name,
+      format: result?.format || null,
+      quantize: result?.quantize || "immediate",
+      scheduledAt: result?.scheduledAt || null,
+      delaySeconds: result?.delaySeconds || 0,
+    };
   }
 
   if (typeof manager.sfx === "function") {
@@ -253,6 +266,7 @@ export function getRuntimeDescriptor(runtime) {
     audioFormatAttempts: (formatInfo?.attempts || []).map((attempt) => ({ ...attempt })),
     audioFormatSelection: runtime.audioFormatSelection ? { ...runtime.audioFormatSelection } : null,
     preload: runtime.manager?.getPreloadInfo?.() || null,
+    stinger: runtime.manager?.getStingerInfo?.() || null,
     states: [...(runtime.entry?.states || [])],
     stems: [...(runtime.entry?.stems || [])],
     stingers: [...(runtime.entry?.stingers || [])],
