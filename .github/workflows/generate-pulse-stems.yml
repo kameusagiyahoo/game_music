@@ -29,6 +29,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Generate synchronized WAV stems and stingers
         run: python tools/generate_pulse_stems.py
+      - name: Validate generated WAV stereo profile
+        run: python tools/check_pulse_audio_profile.py
       - name: Encode OGG and AAC/M4A variants
         run: |
           set -euo pipefail
