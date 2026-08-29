@@ -16,6 +16,7 @@ on:
       - "tools/check_music_quantization.mjs"
       - "tools/check_music_transition_cues.mjs"
       - "tools/check_music_mastering.mjs"
+      - "tools/check_pulse_mastering.py"
       - "tools/check_pulse_audio_profile.py"
       - ".github/workflows/music-architecture-check.yml"
   pull_request:
@@ -33,6 +34,7 @@ on:
       - "tools/check_music_quantization.mjs"
       - "tools/check_music_transition_cues.mjs"
       - "tools/check_music_mastering.mjs"
+      - "tools/check_pulse_mastering.py"
       - "tools/check_pulse_audio_profile.py"
       - ".github/workflows/music-architecture-check.yml"
 
@@ -86,3 +88,5 @@ jobs:
         run: node tools/check_music_mastering.mjs
       - name: Check Pulse Audio Profile
         run: python tools/check_pulse_audio_profile.py
+      - name: Check Pulse Mastering
+        run: python tools/check_pulse_mastering.py
