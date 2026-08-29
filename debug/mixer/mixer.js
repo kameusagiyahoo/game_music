@@ -161,8 +161,15 @@ async function testStinger(name) {
   if (!(await ensureRunning())) return;
   stingerState.textContent = `${name.toUpperCase()} · LOADING`;
   try {
-    const info = await music.playStinger(name, { duck: 0.26, attack: 0.06, release: 0.30 });
-    stingerState.textContent = `${name.toUpperCase()} · ${info.duration.toFixed(2)}s`;
+    const quantize = quantizeToggle.checked ? "bar" : "immediate";
+    const info = await music.playStinger(name, {
+      quantize,
+      duck: 0.26,
+      attack: 0.06,
+      release: 0.30,
+    });
+    const wait = info.delaySeconds > 0.03 ? ` · +${info.delaySeconds.toFixed(2)}s` : "";
+    stingerState.textContent = `${name.toUpperCase()} · ${quantize.toUpperCase()}${wait} · ${info.duration.toFixed(2)}s`;
     window.setTimeout(() => {
       if (!music.getDebugState().stingerPlaying) stingerState.textContent = "READY";
     }, Math.ceil(info.duration * 1000) + 500);
@@ -184,6 +191,10 @@ window.setInterval(() => {
   stingerCache.textContent = state.loadedStingers.length ? state.loadedStingers.join(", ") : "—";
   if (state.running) {
     engineState.textContent = "WAV / READY";
-    transportState.textContent = state.stingerPlaying ? "RUNNING + STINGER" : "RUNNING";
+    transportState.textContent = state.stingerPending
+      ? `RUNNING · STINGER NEXT ${String(state.pendingStinger?.quantize || "").toUpperCase()}`
+      : state.stingerPlaying
+        ? "RUNNING + STINGER"
+        : "RUNNING";
   }
 }, 100);
