@@ -1027,6 +1027,24 @@ export class WavStemMusicManager {
     if (this.lastStep >= 0) this.#sync(this.lastStep);
   }
 
+  #masteringConfig() {
+    const raw = this.pack?.mastering || {};
+    const limiter = raw.limiter || {};
+    const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+
+    return {
+      profile: String(raw.profile || "game-balanced-default"),
+      headroomDb: Math.max(-24, Math.min(0, finite(raw.headroomDb, -3))),
+      limiter: {
+        thresholdDb: Math.max(-24, Math.min(0, finite(limiter.thresholdDb, -1.5))),
+        kneeDb: Math.max(0, Math.min(40, finite(limiter.kneeDb, 0))),
+        ratio: Math.max(1, Math.min(20, finite(limiter.ratio, 20))),
+        attack: Math.max(0, Math.min(1, finite(limiter.attack, 0.003))),
+        release: Math.max(0.01, Math.min(1, finite(limiter.release, 0.12))),
+      },
+    };
+  }
+
   #beatsToSeconds(beats) {
     const bpm = Number(this.pack?.audioStems?.bpm || 112);
     return Math.max(0.05, Number(beats) * 60 / bpm);
