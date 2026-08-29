@@ -10,17 +10,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 TARGETS = {
-    "assets/stems/pulse/drums.wav": (-20.0, -5.0),
-    "assets/stems/pulse/bass.wav": (-21.0, -6.0),
-    "assets/stems/pulse/chords.wav": (-22.0, -7.0),
-    "assets/stems/pulse/melody.wav": (-21.0, -6.0),
-    "assets/stems/pulse/sparkle.wav": (-24.0, -8.0),
-    "assets/stingers/pulse/victory.wav": (-16.5, -2.5),
-    "assets/stingers/pulse/gameover.wav": (-18.0, -3.0),
-    "assets/transitions/pulse/fill.wav": (-18.5, -4.0),
-    "assets/transitions/pulse/whoosh.wav": (-20.0, -5.0),
-    "assets/transitions/pulse/riser.wav": (-19.0, -4.5),
-    "assets/transitions/pulse/impact.wav": (-16.5, -2.5),
+    # path: (expected RMS dBFS, expected peak dBFS, peak ceiling dBFS)
+    "assets/stems/pulse/drums.wav": (-24.82, -5.00, -5.0),
+    "assets/stems/pulse/bass.wav": (-21.00, -14.74, -6.0),
+    "assets/stems/pulse/chords.wav": (-22.00, -12.28, -7.0),
+    "assets/stems/pulse/melody.wav": (-21.00, -8.53, -6.0),
+    "assets/stems/pulse/sparkle.wav": (-25.01, -8.00, -8.0),
+    "assets/stingers/pulse/victory.wav": (-16.50, -4.32, -2.5),
+    "assets/stingers/pulse/gameover.wav": (-18.00, -4.73, -3.0),
+    "assets/transitions/pulse/fill.wav": (-19.96, -4.00, -4.0),
+    "assets/transitions/pulse/whoosh.wav": (-20.00, -6.38, -5.0),
+    "assets/transitions/pulse/riser.wav": (-20.44, -4.50, -4.5),
+    "assets/transitions/pulse/impact.wav": (-16.50, -3.39, -2.5),
 }
 
 PRESETS = {
@@ -31,9 +32,8 @@ PRESETS = {
 }
 
 HEADROOM_DB = -3.0
-RMS_UPPER_TOLERANCE_DB = 0.20
-RMS_LOWER_TOLERANCE_DB = 4.0
-PEAK_TOLERANCE_DB = 0.12
+MEASUREMENT_TOLERANCE_DB = 0.18
+PEAK_CEILING_TOLERANCE_DB = 0.12
 
 
 def db(value: float) -> float:
@@ -82,20 +82,20 @@ def check_assets() -> tuple[list[str], dict[str, tuple[list[float], list[float]]
     errors: list[str] = []
     stems: dict[str, tuple[list[float], list[float]]] = {}
 
-    for relative, (target_rms, peak_ceiling) in TARGETS.items():
+    for relative, (expected_rms, expected_peak, peak_ceiling) in TARGETS.items():
         path = ROOT / relative
         left, right = read_stereo(path)
         rms_db, peak_db = measure(left, right)
 
-        if rms_db > target_rms + RMS_UPPER_TOLERANCE_DB:
+        if abs(rms_db - expected_rms) > MEASUREMENT_TOLERANCE_DB:
             errors.append(
-                f"{relative}: RMS {rms_db:.2f} dBFS exceeds target {target_rms:.2f}"
+                f"{relative}: RMS {rms_db:.2f} dBFS != expected {expected_rms:.2f}"
             )
-        if rms_db < target_rms - RMS_LOWER_TOLERANCE_DB:
+        if abs(peak_db - expected_peak) > MEASUREMENT_TOLERANCE_DB:
             errors.append(
-                f"{relative}: RMS {rms_db:.2f} dBFS is too far below target {target_rms:.2f}"
+                f"{relative}: peak {peak_db:.2f} dBFS != expected {expected_peak:.2f}"
             )
-        if peak_db > peak_ceiling + PEAK_TOLERANCE_DB:
+        if peak_db > peak_ceiling + PEAK_CEILING_TOLERANCE_DB:
             errors.append(
                 f"{relative}: peak {peak_db:.2f} dBFS exceeds ceiling {peak_ceiling:.2f}"
             )
@@ -106,7 +106,7 @@ def check_assets() -> tuple[list[str], dict[str, tuple[list[float], list[float]]
         print(
             f"- {relative}: rms={rms_db:.2f} dBFS "
             f"peak={peak_db:.2f} dBFS "
-            f"target={target_rms:.2f}/{peak_ceiling:.2f}"
+            f"expected={expected_rms:.2f}/{expected_peak:.2f}"
         )
 
     return errors, stems
