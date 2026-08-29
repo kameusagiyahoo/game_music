@@ -1,6 +1,6 @@
 const AUDIO_CACHE_NAME = "game-music-audio-v15";
 const AUDIO_CACHE_PREFIX = "game-music-audio-v";
-const AUDIO_PATH = /\/assets\/(?:stems|stingers)\//;
+const AUDIO_PATH = /\/assets\/(?:stems|stingers|transitions)\//;
 
 self.addEventListener("install", () => {
   self.skipWaiting();
