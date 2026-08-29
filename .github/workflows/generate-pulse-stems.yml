@@ -42,6 +42,11 @@ jobs:
             ffmpeg -y -loglevel error -i "$src" -c:a libvorbis -q:a 4 "${base}.ogg"
             ffmpeg -y -loglevel error -i "$src" -c:a aac -b:a 128k "${base}.m4a"
           done
+          for src in assets/transitions/pulse/*.wav; do
+            base="${src%.wav}"
+            ffmpeg -y -loglevel error -i "$src" -c:a libvorbis -q:a 4 "${base}.ogg"
+            ffmpeg -y -loglevel error -i "$src" -c:a aac -b:a 128k "${base}.m4a"
+          done
       - name: Commit generated audio
         run: |
           set -euo pipefail
@@ -49,6 +54,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add assets/stems/pulse/*.{wav,ogg,m4a}
           git add assets/stingers/pulse/*.{wav,ogg,m4a}
+          git add assets/transitions/pulse/*.{wav,ogg,m4a}
           if git diff --cached --quiet; then
             echo "Pulse audio already up to date"
             exit 0
