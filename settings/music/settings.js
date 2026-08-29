@@ -41,6 +41,7 @@ function packButton(entry, selected, disabled = false) {
     `${entry.states.length} states`,
     entry.stems.length ? `${entry.stems.length} stems` : null,
     entry.stingers.length ? `${entry.stingers.length} stingers` : null,
+    entry.transitionCues?.length ? `${entry.transitionCues.length} transition cues` : null,
     entry.formats.length ? entry.formats.map((value) => value.toUpperCase()).join("/") : null,
   ].filter(Boolean).join(" · ");
   label.innerHTML = `
