@@ -46,12 +46,16 @@ for (const entry of packs) {
   for (const format of entry.formats || []) {
     const stemFiles = entry.pack.audioStems?.formats?.[format]?.files || {};
     const stingerFiles = entry.pack.stingers?.formats?.[format]?.files || {};
+    const transitionCueFiles = entry.pack.transitionCues?.formats?.[format]?.files || {};
 
     for (const stem of entry.stems || []) {
       if (!stemFiles[stem]) errors.push(`${entry.id}@${entry.version}: ${format} missing stem ${stem}`);
     }
     for (const stinger of entry.stingers || []) {
       if (!stingerFiles[stinger]) errors.push(`${entry.id}@${entry.version}: ${format} missing stinger ${stinger}`);
+    }
+    for (const cue of entry.transitionCues || []) {
+      if (!transitionCueFiles[cue]) errors.push(`${entry.id}@${entry.version}: ${format} missing transition cue ${cue}`);
     }
   }
 }
@@ -75,6 +79,6 @@ console.log(`Schema: v${snapshot.schemaVersion}`);
 console.log(`Facade API: v${snapshot.facadeApi}`);
 for (const entry of packs) {
   console.log(
-    `- ${entry.id}@${entry.version} [${entry.engine}] states=${entry.states.join(",")} stems=${entry.stems.length} stingers=${entry.stingers.length} formats=${entry.formats.join(",") || "n/a"}`
+    `- ${entry.id}@${entry.version} [${entry.engine}] states=${entry.states.join(",")} stems=${entry.stems.length} stingers=${entry.stingers.length} transitionCues=${entry.transitionCues.length} formats=${entry.formats.join(",") || "n/a"}`
   );
 }
