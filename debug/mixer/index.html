@@ -82,7 +82,7 @@
         <button id="victoryButton" class="stinger-button victory" type="button">VICTORY</button>
         <button id="gameoverButton" class="stinger-button gameover" type="button">GAME OVER</button>
       </div>
-      <p class="debug-note">Stinger再生中も5本のWAV stemは停止しません。BGMだけ一時的にduckし、終了後に元の音量へ戻ります。</p>
+      <p class="debug-note">QUANTIZE ON時はStingerも次小節頭へAudioContext時刻で予約します。BGMは境界直前からduckし、終了後に元の音量へ戻ります。</p>
     </section>
 
     <section class="debug-card data-card">
