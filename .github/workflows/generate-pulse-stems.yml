@@ -34,19 +34,31 @@ jobs:
           set -euo pipefail
           for src in assets/stems/pulse/*.wav; do
             base="${src%.wav}"
-            ffmpeg -y -loglevel error -i "$src" -c:a libvorbis -q:a 4 "${base}.ogg"
-            ffmpeg -y -loglevel error -i "$src" -c:a aac -b:a 128k "${base}.m4a"
+            ffmpeg -y -loglevel error -i "$src" -ar 44100 -ac 2 -c:a libvorbis -q:a 5 "${base}.ogg"
+            ffmpeg -y -loglevel error -i "$src" -ar 44100 -ac 2 -c:a aac -b:a 160k -movflags +faststart "${base}.m4a"
           done
           for src in assets/stingers/pulse/*.wav; do
             base="${src%.wav}"
-            ffmpeg -y -loglevel error -i "$src" -c:a libvorbis -q:a 4 "${base}.ogg"
-            ffmpeg -y -loglevel error -i "$src" -c:a aac -b:a 128k "${base}.m4a"
+            ffmpeg -y -loglevel error -i "$src" -ar 44100 -ac 2 -c:a libvorbis -q:a 5 "${base}.ogg"
+            ffmpeg -y -loglevel error -i "$src" -ar 44100 -ac 2 -c:a aac -b:a 160k -movflags +faststart "${base}.m4a"
           done
           for src in assets/transitions/pulse/*.wav; do
             base="${src%.wav}"
-            ffmpeg -y -loglevel error -i "$src" -c:a libvorbis -q:a 4 "${base}.ogg"
-            ffmpeg -y -loglevel error -i "$src" -c:a aac -b:a 128k "${base}.m4a"
+            ffmpeg -y -loglevel error -i "$src" -ar 44100 -ac 2 -c:a libvorbis -q:a 5 "${base}.ogg"
+            ffmpeg -y -loglevel error -i "$src" -ar 44100 -ac 2 -c:a aac -b:a 160k -movflags +faststart "${base}.m4a"
           done
+      - name: Validate generated audio profile
+        run: |
+          set -euo pipefail
+          for src in assets/stems/pulse/*.{wav,ogg,m4a} assets/stingers/pulse/*.{wav,ogg,m4a} assets/transitions/pulse/*.{wav,ogg,m4a}; do
+            sample_rate="$(ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of default=noprint_wrappers=1:nokey=1 "$src")"
+            channels="$(ffprobe -v error -select_streams a:0 -show_entries stream=channels -of default=noprint_wrappers=1:nokey=1 "$src")"
+            if [ "$sample_rate" != "44100" ] || [ "$channels" != "2" ]; then
+              echo "Invalid audio profile: $src sample_rate=$sample_rate channels=$channels"
+              exit 1
+            fi
+          done
+          echo "All Pulse audio assets are 44.1 kHz stereo"
       - name: Commit generated audio
         run: |
           set -euo pipefail
