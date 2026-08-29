@@ -307,8 +307,13 @@ function endGame() {
   const cleared = energy >= 60;
   void (async () => {
     try {
-      await music.state("result", { quantize: "immediate", seconds: 0.30 });
-      await music.outcome(cleared, { duck: 0.26, attack: 0.06, release: 0.32 });
+      await music.state("result", { quantize: "bar", seconds: 0.30 });
+      await music.outcome(cleared, {
+        quantize: "bar",
+        duck: 0.26,
+        attack: 0.06,
+        release: 0.32,
+      });
     } catch (error) {
       console.error("music outcome failed", error);
       music.cue(cleared ? "win" : "lose");
