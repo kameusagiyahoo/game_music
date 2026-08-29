@@ -46,13 +46,20 @@ function engineLabel(engine) {
   return engine === "wav-stem" ? "WAV STEM" : "PROCEDURAL";
 }
 
+function masteringLabel(descriptor) {
+  if (!descriptor?.mastering) return "";
+  const profile = String(descriptor.mastering.profile || descriptor.masteringProfile || "MASTER").toUpperCase();
+  const headroom = Number(descriptor.mastering.headroomDb);
+  return ` · MASTER ${profile}${Number.isFinite(headroom) ? ` · HR ${headroom.toFixed(1)}dB` : ""}`;
+}
+
 function renderPacks() {
   packCount.textContent = String(entries.length);
   packGrid.innerHTML = entries.map((entry) => `
     <button class="resolver-pack ${entry.id === selectedId ? "is-selected" : ""}" data-pack="${entry.id}" type="button">
       <span class="engine-pill ${entry.engine}">${engineLabel(entry.engine)}</span>
       <strong>${entry.name} · v${entry.version}</strong>
-      <small>${entry.description}${entry.formats.length ? ` · ${entry.formats.map((value) => value.toUpperCase()).join(" / ")}` : ""}</small>
+      <small>${entry.description}${entry.masteringProfile ? ` · MASTER ${entry.masteringProfile}` : ""}${entry.formats.length ? ` · ${entry.formats.map((value) => value.toUpperCase()).join(" / ")}` : ""}</small>
     </button>
   `).join("");
 
@@ -119,7 +126,7 @@ function buildRuntime(packId) {
   renderRuntime();
   const descriptor = getRuntimeDescriptor(runtime);
   const formatLabel = descriptor?.audioFormat ? ` · ${descriptor.audioFormat.toUpperCase()}` : "";
-  statusText.textContent = `${runtime.entry.name}${formatLabel} READY`;
+  statusText.textContent = `${runtime.entry.name}${formatLabel}${masteringLabel(descriptor)} READY`;
 
   const builtRuntime = runtime;
   if (typeof builtRuntime.manager?.preload === "function") {
@@ -130,7 +137,7 @@ function buildRuntime(packId) {
       const ready = getRuntimeDescriptor(builtRuntime);
       const readyFormat = ready?.audioFormat ? ` · ${ready.audioFormat.toUpperCase()}` : "";
       const persistentCount = info?.persistent?.entries ?? 0;
-      statusText.textContent = `${builtRuntime.entry.name}${readyFormat} · PRELOADED ${info.loaded}/${info.requested} · PERSISTENT ${persistentCount}`;
+      statusText.textContent = `${builtRuntime.entry.name}${readyFormat}${masteringLabel(ready)} · PRELOADED ${info.loaded}/${info.requested} · PERSISTENT ${persistentCount}`;
     }).catch((error) => {
       if (runtime !== builtRuntime || playing) return;
       console.warn(error);
@@ -233,7 +240,7 @@ async function playSelected() {
     renderRuntime();
     const active = getRuntimeDescriptor(runtime);
     const fallbackCount = (active?.audioFormatAttempts || []).filter((attempt) => attempt.stage === "stems").length;
-    statusText.textContent = `${runtime.entry.name}${active?.audioFormat ? ` · ${active.audioFormat.toUpperCase()}` : ""} PLAYING${fallbackCount ? ` · FALLBACK ${fallbackCount}` : ""}`;
+    statusText.textContent = `${runtime.entry.name}${active?.audioFormat ? ` · ${active.audioFormat.toUpperCase()}` : ""}${masteringLabel(active)} PLAYING${fallbackCount ? ` · FALLBACK ${fallbackCount}` : ""}`;
   } catch (error) {
     console.error(error);
     statusText.textContent = `ERROR · ${error.message}`;
