@@ -153,6 +153,15 @@ if (!near(gapReport.summary.limiterOver6Seconds, 0.45)) {
   errors.push("background gap was incorrectly counted as limiter time");
 }
 
+// Ending exactly on the last captured sample must not invent another 100 ms.
+const exactEnd = createQaSession({ startedAtMs: 5_000, sampleIntervalMs: 100 });
+addQaSample(exactEnd, meter({ reduction: -6 }), { capturedAtMs: 5_000 });
+addQaSample(exactEnd, meter({ reduction: -6 }), { capturedAtMs: 5_100 });
+const exactEndReport = finalizeQaSession(exactEnd, { endedAtMs: 5_100 });
+if (!near(exactEndReport.summary.observedDurationSeconds, 0.1)) {
+  errors.push(`final-sample phantom duration: ${exactEndReport.summary.observedDurationSeconds}`);
+}
+
 if (errors.length) {
   console.error("Music QA Report Check FAILED");
   errors.forEach((error) => console.error(`- ${error}`));
