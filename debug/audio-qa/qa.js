@@ -43,6 +43,13 @@ const music = createMusicFacade({
   },
 });
 
+let staticInfo = music.info();
+
+function refreshStaticInfo() {
+  staticInfo = music.info();
+  return staticInfo;
+}
+
 function formatDb(value) {
   const number = Number(value);
   return Number.isFinite(number) && number > -150 ? `${number.toFixed(1)} dBFS` : "— dBFS";
@@ -140,8 +147,8 @@ function drawHistory() {
 }
 
 function render() {
-  const info = music.info();
-  const meter = info.meter;
+  const info = staticInfo;
+  const meter = music.meter();
   const mastering = info.mastering;
 
   transport.textContent = music.running ? `BAR ${bar || 1} · BEAT ${beat || 1}` : "BAR — · BEAT —";
@@ -190,6 +197,7 @@ function animationFrame(time) {
 $("#startButton").addEventListener("click", async () => {
   qaBadge.textContent = "STARTING";
   await music.start("normal");
+  refreshStaticInfo();
   render();
 });
 
@@ -211,6 +219,7 @@ $("#stressButton").addEventListener("click", async () => {
 
 $("#stopButton").addEventListener("click", () => {
   music.stop();
+  refreshStaticInfo();
   render();
 });
 
