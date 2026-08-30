@@ -1,4 +1,11 @@
 import { createMusicFacade } from "../../src/music-facade.js";
+import {
+  createQaSession,
+  addQaSample,
+  finalizeQaSession,
+  qaReportToCsv,
+  qaReportFilename,
+} from "../../src/music-qa-report.js";
 
 const $ = (selector) => document.querySelector(selector);
 const qaBadge = $("#qaBadge");
@@ -23,6 +30,22 @@ const stingerValue = $("#stingerValue");
 const transitionValue = $("#transitionValue");
 const modeValue = $("#modeValue");
 const meterSupportValue = $("#meterSupportValue");
+const recordStatus = $("#recordStatus");
+const recordTimer = $("#recordTimer");
+const recordProgressBar = $("#recordProgressBar");
+const recordButton = $("#recordButton");
+const recordStopButton = $("#recordStopButton");
+const exportJsonButton = $("#exportJsonButton");
+const exportCsvButton = $("#exportCsvButton");
+const reportVerdict = $("#reportVerdict");
+const reportDuration = $("#reportDuration");
+const reportSamples = $("#reportSamples");
+const reportPeak = $("#reportPeak");
+const reportRms = $("#reportRms");
+const reportReduction = $("#reportReduction");
+const reportOver3 = $("#reportOver3");
+const reportOver6 = $("#reportOver6");
+const modeSummary = $("#modeSummary");
 const canvas = $("#historyCanvas");
 const ctx = canvas.getContext("2d");
 
@@ -32,6 +55,11 @@ let lastRenderAt = 0;
 const peakHistory = [];
 const reductionHistory = [];
 const HISTORY_POINTS = 200;
+const RECORD_DURATION_SECONDS = 60;
+const RECORD_SAMPLE_INTERVAL_MS = 100;
+let recordingSession = null;
+let lastReport = null;
+let lastRecordSampleAt = 0;
 
 const music = createMusicFacade({
   packId: "pulse",
@@ -146,6 +174,190 @@ function drawHistory() {
   );
 }
 
+function formatTimeMs(value) {
+  const total = Math.max(0, Number(value) || 0);
+  const minutes = Math.floor(total / 60000);
+  const seconds = Math.floor((total % 60000) / 1000);
+  const tenths = Math.floor((total % 1000) / 100);
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${tenths}`;
+}
+
+function renderReportSummary() {
+  const summary = lastReport?.summary;
+  const recording = Boolean(recordingSession);
+  const now = Date.now();
+  const elapsedMs = recording
+    ? Math.max(0, now - recordingSession.startedAtMs)
+    : Math.max(0, Number(summary?.durationSeconds || 0) * 1000);
+  const targetMs = RECORD_DURATION_SECONDS * 1000;
+  const progress = recording
+    ? Math.min(100, elapsedMs / targetMs * 100)
+    : lastReport ? 100 : 0;
+
+  recordTimer.textContent = `${formatTimeMs(elapsedMs)} / ${formatTimeMs(targetMs)}`;
+  recordProgressBar.style.width = `${progress}%`;
+  recordButton.disabled = recording;
+  recordButton.classList.toggle("is-recording", recording);
+  recordButton.textContent = recording ? "RECORDING…" : "RECORD 60s";
+  recordStopButton.disabled = !recording;
+  exportJsonButton.disabled = !lastReport;
+  exportCsvButton.disabled = !lastReport;
+
+  if (recording) {
+    recordStatus.textContent = `RECORDING · ${recordingSession.samples.length} SAMPLES`;
+  } else if (lastReport) {
+    recordStatus.textContent = `REPORT READY · ${lastReport.events.length} EVENTS`;
+  } else {
+    recordStatus.textContent = "READY · START AUDIO OR RECORD";
+  }
+
+  if (!summary) {
+    reportVerdict.textContent = "—";
+    reportVerdict.className = "";
+    reportDuration.textContent = "—";
+    reportSamples.textContent = "—";
+    reportPeak.textContent = "—";
+    reportRms.textContent = "—";
+    reportReduction.textContent = "—";
+    reportOver3.textContent = "—";
+    reportOver6.textContent = "—";
+    modeSummary.innerHTML = "";
+    return;
+  }
+
+  reportVerdict.textContent = String(summary.verdict || "—").toUpperCase();
+  reportVerdict.className = String(summary.verdict || "");
+  reportDuration.textContent = `${Number(summary.durationSeconds || 0).toFixed(1)} s`;
+  reportSamples.textContent = String(summary.sampleCount || 0);
+  reportPeak.textContent = formatDb(summary.maxOutputPeakDbfs);
+  reportRms.textContent = formatDb(summary.averageOutputRmsDbfs);
+  reportReduction.textContent = `${Number(summary.maxLimiterReductionMagnitudeDb || 0).toFixed(1)} dB`;
+  reportOver3.textContent = `${Number(summary.limiterOver3Seconds || 0).toFixed(1)} s`;
+  reportOver6.textContent = `${Number(summary.limiterOver6Seconds || 0).toFixed(1)} s`;
+
+  modeSummary.innerHTML = Object.entries(summary.modes || {}).map(([mode, value]) => `
+    <div class="mode-report-row">
+      <strong>${mode}</strong>
+      <span>${Number(value.durationSeconds || 0).toFixed(1)}s</span>
+      <span>RMS ${Number(value.averageOutputRmsDbfs || -180).toFixed(1)}</span>
+      <span>PK ${Number(value.maxOutputPeakDbfs || -180).toFixed(1)}</span>
+      <span>GR ${Number(value.maxLimiterReductionMagnitudeDb || 0).toFixed(1)}</span>
+    </div>
+  `).join("");
+}
+
+function finishRecording(endedAtMs = Date.now()) {
+  if (!recordingSession) return null;
+  lastReport = finalizeQaSession(recordingSession, { endedAtMs });
+  recordingSession = null;
+  lastRecordSampleAt = 0;
+  renderReportSummary();
+  return lastReport;
+}
+
+async function startRecording() {
+  if (recordingSession) return;
+
+  if (!music.running) {
+    qaBadge.textContent = "STARTING";
+    await music.start("normal");
+  }
+
+  const info = refreshStaticInfo();
+  const meter = music.meter();
+  const now = Date.now();
+
+  lastReport = null;
+  recordingSession = createQaSession({
+    startedAtMs: now,
+    targetDurationSeconds: RECORD_DURATION_SECONDS,
+    sampleIntervalMs: RECORD_SAMPLE_INTERVAL_MS,
+    metadata: {
+      packId: info.packId || info.id || "pulse",
+      packName: info.packName || info.name || "Pulse",
+      packVersion: info.version || null,
+      engine: info.engine || null,
+      audioFormat: info.audioFormat || null,
+      masteringProfile: info.masteringProfile || info.mastering?.profile || null,
+      facadeApi: info.facadeApi || null,
+      initialSampleRate: meter?.sampleRate || null,
+      userAgent: navigator.userAgent,
+      platform: navigator.platform || null,
+    },
+  });
+
+  addQaSample(recordingSession, meter, {
+    capturedAtMs: now,
+    bar,
+    beat,
+  });
+  lastRecordSampleAt = now;
+  renderReportSummary();
+}
+
+function captureRecorderSample(meter) {
+  if (!recordingSession) return;
+
+  const now = Date.now();
+  if (now - lastRecordSampleAt < 80) return;
+
+  addQaSample(recordingSession, meter, {
+    capturedAtMs: now,
+    bar,
+    beat,
+  });
+  lastRecordSampleAt = now;
+
+  const targetMs = recordingSession.targetDurationSeconds * 1000;
+  if (now - recordingSession.startedAtMs >= targetMs) {
+    finishRecording(now);
+  }
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function exportReport(format) {
+  if (!lastReport) return;
+
+  const json = format === "json";
+  const contents = json
+    ? JSON.stringify(lastReport, null, 2)
+    : qaReportToCsv(lastReport);
+  const mime = json ? "application/json" : "text/csv";
+  const filename = qaReportFilename(lastReport, format);
+  const blob = new Blob([contents], { type: `${mime};charset=utf-8` });
+
+  if (typeof File === "function" && typeof navigator.share === "function") {
+    const file = new File([blob], filename, { type: mime });
+    const shareData = {
+      title: "Game Music QA Report",
+      text: `${lastReport.metadata?.packName || "Music"} · ${lastReport.summary?.verdict || "qa"}`,
+      files: [file],
+    };
+
+    try {
+      if (typeof navigator.canShare !== "function" || navigator.canShare({ files: [file] })) {
+        await navigator.share(shareData);
+        return;
+      }
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+      console.warn("QA report share failed; using download fallback", error);
+    }
+  }
+
+  downloadBlob(blob, filename);
+}
+
 function render() {
   const info = staticInfo;
   const meter = music.meter();
@@ -181,6 +393,8 @@ function render() {
   transitionValue.textContent = eventLabel(meter?.transitionCue);
   meterSupportValue.textContent = meter?.supported ? "ACTIVE · 10 FPS UI" : "UNAVAILABLE";
   renderStems(meter?.stems || {});
+  captureRecorderSample(meter);
+  renderReportSummary();
 
   pushHistory(Number(meter?.output?.peakDbfs ?? -60), reduction);
   drawHistory();
@@ -218,14 +432,26 @@ $("#stressButton").addEventListener("click", async () => {
 });
 
 $("#stopButton").addEventListener("click", () => {
+  if (recordingSession) finishRecording();
   music.stop();
   refreshStaticInfo();
   render();
 });
 
+recordButton.addEventListener("click", () => {
+  void startRecording().catch((error) => {
+    console.error(error);
+    recordStatus.textContent = `RECORD ERROR · ${error.message}`;
+  });
+});
+recordStopButton.addEventListener("click", () => finishRecording());
+exportJsonButton.addEventListener("click", () => void exportReport("json"));
+exportCsvButton.addEventListener("click", () => void exportReport("csv"));
+
 void music.preload({ stingers: true, transitions: true }).catch((error) => {
   console.warn("QA preload failed; START will retry", error);
 });
 
+renderReportSummary();
 render();
 requestAnimationFrame(animationFrame);
