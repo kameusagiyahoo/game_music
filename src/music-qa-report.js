@@ -97,7 +97,7 @@ function sampleDurations(samples, endedAtMs, startedAtMs, fallbackMs) {
 
     const elapsedAtEnd = Math.max(0, finite(endedAtMs, startedAtMs) - startedAtMs);
     const remaining = Math.max(0, elapsedAtEnd - sample.tMs);
-    durationsMs.push(Math.min(Math.max(0, fallbackMs), remaining || fallbackMs));
+    durationsMs.push(Math.min(Math.max(0, fallbackMs), remaining));
   });
 
   return {
