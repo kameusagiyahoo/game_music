@@ -79,14 +79,32 @@ export function addQaSample(session, meter, {
 }
 
 function sampleDurations(samples, endedAtMs, startedAtMs, fallbackMs) {
-  return samples.map((sample, index) => {
+  const durationsMs = [];
+  let samplingGapMs = 0;
+  let maxSampleGapMs = 0;
+  const maxObservedIntervalMs = Math.max(fallbackMs, fallbackMs * 2.5);
+
+  samples.forEach((sample, index) => {
     const next = samples[index + 1];
-    if (next) return Math.max(0, next.tMs - sample.tMs);
+    if (next) {
+      const rawGap = Math.max(0, next.tMs - sample.tMs);
+      maxSampleGapMs = Math.max(maxSampleGapMs, rawGap);
+      const observed = Math.min(rawGap, maxObservedIntervalMs);
+      durationsMs.push(observed);
+      samplingGapMs += Math.max(0, rawGap - observed);
+      return;
+    }
 
     const elapsedAtEnd = Math.max(0, finite(endedAtMs, startedAtMs) - startedAtMs);
     const remaining = Math.max(0, elapsedAtEnd - sample.tMs);
-    return Math.min(Math.max(0, fallbackMs), remaining || fallbackMs);
+    durationsMs.push(Math.min(Math.max(0, fallbackMs), remaining || fallbackMs));
   });
+
+  return {
+    durationsMs,
+    samplingGapMs,
+    maxSampleGapMs,
+  };
 }
 
 function summarizeModes(samples, durationsMs) {
@@ -212,12 +230,13 @@ export function finalizeQaSession(session, {
   const samples = session.samples.map((sample) => ({ ...sample }));
   const ended = Math.max(session.startedAtMs, finite(endedAtMs, Date.now()));
   const durationSeconds = Math.max(0, (ended - session.startedAtMs) / 1000);
-  const durationsMs = sampleDurations(
+  const sampling = sampleDurations(
     samples,
     ended,
     session.startedAtMs,
     session.sampleIntervalMs,
   );
+  const durationsMs = sampling.durationsMs;
 
   let maxPrePeak = SILENCE_DB;
   let maxOutputPeak = SILENCE_DB;
@@ -241,8 +260,17 @@ export function finalizeQaSession(session, {
     if (sample.outputPeakDbfs > -0.15) clipRiskMs += durationMs;
   });
 
+  const observedDurationSeconds = durationsMs.reduce((sum, value) => sum + value, 0) / 1000;
+  const coveragePercent = durationSeconds > 0
+    ? Math.min(100, observedDurationSeconds / durationSeconds * 100)
+    : 0;
+
   const summary = {
     durationSeconds: round(durationSeconds),
+    observedDurationSeconds: round(observedDurationSeconds),
+    samplingCoveragePercent: round(coveragePercent, 1),
+    samplingGapSeconds: round(sampling.samplingGapMs / 1000),
+    maxSampleGapMs: round(sampling.maxSampleGapMs, 1),
     sampleCount: samples.length,
     maxPreLimiterPeakDbfs: round(maxPrePeak),
     maxOutputPeakDbfs: round(maxOutputPeak),
@@ -256,7 +284,10 @@ export function finalizeQaSession(session, {
     clipRiskSeconds: round(clipRiskMs / 1000),
     modes: summarizeModes(samples, durationsMs),
   };
-  summary.verdict = qaVerdict(summary);
+  summary.verdict = qaVerdict({
+    ...summary,
+    durationSeconds: observedDurationSeconds,
+  });
 
   return {
     schemaVersion: REPORT_SCHEMA_VERSION,
