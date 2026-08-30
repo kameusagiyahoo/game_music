@@ -1042,6 +1042,158 @@ CIの `tools/check_music_metering.mjs` では以下を検証します。
 
 Facade API versionは `1.4.0` です。
 
+### v21 — QA Session Recorder / Report Export
+
+v20のRealtime Meterを最大60秒記録し、Audio QA Dashboard上でセッションレポートを生成できます。
+
+```text
+music.meter() @ ~10 fps
+        |
+        v
+QA Session Recorder
+        |
+        +-- Peak / RMS
+        +-- Limiter Reduction
+        +-- Mode / Layer Preset
+        +-- Stinger / Transition Cue
+        +-- AudioContext Sample Rate
+        |
+        v
+60 sec
+        |
+        v
+Summary + Events + Samples
+        |
+        +--> JSON
+        +--> CSV
+```
+
+Recorderは `RECORD 60s` を押すだけで開始します。Audioがまだ開始されていない場合は、そのユーザー操作内でPulseを起動してから記録します。
+
+記録する主な指標:
+
+- 最大Pre-Limiter Peak
+- 最大Final Output Peak
+- Power基準の平均Output RMS
+- 最大Limiter Gain Reduction
+- Limiter Reductionが3 dB以上だった累積時間
+- Limiter Reductionが6 dB以上だった累積時間
+- Post-Limiterが -0.15 dBFSを超えた時間
+- Mode別の滞在時間 / RMS / Peak / 最大Reduction
+- Stinger / Transition Cueのpending / playingイベント
+- 実AudioContext Sample Rate
+- Stem Gain
+- BAR / BEAT
+
+平均RMSはdB値をそのまま算術平均せず、各サンプルを線形Powerへ戻して時間加重平均したあとdBFSへ戻します。
+
+```text
+dBFS
+  |
+  v
+linear power
+  |
+  +-- time weighted average
+  |
+  v
+dBFS
+```
+
+### Sampling Coverage
+
+iPhone / Safariで画面ロックやタブ切替が発生すると、requestAnimationFrameが停止・間引きされることがあります。
+
+v21では長い無観測区間を「同じMeter値が継続した」とみなしません。
+
+```text
+100 ms
+100 ms
+1000 ms gap  <- Safari background
+100 ms
+```
+
+この場合、長いgapはLimiter累積時間やMode別RMSの観測時間から除外し、
+
+```text
+samplingCoveragePercent
+samplingGapSeconds
+maxSampleGapMs
+```
+
+としてレポートへ記録します。
+
+Dashboardにも `COVERAGE` を表示するため、60秒のレポートがどれだけ実測できていたか確認できます。
+
+### QA Verdict
+
+セッション終了時に簡易判定を返します。
+
+```text
+PASS
+  clip riskなし
+  heavy limiterが継続していない
+
+REVIEW
+  Reduction >= 3 dB が観測時間の10%以上
+
+FAIL
+  Post-Limiter > -0.15 dBFS が0.1秒以上
+  または Reduction >= 6 dB が1秒以上 / 観測時間の10%以上
+```
+
+判定は最終的な音質評価ではなく、Mastering QAで確認対象を絞るためのguardです。
+
+### Report Export
+
+JSONはSummary / Events / 全Meter Samplesを保持します。
+
+```js
+{
+  schemaVersion: "1.0.0",
+  metadata: {
+    packId: "pulse",
+    packVersion: "1.4.0",
+    masteringProfile: "game-balanced-v1",
+    audioFormat: "m4a",
+    initialSampleRate: 48000
+  },
+  summary: {
+    durationSeconds,
+    observedDurationSeconds,
+    samplingCoveragePercent,
+    maxOutputPeakDbfs,
+    averageOutputRmsDbfs,
+    maxLimiterReductionMagnitudeDb,
+    limiterOver3Seconds,
+    limiterOver6Seconds,
+    modes,
+    verdict
+  },
+  events: [],
+  samples: []
+}
+```
+
+CSVは時系列解析用で、Peak / RMS / Limiter / Mode / Cue / Stem Gainを1 sample 1 rowで出力します。
+
+iPhone / SafariでFile共有に対応している場合は `navigator.share()` で共有シートを開きます。非対応ブラウザではBlob downloadへfallbackします。
+
+集計ロジックは `src/music-qa-report.js` に分離しています。
+
+CIの `tools/check_music_qa_report.mjs` では以下を検証します。
+
+- Power平均RMS
+- Limiter >= 3 dB / >= 6 dB累積時間
+- Clip Risk時間
+- Mode別集計
+- Stinger / Transition Cueイベント
+- Sampling Coverage
+- Safari background相当のlong gap除外
+- CSV列
+- Report filename
+
+v21は既存Facadeへ新しい音声APIを追加しないため、Facade API versionは引き続き `1.4.0` です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -1106,6 +1258,7 @@ Validation:
 - `tools/check_music_transition_cues.mjs`
 - `tools/check_music_mastering.mjs`
 - `tools/check_music_metering.mjs`
+- `tools/check_music_qa_report.mjs`
 - `tools/check_pulse_audio_profile.py`
 - `tools/check_pulse_mastering.py`
 - `.github/workflows/music-architecture-check.yml`
@@ -1124,6 +1277,7 @@ src/
 ├── music-asset-resolver.js
 ├── music-format-resolver.js
 ├── music-facade.js
+├── music-qa-report.js
 ├── music-pack-manifest.js
 ├── audio-asset-cache.js
 ├── music-service-worker.js
