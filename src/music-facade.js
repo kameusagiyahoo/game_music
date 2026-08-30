@@ -109,6 +109,19 @@ export class MusicFacade {
     if ((kind === "all" || kind === "transitionCue") && typeof manager.cancelPendingTransitionCue === "function") manager.cancelPendingTransitionCue();
   }
 
+  meter() {
+    return this.runtime.manager?.getMeterSnapshot?.() || {
+      supported: false,
+      contextState: "unavailable",
+      preLimiter: { peakDbfs: -180, rmsDbfs: -180, peak: 0, rms: 0 },
+      output: { peakDbfs: -180, rmsDbfs: -180, peak: 0, rms: 0 },
+      limiterReductionDb: 0,
+      stems: {},
+      stinger: null,
+      transitionCue: null,
+    };
+  }
+
   info() {
     const base = getRuntimeDescriptor(this.runtime) || {};
     const packInfo = this.runtime.manager?.getPackInfo?.() || {};
