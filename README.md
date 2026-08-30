@@ -376,7 +376,7 @@ music.info().preload;
 // }
 ```
 
-Facade API versionはv14で `1.1.0`、v16で `1.2.0`、v17のTransition Cue API追加で現在は `1.3.0` です。
+Facade API versionはv14で `1.1.0`、v16で `1.2.0`、v17で `1.3.0`、v20のRealtime Meter API追加で現在は `1.4.0` です。
 
 利用箇所:
 
@@ -926,6 +926,122 @@ CI:
 
 Pulse Packをv1.4.0へ更新したため、Persistent Audio Cacheは `?gmv=1.4.0` へ自動世代更新されます。
 
+### v20 — Realtime Audio Meter / QA Dashboard
+
+WAV Stem Engineの最終出力を、iPhone / Safari上でリアルタイム監視できます。
+
+Mastering本線は変更せず、0音量の監視branchを追加しています。
+
+```text
+MasterTrim ─────────────> Limiter ─────────────> Speaker
+    |                        |
+    +--> PRE Analyser        +--> OUT Analyser
+             |                        |
+             +--------> MeterSink gain=0
+                              |
+                              v
+                           Speaker
+```
+
+Meter branchは `gain=0` なので本来の出力へ音を加算しません。
+
+取得値:
+
+```js
+music.meter();
+// {
+//   supported: true,
+//   sampleRate: 48000,
+//   contextState: "running",
+//   preLimiter: {
+//     peakDbfs,
+//     rmsDbfs
+//   },
+//   output: {
+//     peakDbfs,
+//     rmsDbfs
+//   },
+//   limiterReductionDb,
+//   headroomDb,
+//   mode,
+//   layerPreset,
+//   stems: {
+//     drums: { gain, active, bufferReady },
+//     ...
+//   },
+//   stinger,
+//   transitionCue
+// }
+```
+
+`sampleRate` はAssetの44.1 kHzではなく、その端末で実際に動いている `AudioContext.sampleRate` を表示します。iPhone側で48 kHzになった場合もその値を確認できます。
+
+Facade API:
+
+```js
+const meter = music.meter();
+```
+
+10fps程度でMeterだけ取得できるよう、毎回 `music.info()` 全体を生成しない軽量APIにしています。
+
+Capabilities:
+
+```js
+music.info().capabilities.realtimeMeter === true;
+```
+
+Audio QA Dashboard:
+
+```text
+/debug/audio-qa/
+```
+
+Dashboardでは以下をリアルタイム表示します。
+
+- Pre-Limiter Peak / RMS
+- Final Output Peak / RMS
+- Limiter Gain Reduction
+- Mastering Profile / Headroom
+- 実AudioContext Sample Rate
+- StemごとのLayer Gain / Active状態
+- Stinger状態
+- Transition Cue状態
+- BAR / BEAT
+- 約20秒のPeak / Limiter履歴
+
+iPhone負荷を抑えるため、UI更新は約10fpsへ制限しています。
+
+QA判定の目安:
+
+```text
+SAFE
+  通常範囲
+
+WATCH
+  Pre-Limiter > +3 dB
+  または Limiter Reduction <= -3 dB
+
+LIMITER HEAVY
+  Limiter Reduction <= -6 dB
+
+CLIP RISK
+  Post-Limiter Peak > -0.15 dBFS
+```
+
+`RESULT + VICTORY` ボタンでは、次小節頭へResult Mix / Impact / Victory Stingerを同時予約し、v19 Masteringを意図的にStress Testできます。
+
+CIの `tools/check_music_metering.mjs` では以下を検証します。
+
+- PRE / OUT AnalyserのPeak / RMS計算
+- Limiter Reduction取得
+- 実AudioContext Sample Rate取得
+- Main Mastering経路が変更されていない
+- MeterSink gain = 0
+- Facade `music.meter()`
+- AnalyserNode非対応環境で安全にfallback
+
+Facade API versionは `1.4.0` です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -989,6 +1105,7 @@ Validation:
 - `tools/check_music_quantization.mjs`
 - `tools/check_music_transition_cues.mjs`
 - `tools/check_music_mastering.mjs`
+- `tools/check_music_metering.mjs`
 - `tools/check_pulse_audio_profile.py`
 - `tools/check_pulse_mastering.py`
 - `.github/workflows/music-architecture-check.yml`
@@ -1019,7 +1136,8 @@ settings/
 └── music/
 debug/
 ├── mixer/
-└── resolver/
+├── resolver/
+└── audio-qa/
 games/
 ├── orbit-rush/
 ├── pulse-forge/
