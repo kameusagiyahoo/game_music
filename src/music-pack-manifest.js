@@ -1,5 +1,5 @@
 export const MUSIC_PACK_SCHEMA_VERSION = "1.3.0";
-export const MUSIC_FACADE_API_VERSION = "1.3.0";
+export const MUSIC_FACADE_API_VERSION = "1.4.0";
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
