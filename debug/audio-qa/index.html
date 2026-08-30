@@ -11,7 +11,7 @@
   <main class="shell">
     <header class="hero">
       <div>
-        <p class="eyebrow">GAME MUSIC LAB / ENGINE v20</p>
+        <p class="eyebrow">GAME MUSIC LAB / ENGINE v21</p>
         <h1>Audio QA Dashboard</h1>
         <p class="lead">Pulse Pack v1.4.0のMaster / Limiter / Stem状態を実機で監視します。</p>
       </div>
@@ -28,6 +28,35 @@
       <button id="overdriveButton" type="button">OVERDRIVE</button>
       <button id="stressButton" class="danger" type="button">RESULT + VICTORY</button>
       <button id="stopButton" type="button">STOP</button>
+    </section>
+
+    <section class="panel recorder-panel">
+      <div class="recorder-head">
+        <div>
+          <p class="eyebrow">QA SESSION / 60 SEC</p>
+          <h2>Session Recorder</h2>
+          <p id="recordStatus" class="record-status">READY · START AUDIO OR RECORD</p>
+        </div>
+        <strong id="recordTimer">00:00.0 / 01:00.0</strong>
+      </div>
+      <div class="record-progress"><div id="recordProgressBar"></div></div>
+      <div class="record-actions">
+        <button id="recordButton" class="record-button" type="button">RECORD 60s</button>
+        <button id="recordStopButton" type="button" disabled>STOP & ANALYZE</button>
+        <button id="exportJsonButton" type="button" disabled>SHARE JSON</button>
+        <button id="exportCsvButton" type="button" disabled>SHARE CSV</button>
+      </div>
+      <div class="session-summary">
+        <div><span>VERDICT</span><strong id="reportVerdict">—</strong></div>
+        <div><span>DURATION</span><strong id="reportDuration">—</strong></div>
+        <div><span>SAMPLES</span><strong id="reportSamples">—</strong></div>
+        <div><span>MAX OUTPUT</span><strong id="reportPeak">—</strong></div>
+        <div><span>AVG RMS</span><strong id="reportRms">—</strong></div>
+        <div><span>MAX REDUCTION</span><strong id="reportReduction">—</strong></div>
+        <div><span>REDUCTION ≥3dB</span><strong id="reportOver3">—</strong></div>
+        <div><span>REDUCTION ≥6dB</span><strong id="reportOver6">—</strong></div>
+      </div>
+      <div id="modeSummary" class="mode-summary"></div>
     </section>
 
     <section class="meter-grid">
@@ -126,6 +155,7 @@
     <section class="panel notes">
       <p><strong>QA目安:</strong> Limiter Reductionが一瞬だけ動くのは正常です。長時間 -6 dB以下が続く場合はMixが強すぎる可能性があります。</p>
       <p>このMeterは0音量の監視branchで、ゲーム本来のMastering経路には加算されません。</p>
+      <p>Recorderは約10fpsのMeter値を最大60秒記録し、終了後にJSON / CSVをiPhone共有シートまたはダウンロードへ出力します。</p>
     </section>
   </main>
   <script type="module" src="./qa.js"></script>
