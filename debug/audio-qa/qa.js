@@ -40,6 +40,7 @@ const exportCsvButton = $("#exportCsvButton");
 const reportVerdict = $("#reportVerdict");
 const reportDuration = $("#reportDuration");
 const reportSamples = $("#reportSamples");
+const reportCoverage = $("#reportCoverage");
 const reportPeak = $("#reportPeak");
 const reportRms = $("#reportRms");
 const reportReduction = $("#reportReduction");
@@ -216,6 +217,7 @@ function renderReportSummary() {
     reportVerdict.className = "";
     reportDuration.textContent = "—";
     reportSamples.textContent = "—";
+    reportCoverage.textContent = "—";
     reportPeak.textContent = "—";
     reportRms.textContent = "—";
     reportReduction.textContent = "—";
@@ -229,6 +231,7 @@ function renderReportSummary() {
   reportVerdict.className = String(summary.verdict || "");
   reportDuration.textContent = `${Number(summary.durationSeconds || 0).toFixed(1)} s`;
   reportSamples.textContent = String(summary.sampleCount || 0);
+  reportCoverage.textContent = `${Number(summary.samplingCoveragePercent || 0).toFixed(0)}%`;
   reportPeak.textContent = formatDb(summary.maxOutputPeakDbfs);
   reportRms.textContent = formatDb(summary.averageOutputRmsDbfs);
   reportReduction.textContent = `${Number(summary.maxLimiterReductionMagnitudeDb || 0).toFixed(1)} dB`;
