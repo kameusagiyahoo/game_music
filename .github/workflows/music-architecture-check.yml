@@ -16,6 +16,7 @@ on:
       - "tools/check_music_quantization.mjs"
       - "tools/check_music_transition_cues.mjs"
       - "tools/check_music_mastering.mjs"
+      - "tools/check_music_metering.mjs"
       - "tools/check_pulse_mastering.py"
       - "tools/check_pulse_audio_profile.py"
       - ".github/workflows/music-architecture-check.yml"
@@ -34,6 +35,7 @@ on:
       - "tools/check_music_quantization.mjs"
       - "tools/check_music_transition_cues.mjs"
       - "tools/check_music_mastering.mjs"
+      - "tools/check_music_metering.mjs"
       - "tools/check_pulse_mastering.py"
       - "tools/check_pulse_audio_profile.py"
       - ".github/workflows/music-architecture-check.yml"
@@ -69,6 +71,7 @@ jobs:
           node --check games/aether-shift/game.js
           node --check debug/resolver/resolver.js
           node --check debug/mixer/mixer.js
+          node --check debug/audio-qa/qa.js
           node --check settings/music/settings.js
       - name: Check Music Pack manifests
         run: node tools/check_music_manifests.mjs
@@ -86,6 +89,8 @@ jobs:
         run: node tools/check_music_transition_cues.mjs
       - name: Check Runtime Mastering Graph
         run: node tools/check_music_mastering.mjs
+      - name: Check Realtime Audio Meter
+        run: node tools/check_music_metering.mjs
       - name: Check Pulse Audio Profile
         run: python tools/check_pulse_audio_profile.py
       - name: Check Pulse Mastering
