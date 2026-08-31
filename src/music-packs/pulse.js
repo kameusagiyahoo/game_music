@@ -123,7 +123,7 @@ export const pulseManifest = defineMusicPackManifest({
   shortName: "Pulse WAV",
   description: "44.1kHz stereo / mastered / 5同期Stem / transition cues",
   engine: "wav-stem",
-  version: "1.4.0",
+  version: "1.4.1",
   states: ["normal", "build", "overdrive", "result"],
   stems: ["drums", "bass", "chords", "melody", "sparkle"],
   stingers: ["victory", "gameover"],
