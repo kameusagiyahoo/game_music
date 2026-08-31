@@ -2124,6 +2124,9 @@ retention: 14 days
 
 ### Audio Generation Gate
 
+Encoding設定は `tools/encode_pulse_audio.sh` に分離しています。自動再生成は `tools/generate_pulse_stems.py` または `tools/encode_pulse_audio.sh` が変わった場合だけ起動します。Pack metadataやWorkflow説明だけの変更では再encodeしません。
+
+
 `.github/workflows/generate-pulse-stems.yml` でも、M4A / OGG encode後、GitHubへcommitする前に同じParity Gateを実行します。
 
 ```text
@@ -2235,6 +2238,7 @@ Validation:
 - `tools/check_pulse_mastering.py`
 - `tools/check_pulse_format_parity.py`
 - `tools/check_pulse_format_parity_semantics.py`
+- `tools/encode_pulse_audio.sh`
 - `.github/workflows/pulse-format-parity.yml`
 - `.github/workflows/music-architecture-check.yml`
 
