@@ -10,6 +10,13 @@ import {
   executeQaScenarioStep,
   qaScenarioExecutionSummary,
 } from "../src/music-qa-scenario.js";
+import {
+  createQaSession,
+  addQaSample,
+  finalizeQaSession,
+  qaReportToCsv,
+} from "../src/music-qa-report.js";
+import { compareQaReports } from "../src/music-qa-compare.js";
 
 const errors = [];
 const calls = [];
@@ -206,6 +213,87 @@ if (resolverCalls[1]?.type !== "mode" || resolverCalls[1]?.name !== "build") {
   errors.push("build resolver did not transition to build mode");
 }
 
+
+// Scenario stage aggregation must be preserved in report samples, summary and CSV.
+const stageSession = createQaSession({
+  startedAtMs: 1_000,
+  targetDurationSeconds: 0.4,
+  sampleIntervalMs: 100,
+  metadata: {
+    packId: "pulse",
+    qaScenarioId: STANDARD_QA_SCENARIO.id,
+  },
+});
+
+const stageMeter = (peak, rms, reduction, mode, preset) => ({
+  mode,
+  layerPreset: preset,
+  sampleRate: 48_000,
+  preLimiter: { peakDbfs: peak + 1, rmsDbfs: rms + 1 },
+  output: { peakDbfs: peak, rmsDbfs: rms },
+  limiterReductionDb: reduction,
+  stems: {},
+  stinger: null,
+  transitionCue: null,
+});
+
+[
+  ["normal", -3.0, -20, 0, "normal", "focus"],
+  ["build", -2.5, -19, -1, "normal", "build"],
+  ["overdrive", -1.5, -17, -2, "overdrive", "overdrive"],
+  ["result", -2.0, -18, -1, "result", "result"],
+].forEach(([stage, peak, rms, reduction, mode, preset], index) => {
+  addQaSample(stageSession, stageMeter(peak, rms, reduction, mode, preset), {
+    capturedAtMs: 1_000 + index * 100,
+    bar: 1,
+    beat: index + 1,
+    scenarioStage: stage,
+  });
+});
+
+const stageReport = finalizeQaSession(stageSession, { endedAtMs: 1_400 });
+for (const stage of ["normal", "build", "overdrive", "result"]) {
+  if (!stageReport.summary.scenarioStages?.[stage]) {
+    errors.push(`scenario stage summary missing: ${stage}`);
+  }
+  if (stageReport.summary.scenarioStages?.[stage]?.durationSeconds !== 0.1) {
+    errors.push(
+      `scenario stage duration mismatch for ${stage}: ${stageReport.summary.scenarioStages?.[stage]?.durationSeconds}`
+    );
+  }
+}
+const scenarioStageEvents = stageReport.events.filter((event) => event.type === "scenario-stage");
+if (scenarioStageEvents.length !== 4) {
+  errors.push(`expected 4 scenario-stage events, got ${scenarioStageEvents.length}`);
+}
+const stageCsv = qaReportToCsv(stageReport);
+if (!stageCsv.split("\n")[0].includes("scenario_stage")) {
+  errors.push("scenario_stage CSV column missing");
+}
+
+// v22 comparison must now detect stage-specific regressions.
+const stageBaseline = JSON.parse(JSON.stringify(stageReport));
+const stageCurrent = JSON.parse(JSON.stringify(stageReport));
+stageCurrent.generatedAt = "2026-09-01T01:00:00.000Z";
+stageCurrent.summary.scenarioStages.overdrive.maxOutputPeakDbfs += 2.0;
+stageCurrent.summary.scenarioStages.overdrive.maxLimiterReductionMagnitudeDb += 2.0;
+
+const stageComparison = compareQaReports(stageBaseline, stageCurrent);
+if (!stageComparison.valid) errors.push("scenario stage comparison should be valid");
+if (!["review", "fail"].includes(stageComparison.scenarioStages?.overdrive?.status)) {
+  errors.push(
+    `overdrive stage regression not detected: ${stageComparison.scenarioStages?.overdrive?.status}`
+  );
+}
+if (!["review", "fail"].includes(stageComparison.status)) {
+  errors.push(`stage regression did not affect overall comparison: ${stageComparison.status}`);
+}
+if (stageComparison.summary?.regressionStageCount !== 1) {
+  errors.push(
+    `regressionStageCount mismatch: ${stageComparison.summary?.regressionStageCount}`
+  );
+}
+
 if (errors.length) {
   console.error("Music QA Scenario Check FAILED");
   errors.forEach((error) => console.error(`- ${error}`));
@@ -220,4 +308,6 @@ console.log("- BUILD riser/layer boundary alignment: OK");
 console.log(`- late-step abort: ${lateRun.abortReason}`);
 console.log(`- scheduler-gap abort: ${gapRun.abortReason}`);
 console.log("- shared build state mapping: OK");
+console.log("- scenario-stage report aggregation: OK");
+console.log("- scenario-stage regression compare: OK");
 console.log("- Facade API 1.5.0: OK");
