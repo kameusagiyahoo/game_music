@@ -460,6 +460,49 @@ export function appendGoldenGitHubSummary(markdown, summaryPath = process.env.GI
   return true;
 }
 
+export function buildGoldenQaReport(
+  baseline,
+  current,
+  result = checkGoldenBaseline(baseline, current),
+) {
+  return {
+    schemaVersion: "1.0.0",
+    generatedAt: new Date().toISOString(),
+    type: "music-golden-qa",
+    passed: Boolean(result.passed),
+    baseline: {
+      id: baseline?.id || null,
+      pack: baseline?.pack || null,
+      scenario: baseline?.scenario || null,
+      audio: baseline?.audio || null,
+      sourceFingerprint: baseline?.sourceFingerprint || null,
+      overall: baseline?.overall || null,
+      stages: baseline?.stages || {},
+    },
+    current: {
+      id: current?.id || null,
+      pack: current?.pack || null,
+      scenario: current?.scenario || null,
+      audio: current?.audio || null,
+      sourceFingerprint: current?.sourceFingerprint || null,
+      overall: current?.overall || null,
+      stages: current?.stages || {},
+    },
+    policy: { ...(baseline?.policy || POLICY) },
+    metrics: goldenComparisonRows(baseline, current),
+    failures: [...result.failures],
+    warnings: [...result.warnings],
+  };
+}
+
+export function writeGoldenQaReport(report, reportPath = process.env.GOLDEN_QA_REPORT_PATH) {
+  if (!reportPath) return false;
+  const resolved = path.resolve(reportPath);
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  fs.writeFileSync(resolved, JSON.stringify(report, null, 2) + "\n");
+  return true;
+}
+
 function githubCommandEscape(value) {
   return String(value)
     .replaceAll("%", "%25")
@@ -610,12 +653,15 @@ function main() {
   const baseline = JSON.parse(fs.readFileSync(BASELINE_PATH, "utf8"));
   const result = checkGoldenBaseline(baseline, candidate);
   const markdown = buildGoldenQaMarkdown(baseline, candidate, result);
+  const report = buildGoldenQaReport(baseline, candidate, result);
   const summaryWritten = appendGoldenGitHubSummary(markdown);
+  const reportWritten = writeGoldenQaReport(report);
 
   console.log("Music Golden QA Regression Gate");
   result.notes.forEach((line) => console.log("- " + line));
   result.warnings.forEach((line) => console.warn("WARNING: " + line));
   if (summaryWritten) console.log("- GitHub Actions Summary: written");
+  if (reportWritten) console.log("- Golden QA JSON Report: written");
 
   if (!result.passed) {
     console.error("Music Golden QA Regression Gate FAILED");
