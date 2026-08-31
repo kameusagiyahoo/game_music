@@ -1,0 +1,447 @@
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { pulsePack, pulseManifest } from "../src/music-packs/pulse.js";
+import { STANDARD_QA_SCENARIO } from "../src/music-qa-scenario.js";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const BASELINE_PATH = path.join(ROOT, "qa", "baselines", "pulse-standard-v1.json");
+const RENDER_SCHEMA_VERSION = "1.0.0";
+const RENDER_PROFILE = "offline-pre-limiter-v1";
+
+const POLICY = Object.freeze({
+  maxOverallPeakIncreaseDb: 0.75,
+  maxStagePeakIncreaseDb: 0.75,
+  maxOverallRmsIncreaseDb: 1.5,
+  maxStageRmsIncreaseDb: 1.5,
+  maxAbsolutePeakDbfs: 3.0,
+});
+
+const STAGE_PROFILE = Object.freeze({
+  normal: Object.freeze({ durationSeconds: 10, preset: "focus", oneShots: Object.freeze([]) }),
+  build: Object.freeze({
+    durationSeconds: 10,
+    preset: "build",
+    oneShots: Object.freeze([
+      Object.freeze({ kind: "transitions", name: "riser", gain: 0.72 }),
+    ]),
+  }),
+  overdrive: Object.freeze({
+    durationSeconds: 20,
+    preset: "overdrive",
+    oneShots: Object.freeze([
+      Object.freeze({ kind: "transitions", name: "fill", gain: 0.72 }),
+    ]),
+  }),
+  result: Object.freeze({
+    durationSeconds: 20,
+    preset: "result",
+    oneShots: Object.freeze([
+      Object.freeze({ kind: "transitions", name: "impact", gain: 0.72 }),
+      Object.freeze({ kind: "stingers", name: "victory", gain: 1.0 }),
+    ]),
+  }),
+});
+
+const round = (value, digits = 4) => {
+  const factor = 10 ** digits;
+  return Math.round(Number(value) * factor) / factor;
+};
+const dbToGain = (db) => 10 ** (Number(db) / 20);
+const amplitudeToDb = (value) => 20 * Math.log10(Math.max(Number(value) || 0, 1e-12));
+
+function readWav(relativePath) {
+  const absolutePath = path.join(ROOT, relativePath);
+  const bytes = fs.readFileSync(absolutePath);
+  if (bytes.toString("ascii", 0, 4) !== "RIFF" || bytes.toString("ascii", 8, 12) !== "WAVE") {
+    throw new Error("Unsupported WAV container: " + relativePath);
+  }
+
+  let offset = 12;
+  let format = null;
+  let data = null;
+
+  while (offset + 8 <= bytes.length) {
+    const id = bytes.toString("ascii", offset, offset + 4);
+    const size = bytes.readUInt32LE(offset + 4);
+    const start = offset + 8;
+    const end = Math.min(bytes.length, start + size);
+
+    if (id === "fmt ") {
+      format = {
+        audioFormat: bytes.readUInt16LE(start),
+        channels: bytes.readUInt16LE(start + 2),
+        sampleRate: bytes.readUInt32LE(start + 4),
+        bitsPerSample: bytes.readUInt16LE(start + 14),
+      };
+    } else if (id === "data") {
+      data = bytes.subarray(start, end);
+    }
+
+    offset = start + size + (size % 2);
+  }
+
+  if (!format || !data) throw new Error("Missing fmt/data chunk: " + relativePath);
+  if (format.audioFormat !== 1 || format.channels !== 2 || format.bitsPerSample !== 16) {
+    throw new Error(
+      "Golden renderer requires PCM16 stereo: " + relativePath +
+      " format=" + format.audioFormat +
+      " channels=" + format.channels +
+      " bits=" + format.bitsPerSample
+    );
+  }
+
+  const frameCount = Math.floor(data.length / 4);
+  const left = new Float64Array(frameCount);
+  const right = new Float64Array(frameCount);
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const byteOffset = frame * 4;
+    left[frame] = data.readInt16LE(byteOffset) / 32768;
+    right[frame] = data.readInt16LE(byteOffset + 2) / 32768;
+  }
+
+  return {
+    relativePath,
+    sampleRate: format.sampleRate,
+    channels: format.channels,
+    frameCount,
+    left,
+    right,
+    bytes,
+  };
+}
+
+function assetPath(kind, name) {
+  if (kind === "stems") return "assets/stems/pulse/" + name + ".wav";
+  if (kind === "stingers") return "assets/stingers/pulse/" + name + ".wav";
+  if (kind === "transitions") return "assets/transitions/pulse/" + name + ".wav";
+  throw new Error("Unknown golden asset kind: " + kind);
+}
+
+function loadAssets() {
+  const assets = { stems: {}, stingers: {}, transitions: {} };
+
+  for (const name of ["drums", "bass", "chords", "melody", "sparkle"]) {
+    assets.stems[name] = readWav(assetPath("stems", name));
+  }
+  for (const name of ["victory", "gameover"]) {
+    assets.stingers[name] = readWav(assetPath("stingers", name));
+  }
+  for (const name of ["fill", "whoosh", "riser", "impact"]) {
+    assets.transitions[name] = readWav(assetPath("transitions", name));
+  }
+
+  const rates = new Set(
+    Object.values(assets).flatMap((group) =>
+      Object.values(group).map((asset) => asset.sampleRate)
+    )
+  );
+  if (rates.size !== 1) {
+    throw new Error("Golden assets have mixed sample rates: " + [...rates].join(","));
+  }
+
+  return { assets, sampleRate: [...rates][0] };
+}
+
+function measureStage({ stage, config, assets, sampleRate, trimGain }) {
+  const preset = pulsePack.layerPresets?.[config.preset];
+  if (!preset) throw new Error("Missing Pulse layer preset: " + config.preset);
+
+  const totalFrames = Math.round(config.durationSeconds * sampleRate);
+  let peak = 0;
+  let energy = 0;
+
+  for (let frame = 0; frame < totalFrames; frame += 1) {
+    let left = 0;
+    let right = 0;
+
+    for (const [name, gain] of Object.entries(preset)) {
+      const stem = assets.stems[name];
+      if (!stem) throw new Error("Missing stem for preset: " + name);
+      const stemFrame = frame % stem.frameCount;
+      left += stem.left[stemFrame] * Number(gain);
+      right += stem.right[stemFrame] * Number(gain);
+    }
+
+    for (const oneShot of config.oneShots) {
+      const asset = assets[oneShot.kind]?.[oneShot.name];
+      if (!asset) throw new Error("Missing one-shot: " + oneShot.kind + "/" + oneShot.name);
+      if (frame < asset.frameCount) {
+        left += asset.left[frame] * Number(oneShot.gain ?? 1);
+        right += asset.right[frame] * Number(oneShot.gain ?? 1);
+      }
+    }
+
+    left *= trimGain;
+    right *= trimGain;
+    peak = Math.max(peak, Math.abs(left), Math.abs(right));
+    energy += (left * left + right * right) * 0.5;
+  }
+
+  const rms = Math.sqrt(energy / Math.max(1, totalFrames));
+  return {
+    stage,
+    preset: config.preset,
+    durationSeconds: config.durationSeconds,
+    frameCount: totalFrames,
+    peakDbfs: round(amplitudeToDb(peak)),
+    rmsDbfs: round(amplitudeToDb(rms)),
+    peakLinear: round(peak, 6),
+    rmsLinear: round(rms, 6),
+    oneShots: config.oneShots.map((item) => ({
+      kind: item.kind,
+      name: item.name,
+      gain: item.gain,
+    })),
+  };
+}
+
+function fingerprintInputs(assets) {
+  const hash = crypto.createHash("sha256");
+  for (const group of ["stems", "stingers", "transitions"]) {
+    for (const name of Object.keys(assets[group]).sort()) {
+      const asset = assets[group][name];
+      hash.update(group + "/" + name + "\0");
+      hash.update(asset.bytes);
+    }
+  }
+
+  hash.update(JSON.stringify({
+    layerPresets: pulsePack.layerPresets,
+    mastering: pulsePack.mastering,
+    scenario: STANDARD_QA_SCENARIO,
+    stageProfile: STAGE_PROFILE,
+  }));
+
+  return hash.digest("hex");
+}
+
+export function buildGoldenCandidate() {
+  const loaded = loadAssets();
+  const assets = loaded.assets;
+  const sampleRate = loaded.sampleRate;
+  const headroomDb = Number(pulsePack.mastering?.headroomDb ?? -3);
+  const trimGain = dbToGain(headroomDb);
+
+  const stages = {};
+  let totalEnergyFrames = 0;
+  let totalFrames = 0;
+  let overallPeak = 0;
+
+  for (const [stage, config] of Object.entries(STAGE_PROFILE)) {
+    const metrics = measureStage({ stage, config, assets, sampleRate, trimGain });
+    stages[stage] = metrics;
+    totalFrames += metrics.frameCount;
+    overallPeak = Math.max(overallPeak, metrics.peakLinear);
+    totalEnergyFrames += (metrics.rmsLinear ** 2) * metrics.frameCount;
+  }
+
+  const overallRms = Math.sqrt(totalEnergyFrames / Math.max(1, totalFrames));
+
+  return {
+    schemaVersion: RENDER_SCHEMA_VERSION,
+    id: "pulse-standard-v1-golden",
+    renderProfile: RENDER_PROFILE,
+    pack: {
+      id: pulseManifest.id,
+      version: pulseManifest.version,
+      masteringProfile: pulseManifest.masteringProfile,
+      facadeApi: pulseManifest.facadeApi,
+    },
+    scenario: {
+      id: STANDARD_QA_SCENARIO.id,
+      version: STANDARD_QA_SCENARIO.version,
+      durationMs: STANDARD_QA_SCENARIO.durationMs,
+    },
+    audio: {
+      sampleRate,
+      channels: 2,
+      headroomDb,
+    },
+    sourceFingerprint: fingerprintInputs(assets),
+    policy: { ...POLICY },
+    overall: {
+      durationSeconds: round(totalFrames / sampleRate),
+      peakDbfs: round(amplitudeToDb(overallPeak)),
+      rmsDbfs: round(amplitudeToDb(overallRms)),
+    },
+    stages,
+  };
+}
+
+function compareNumber(label, baseline, current, limit, failures, notes) {
+  const delta = current - baseline;
+  notes.push(
+    label + ": " + baseline.toFixed(3) + " -> " + current.toFixed(3) +
+    " dB (delta " + (delta >= 0 ? "+" : "") + delta.toFixed(3) + " dB)"
+  );
+  if (delta > limit + 1e-9) {
+    failures.push(
+      label + " increased by " + delta.toFixed(3) +
+      " dB (limit +" + limit.toFixed(3) + " dB)"
+    );
+  }
+}
+
+export function checkGoldenBaseline(baseline, current) {
+  const failures = [];
+  const warnings = [];
+  const notes = [];
+
+  for (const field of ["schemaVersion", "id", "renderProfile"]) {
+    if (baseline?.[field] !== current?.[field]) {
+      failures.push(field + " mismatch: " + baseline?.[field] + " -> " + current?.[field]);
+    }
+  }
+
+  if (baseline?.pack?.id !== current?.pack?.id) {
+    failures.push("pack id mismatch: " + baseline?.pack?.id + " -> " + current?.pack?.id);
+  }
+  if (baseline?.scenario?.id !== current?.scenario?.id) {
+    failures.push("scenario id mismatch: " + baseline?.scenario?.id + " -> " + current?.scenario?.id);
+  }
+  if (baseline?.scenario?.version !== current?.scenario?.version) {
+    failures.push(
+      "scenario version mismatch: " + baseline?.scenario?.version + " -> " + current?.scenario?.version
+    );
+  }
+  if (baseline?.audio?.sampleRate !== current?.audio?.sampleRate) {
+    failures.push(
+      "sample rate mismatch: " + baseline?.audio?.sampleRate + " -> " + current?.audio?.sampleRate
+    );
+  }
+  if (baseline?.pack?.masteringProfile !== current?.pack?.masteringProfile) {
+    failures.push(
+      "mastering profile mismatch: " + baseline?.pack?.masteringProfile +
+      " -> " + current?.pack?.masteringProfile
+    );
+  }
+
+  const policy = { ...POLICY, ...(baseline?.policy || {}) };
+
+  compareNumber(
+    "overall peak",
+    Number(baseline.overall.peakDbfs),
+    Number(current.overall.peakDbfs),
+    Number(policy.maxOverallPeakIncreaseDb),
+    failures,
+    notes,
+  );
+  compareNumber(
+    "overall RMS",
+    Number(baseline.overall.rmsDbfs),
+    Number(current.overall.rmsDbfs),
+    Number(policy.maxOverallRmsIncreaseDb),
+    failures,
+    notes,
+  );
+
+  if (Number(current.overall.peakDbfs) > Number(policy.maxAbsolutePeakDbfs)) {
+    failures.push(
+      "overall pre-limiter peak " + current.overall.peakDbfs +
+      " dBFS exceeds absolute guard " + policy.maxAbsolutePeakDbfs + " dBFS"
+    );
+  }
+
+  const stageNames = [...new Set([
+    ...Object.keys(baseline?.stages || {}),
+    ...Object.keys(current?.stages || {}),
+  ])].sort();
+
+  for (const stage of stageNames) {
+    const before = baseline?.stages?.[stage];
+    const after = current?.stages?.[stage];
+    if (!before || !after) {
+      failures.push(
+        "stage set changed: " + stage +
+        " baseline=" + Boolean(before) +
+        " current=" + Boolean(after)
+      );
+      continue;
+    }
+
+    compareNumber(
+      stage + " peak",
+      Number(before.peakDbfs),
+      Number(after.peakDbfs),
+      Number(policy.maxStagePeakIncreaseDb),
+      failures,
+      notes,
+    );
+    compareNumber(
+      stage + " RMS",
+      Number(before.rmsDbfs),
+      Number(after.rmsDbfs),
+      Number(policy.maxStageRmsIncreaseDb),
+      failures,
+      notes,
+    );
+  }
+
+  if (baseline.sourceFingerprint !== current.sourceFingerprint) {
+    warnings.push("source fingerprint changed; metrics stayed within the golden policy");
+  }
+  if (baseline?.pack?.version !== current?.pack?.version) {
+    warnings.push(
+      "pack version changed: " + baseline?.pack?.version + " -> " + current?.pack?.version
+    );
+  }
+  if (baseline?.pack?.facadeApi !== current?.pack?.facadeApi) {
+    warnings.push(
+      "Facade API changed: " + baseline?.pack?.facadeApi + " -> " + current?.pack?.facadeApi
+    );
+  }
+
+  return { passed: failures.length === 0, failures, warnings, notes };
+}
+
+function writeBaseline(candidate) {
+  fs.mkdirSync(path.dirname(BASELINE_PATH), { recursive: true });
+  fs.writeFileSync(BASELINE_PATH, JSON.stringify(candidate, null, 2) + "\n");
+  console.log("Golden QA baseline written: " + path.relative(ROOT, BASELINE_PATH));
+}
+
+function main() {
+  const mode = process.argv[2] || "--check";
+  const candidate = buildGoldenCandidate();
+
+  if (mode === "--print") {
+    console.log(JSON.stringify(candidate, null, 2));
+    return;
+  }
+  if (mode === "--write") {
+    writeBaseline(candidate);
+    return;
+  }
+  if (mode !== "--check") {
+    throw new Error("Unknown mode: " + mode + ". Use --check, --print, or --write.");
+  }
+
+  if (!fs.existsSync(BASELINE_PATH)) {
+    console.error("Golden QA baseline missing: " + path.relative(ROOT, BASELINE_PATH));
+    console.error("Bootstrap with: node tools/music_qa_golden.mjs --write");
+    process.exit(1);
+  }
+
+  const baseline = JSON.parse(fs.readFileSync(BASELINE_PATH, "utf8"));
+  const result = checkGoldenBaseline(baseline, candidate);
+
+  console.log("Music Golden QA Regression Gate");
+  result.notes.forEach((line) => console.log("- " + line));
+  result.warnings.forEach((line) => console.warn("WARNING: " + line));
+
+  if (!result.passed) {
+    console.error("Music Golden QA Regression Gate FAILED");
+    result.failures.forEach((line) => console.error("- " + line));
+    process.exit(1);
+  }
+
+  console.log("Music Golden QA Regression Gate PASSED");
+  console.log("- baseline: " + path.relative(ROOT, BASELINE_PATH));
+  console.log("- fingerprint: " + candidate.sourceFingerprint.slice(0, 16) + "...");
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main();
+}
