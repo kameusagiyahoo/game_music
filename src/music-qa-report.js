@@ -47,6 +47,7 @@ export function addQaSample(session, meter, {
   capturedAtMs = Date.now(),
   bar = 0,
   beat = 0,
+  scenarioStage = null,
 } = {}) {
   if (!session?.samples) throw new Error("QA session is not initialized");
   if (!meter) return null;
@@ -57,6 +58,7 @@ export function addQaSample(session, meter, {
     beat: Math.max(0, Math.floor(finite(beat, 0))),
     mode: String(meter.mode || "unknown"),
     layerPreset: String(meter.layerPreset || "unknown"),
+    scenarioStage: scenarioStage ? String(scenarioStage) : null,
     sampleRate: Math.max(0, finite(meter.sampleRate, 0)),
     prePeakDbfs: finite(meter.preLimiter?.peakDbfs, SILENCE_DB),
     preRmsDbfs: finite(meter.preLimiter?.rmsDbfs, SILENCE_DB),
@@ -146,9 +148,51 @@ function summarizeModes(samples, durationsMs) {
   );
 }
 
+function summarizeScenarioStages(samples, durationsMs) {
+  const stages = new Map();
+
+  samples.forEach((sample, index) => {
+    const key = sample.scenarioStage;
+    if (!key) return;
+
+    if (!stages.has(key)) {
+      stages.set(key, {
+        durationMs: 0,
+        peak: SILENCE_DB,
+        rmsPowerMs: 0,
+        rmsDurationMs: 0,
+        minReductionDb: 0,
+        sampleCount: 0,
+      });
+    }
+
+    const item = stages.get(key);
+    const durationMs = durationsMs[index] || 0;
+    item.durationMs += durationMs;
+    item.peak = Math.max(item.peak, sample.outputPeakDbfs);
+    item.rmsPowerMs += dbToPower(sample.outputRmsDbfs) * durationMs;
+    item.rmsDurationMs += durationMs;
+    item.minReductionDb = Math.min(item.minReductionDb, sample.limiterReductionDb);
+    item.sampleCount += 1;
+  });
+
+  return Object.fromEntries(
+    [...stages.entries()].map(([stage, item]) => [stage, {
+      durationSeconds: round(item.durationMs / 1000),
+      sampleCount: item.sampleCount,
+      maxOutputPeakDbfs: round(item.peak),
+      averageOutputRmsDbfs: round(
+        item.rmsDurationMs > 0 ? powerToDb(item.rmsPowerMs / item.rmsDurationMs) : SILENCE_DB
+      ),
+      maxLimiterReductionMagnitudeDb: round(Math.abs(item.minReductionDb)),
+    }])
+  );
+}
+
 function deriveEvents(samples) {
   const events = [];
   let lastMode = null;
+  let lastScenarioStage = null;
   let lastStinger = null;
   let lastTransition = null;
 
@@ -165,6 +209,20 @@ function deriveEvents(samples) {
         limiterReductionDb: round(sample.limiterReductionDb),
       });
       lastMode = sample.mode;
+    }
+
+    if (sample.scenarioStage && sample.scenarioStage !== lastScenarioStage) {
+      events.push({
+        tSeconds: round(sample.tMs / 1000),
+        type: "scenario-stage",
+        name: sample.scenarioStage,
+        state: "active",
+        bar: sample.bar,
+        beat: sample.beat,
+        outputPeakDbfs: round(sample.outputPeakDbfs),
+        limiterReductionDb: round(sample.limiterReductionDb),
+      });
+      lastScenarioStage = sample.scenarioStage;
     }
 
     const stingerKey = sample.stinger?.name
@@ -283,6 +341,7 @@ export function finalizeQaSession(session, {
     limiterOver6Seconds: round(limiterOver6Ms / 1000),
     clipRiskSeconds: round(clipRiskMs / 1000),
     modes: summarizeModes(samples, durationsMs),
+    scenarioStages: summarizeScenarioStages(samples, durationsMs),
   };
   summary.verdict = qaVerdict({
     ...summary,
@@ -314,7 +373,7 @@ export function qaReportToCsv(report) {
   )].sort();
 
   const header = [
-    "t_seconds", "bar", "beat", "mode", "layer_preset", "sample_rate",
+    "t_seconds", "bar", "beat", "mode", "layer_preset", "scenario_stage", "sample_rate",
     "pre_peak_dbfs", "pre_rms_dbfs", "output_peak_dbfs", "output_rms_dbfs",
     "limiter_reduction_db", "stinger", "stinger_state",
     "transition_cue", "transition_state",
@@ -327,6 +386,7 @@ export function qaReportToCsv(report) {
     sample.beat,
     sample.mode,
     sample.layerPreset,
+    sample.scenarioStage,
     sample.sampleRate,
     round(sample.prePeakDbfs),
     round(sample.preRmsDbfs),
