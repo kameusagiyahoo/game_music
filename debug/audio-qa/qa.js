@@ -62,6 +62,7 @@ const reportReduction = $("#reportReduction");
 const reportOver3 = $("#reportOver3");
 const reportOver6 = $("#reportOver6");
 const modeSummary = $("#modeSummary");
+const scenarioStageSummary = $("#scenarioStageSummary");
 const scenarioStatus = $("#scenarioStatus");
 const scenarioTimer = $("#scenarioTimer");
 const scenarioProgressBar = $("#scenarioProgressBar");
@@ -88,6 +89,7 @@ const compareCurrentCoverage = $("#compareCurrentCoverage");
 const compareDirections = $("#compareDirections");
 const compareWarnings = $("#compareWarnings");
 const compareModes = $("#compareModes");
+const compareStages = $("#compareStages");
 const canvas = $("#historyCanvas");
 const ctx = canvas.getContext("2d");
 
@@ -414,6 +416,7 @@ function renderReportSummary() {
     reportOver3.textContent = "—";
     reportOver6.textContent = "—";
     modeSummary.innerHTML = "";
+    scenarioStageSummary.innerHTML = "";
     return;
   }
 
@@ -430,7 +433,17 @@ function renderReportSummary() {
 
   modeSummary.innerHTML = Object.entries(summary.modes || {}).map(([mode, value]) => `
     <div class="mode-report-row">
-      <strong>${mode}</strong>
+      <strong>MODE ${mode}</strong>
+      <span>${Number(value.durationSeconds || 0).toFixed(1)}s</span>
+      <span>RMS ${Number(value.averageOutputRmsDbfs || -180).toFixed(1)}</span>
+      <span>PK ${Number(value.maxOutputPeakDbfs || -180).toFixed(1)}</span>
+      <span>GR ${Number(value.maxLimiterReductionMagnitudeDb || 0).toFixed(1)}</span>
+    </div>
+  `).join("");
+
+  scenarioStageSummary.innerHTML = Object.entries(summary.scenarioStages || {}).map(([stage, value]) => `
+    <div class="mode-report-row">
+      <strong>STAGE ${stage}</strong>
       <span>${Number(value.durationSeconds || 0).toFixed(1)}s</span>
       <span>RMS ${Number(value.averageOutputRmsDbfs || -180).toFixed(1)}</span>
       <span>PK ${Number(value.maxOutputPeakDbfs || -180).toFixed(1)}</span>
@@ -484,6 +497,7 @@ function renderComparison() {
       (message) => `<div class="compare-warning">${message}</div>`
     ).join("") || "";
     compareModes.innerHTML = "";
+    compareStages.innerHTML = "";
     return;
   }
 
@@ -506,6 +520,8 @@ function renderComparison() {
     `LIMITER ${String(comparison.summary?.limiterDirection || "stable").toUpperCase()}`,
     `REGRESSION MODES ${comparison.summary?.regressionModeCount || 0}`,
     `IMPROVED MODES ${comparison.summary?.improvedModeCount || 0}`,
+    `REGRESSION STAGES ${comparison.summary?.regressionStageCount || 0}`,
+    `IMPROVED STAGES ${comparison.summary?.improvedStageCount || 0}`,
   ].map((label) => `<span class="direction-chip">${label}</span>`).join("");
 
   compareWarnings.innerHTML = (comparison.warnings || []).map((warning) =>
@@ -518,8 +534,23 @@ function renderComparison() {
     const reduction = mode.delta ? signed(mode.delta.maxLimiterReductionMagnitudeDb, 1, " dB") : "—";
     return `
       <div class="compare-mode-row">
-        <strong>${name}</strong>
+        <strong>MODE ${name}</strong>
         <span class="compare-mode-status ${mode.status}">${mode.status}</span>
+        <span>PK ${peak}</span>
+        <span>RMS ${rms}</span>
+        <span>GR ${reduction}</span>
+      </div>
+    `;
+  }).join("");
+
+  compareStages.innerHTML = Object.entries(comparison.scenarioStages || {}).map(([name, stage]) => {
+    const peak = stage.delta ? signed(stage.delta.maxOutputPeakDb, 1, " dB") : stage.presence.toUpperCase();
+    const rms = stage.delta ? signed(stage.delta.averageOutputRmsDb, 1, " dB") : "—";
+    const reduction = stage.delta ? signed(stage.delta.maxLimiterReductionMagnitudeDb, 1, " dB") : "—";
+    return `
+      <div class="compare-mode-row">
+        <strong>STAGE ${name}</strong>
+        <span class="compare-mode-status ${stage.status}">${stage.status}</span>
         <span>PK ${peak}</span>
         <span>RMS ${rms}</span>
         <span>GR ${reduction}</span>
@@ -623,6 +654,7 @@ async function startRecording({
     capturedAtMs: now,
     bar,
     beat,
+    scenarioStage: scenarioRun?.currentStage || null,
   });
   lastRecordSampleAt = now;
   renderReportSummary();
@@ -638,6 +670,7 @@ function captureRecorderSample(meter) {
     capturedAtMs: now,
     bar,
     beat,
+    scenarioStage: scenarioRun?.currentStage || null,
   });
   lastRecordSampleAt = now;
 
@@ -838,6 +871,12 @@ useCurrentBaselineButton.addEventListener("click", () => {
 });
 exportCompareJsonButton.addEventListener("click", () => void exportComparison("json"));
 exportCompareCsvButton.addEventListener("click", () => void exportComparison("csv"));
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && scenarioRun?.status === "running") {
+    abortScenario("page-hidden");
+  }
+});
 
 void music.preload({ stingers: true, transitions: true }).catch((error) => {
   console.warn("QA preload failed; START will retry", error);
