@@ -32,7 +32,7 @@ URL: https://kameusagiyahoo.github.io/game_music/games/orbit-rush/
 音楽の拍に同期して4方向の炉心を叩く40秒のリズム / 反射ゲーム。
 
 - 5本の同期Stemを同一AudioContext時刻でスタート
-- Pulse Pack v1.4.0は44.1 kHz stereoのM4A / OGG / WAVを収録
+- Pulse Pack v1.4.1は44.1 kHz stereoのM4A / OGG / WAVを収録
 - Browser Format Resolverが対応形式を自動選択
 - Energyに応じて次小節からStem Mixを変更
 - Victory / Game Over専用Stinger
@@ -103,7 +103,7 @@ Music Registry
 │  └─ Clockwork Grove
 │
 └─ wav-stem
-   └─ Pulse Forge WAV v1.4.0
+   └─ Pulse Forge WAV v1.4.1
       └─ M4A / OGG / WAV
 ```
 
@@ -225,7 +225,7 @@ music.info();
 {
   schemaVersion: "1.3.0",
   id: "pulse",
-  version: "1.4.0",
+  version: "1.4.1",
   name: "Pulse Forge WAV",
   engine: "wav-stem",
   states: ["normal", "build", "overdrive", "result"],
@@ -2159,7 +2159,7 @@ Commit generated audio
 - drums WAV vs bass M4A -> FAIL
 - victory WAV vs gameover OGG -> FAIL
 
-v26は音声Engine / Facade APIを変更しないため、Facade API versionは引き続き `1.5.0`、Pulse Packは `1.4.0` です。
+v26は音声Engine / Facade APIを変更しないため、Facade API versionは引き続き `1.5.0` です。OGG再生成のcache invalidationのためPulse Packのみ `1.4.1` へpatch bumpしています。
 
 ## Music Debug / Mixer
 
