@@ -1628,6 +1628,172 @@ CIの `tools/check_music_qa_scenario.mjs` では仮想時間を使い、実際�
 
 Scenario中にページを非表示へするとRunを中断するため、iPhoneでは60秒間Audio QA Dashboardを前面にしたまま計測します。
 
+### v24 — Golden QA Baseline / CI Regression Gate
+
+v21〜v23の実機QAに加えて、Repository内の実WAVをGitHub Actions上で直接再構成するGolden QA Gateを追加しています。
+
+```text
+Pulse WAV assets
++ current layer presets
++ current mastering headroom
++ pulse-standard-v1 scenario
+        |
+        v
+deterministic offline render
+        |
+        v
+Pre-Limiter Peak / RMS
+        |
+        v
+qa/baselines/pulse-standard-v1.json
+        |
+        v
+CI Regression Gate
+```
+
+ブラウザの `DynamicsCompressorNode` は実装依存のためCIでは模倣しません。v24はv19/v20のMastering graphでいう **Limiter直前** を固定します。
+
+Post-Limiter / 実AudioContext / iPhone固有挙動は従来どおりAudio QA Dashboardで確認します。
+
+Golden renderer:
+
+```text
+tools/music_qa_golden.mjs
+```
+
+現在のGolden Baseline:
+
+```text
+qa/baselines/pulse-standard-v1.json
+```
+
+現在値:
+
+```text
+OVERALL
+Peak  -3.96 dBFS
+RMS  -21.49 dBFS
+
+NORMAL
+Peak -11.95
+RMS  -25.46
+
+BUILD
+Peak  -6.99
+RMS  -21.62
+
+OVERDRIVE
+Peak  -4.06
+RMS  -19.16
+
+RESULT
+Peak  -3.96
+RMS  -23.69
+```
+
+Offline Stage renderは以下を含みます。
+
+```text
+NORMAL
+  Focus stems
+
+BUILD
+  Build stems
+  + Riser
+
+OVERDRIVE
+  Overdrive stems
+  + Fill
+
+RESULT
+  Result stems
+  + Impact
+  + Victory
+
+ALL
+  -3 dB Headroom Trim
+```
+
+### Golden Policy
+
+現在のhard gate:
+
+```text
+Overall Peak increase > +0.75 dB  => FAIL
+Stage Peak increase   > +0.75 dB  => FAIL
+
+Overall RMS increase  > +1.50 dB  => FAIL
+Stage RMS increase    > +1.50 dB  => FAIL
+
+Absolute Pre-Limiter Peak > +3 dBFS => FAIL
+```
+
+さらに以下の構造差もFAILです。
+
+- Scenario ID / version mismatch
+- Sample Rate mismatch
+- Mastering Profile mismatch
+- canonical Stageの欠落 / 追加
+- Golden schema / render profile mismatch
+
+音源やPresetが変わると `sourceFingerprint` も変わります。ただしFingerprint変更だけではFAILにしません。
+
+たとえば音源を安全な方向へ改善した場合、
+
+```text
+source changed
+Peak -1.0 dB improved
+RMS unchanged
+=> PASS + fingerprint warning
+```
+
+とできます。
+
+### Baseline更新
+
+CIはGolden Baselineを自動更新しません。
+
+意図的に音源 / Mix / Masteringを変更して新しい結果を承認するときだけ、
+
+```sh
+node tools/music_qa_golden.mjs --write
+```
+
+で更新します。
+
+通常CI:
+
+```sh
+node tools/music_qa_golden.mjs --check
+node tools/check_music_qa_golden.mjs
+```
+
+Baseline JSON差分をレビューしたうえでcommitするため、Regressionを自動で新基準へ吸収しません。
+
+Gateの自己テストでは、
+
+- 現在値がPASS
+- Overall Peak +1 dBをBLOCK
+- OVERDRIVE Peak +1 dBをBLOCK
+- BUILD RMS +2 dBをBLOCK
+- saferな変更はPASS
+- Scenario mismatchをBLOCK
+- Sample Rate mismatchをBLOCK
+
+まで検証します。
+
+Golden QAは「実機QAの代わり」ではなく、
+
+```text
+CI Golden Gate
+  = deterministic / every commit
+
+iPhone Audio QA
+  = real browser / real limiter / final listening
+```
+
+という二段構成です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -1695,6 +1861,9 @@ Validation:
 - `tools/check_music_qa_report.mjs`
 - `tools/check_music_qa_compare.mjs`
 - `tools/check_music_qa_scenario.mjs`
+- `tools/music_qa_golden.mjs`
+- `tools/check_music_qa_golden.mjs`
+- `qa/baselines/pulse-standard-v1.json`
 - `tools/check_pulse_audio_profile.py`
 - `tools/check_pulse_mastering.py`
 - `.github/workflows/music-architecture-check.yml`
@@ -1730,6 +1899,9 @@ debug/
 ├── mixer/
 ├── resolver/
 └── audio-qa/
+qa/
+└── baselines/
+    └── pulse-standard-v1.json
 games/
 ├── orbit-rush/
 ├── pulse-forge/
