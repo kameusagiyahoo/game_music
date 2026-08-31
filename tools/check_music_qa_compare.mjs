@@ -199,6 +199,52 @@ if (warnings.status !== "review") {
   errors.push(`low-coverage comparison should require review: ${warnings.status}`);
 }
 
+// Scenario mismatch / abort must make a comparison reviewable.
+const manualBaseline = report();
+const scenarioCurrent = report();
+scenarioCurrent.metadata.qaScenarioId = "pulse-standard-v1";
+scenarioCurrent.metadata.qaScenarioExecution = {
+  id: "pulse-standard-v1",
+  version: "1.0.0",
+  status: "completed",
+  maxDriftMs: 120,
+};
+const scenarioMismatch = compareQaReports(manualBaseline, scenarioCurrent);
+if (!scenarioMismatch.warnings.some((warning) => warning.code === "scenario-id")) {
+  errors.push("manual vs automated scenario warning missing");
+}
+if (scenarioMismatch.status !== "review") {
+  errors.push(`scenario mismatch should require review: ${scenarioMismatch.status}`);
+}
+
+const abortedBaseline = report();
+const abortedCurrent = report();
+abortedBaseline.metadata.qaScenarioId = "pulse-standard-v1";
+abortedBaseline.metadata.qaScenarioExecution = {
+  id: "pulse-standard-v1",
+  version: "1.0.0",
+  status: "completed",
+  maxDriftMs: 90,
+};
+abortedCurrent.metadata.qaScenarioId = "pulse-standard-v1";
+abortedCurrent.metadata.qaScenarioExecution = {
+  id: "pulse-standard-v1",
+  version: "1.0.0",
+  status: "aborted",
+  abortReason: "timing-drift:build:1100ms",
+  maxDriftMs: 1100,
+};
+const abortedComparison = compareQaReports(abortedBaseline, abortedCurrent);
+if (!abortedComparison.warnings.some((warning) => warning.code === "current-scenario-status")) {
+  errors.push("aborted scenario status warning missing");
+}
+if (!abortedComparison.warnings.some((warning) => warning.code === "current-scenario-drift")) {
+  errors.push("scenario drift warning missing");
+}
+if (abortedComparison.status !== "review") {
+  errors.push(`aborted scenario comparison should require review: ${abortedComparison.status}`);
+}
+
 // Validation and export.
 const invalid = validateQaReport({ metadata: {}, summary: {} });
 if (invalid.valid) errors.push("invalid QA report passed validation");
@@ -225,4 +271,5 @@ console.log(`- limiter >=3 rate delta: ${(comparison.metrics.limiterOver3.deltaR
 console.log(`- improvement status: ${improvement.status}`);
 console.log("- duration normalization: OK");
 console.log("- coverage warnings: OK");
+console.log("- scenario compatibility warnings: OK");
 console.log("- CSV export: OK");
