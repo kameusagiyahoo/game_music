@@ -336,6 +336,17 @@ export function compareQaReports(baseline, current) {
     modeNames.map((name) => [name, compareMode(name, b.modes?.[name], c.modes?.[name])])
   );
 
+  const stageNames = [...new Set([
+    ...Object.keys(b.scenarioStages || {}),
+    ...Object.keys(c.scenarioStages || {}),
+  ])].sort();
+  const scenarioStages = Object.fromEntries(
+    stageNames.map((name) => [
+      name,
+      compareMode(name, b.scenarioStages?.[name], c.scenarioStages?.[name]),
+    ])
+  );
+
   const warnings = compatibilityWarnings(baseline, current);
 
   let status = "pass";
@@ -363,15 +374,23 @@ export function compareQaReports(baseline, current) {
     if (mode.status === "fail") status = "fail";
     else if (mode.status === "review") status = worseStatus(status, "review");
   }
+  for (const stage of Object.values(scenarioStages)) {
+    if (stage.status === "fail") status = "fail";
+    else if (stage.status === "review") status = worseStatus(status, "review");
+  }
 
   const regressionCount = Object.values(modes)
     .filter((mode) => mode.status === "review" || mode.status === "fail").length;
   const improvementCount = Object.values(modes)
     .filter((mode) => mode.status === "improved").length;
+  const regressionStageCount = Object.values(scenarioStages)
+    .filter((stage) => stage.status === "review" || stage.status === "fail").length;
+  const improvedStageCount = Object.values(scenarioStages)
+    .filter((stage) => stage.status === "improved").length;
 
   if (
     status === "pass" &&
-    improvementCount > 0 &&
+    (improvementCount > 0 || improvedStageCount > 0) &&
     metrics.maxOutputPeakDb.delta <= 0 &&
     metrics.maxLimiterReductionMagnitudeDb.delta <= 0 &&
     metrics.limiterOver3.deltaRate <= 0
@@ -402,11 +421,15 @@ export function compareQaReports(baseline, current) {
     status,
     metrics,
     modes,
+    scenarioStages,
     warnings,
     summary: {
       regressionModeCount: regressionCount,
       improvedModeCount: improvementCount,
       changedModeCount: Object.values(modes).filter((mode) => mode.status === "changed").length,
+      regressionStageCount,
+      improvedStageCount,
+      changedStageCount: Object.values(scenarioStages).filter((stage) => stage.status === "changed").length,
       peakDirection: metrics.maxOutputPeakDb.delta > 0.25
         ? "hotter"
         : metrics.maxOutputPeakDb.delta < -0.25 ? "safer" : "stable",
@@ -488,6 +511,23 @@ export function qaComparisonToCsv(comparison) {
       mode.current?.maxLimiterReductionMagnitudeDb ?? "",
       mode.delta?.maxLimiterReductionMagnitudeDb ?? "",
       mode.status,
+    ]);
+  }
+
+  for (const [name, stage] of Object.entries(comparison.scenarioStages || {})) {
+    rows.push([
+      `scenario-stage:${name}:peak_db`,
+      stage.baseline?.maxOutputPeakDbfs ?? "",
+      stage.current?.maxOutputPeakDbfs ?? "",
+      stage.delta?.maxOutputPeakDb ?? "",
+      stage.status,
+    ]);
+    rows.push([
+      `scenario-stage:${name}:limiter_reduction_db`,
+      stage.baseline?.maxLimiterReductionMagnitudeDb ?? "",
+      stage.current?.maxLimiterReductionMagnitudeDb ?? "",
+      stage.delta?.maxLimiterReductionMagnitudeDb ?? "",
+      stage.status,
     ]);
   }
 
