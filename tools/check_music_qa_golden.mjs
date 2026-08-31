@@ -4,6 +4,9 @@ import { fileURLToPath } from "node:url";
 import {
   buildGoldenCandidate,
   checkGoldenBaseline,
+  goldenComparisonRows,
+  buildGoldenQaMarkdown,
+  appendGoldenGitHubSummary,
 } from "./music_qa_golden.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -72,6 +75,60 @@ if (wrongRateResult.passed) {
   errors.push("sample-rate mismatch was not rejected");
 }
 
+const exactRows = goldenComparisonRows(baseline, current);
+if (exactRows.length !== 10) {
+  errors.push("Golden summary should contain 10 metric rows, got " + exactRows.length);
+}
+for (const scope of ["OVERALL", "NORMAL", "BUILD", "OVERDRIVE", "RESULT"]) {
+  if (!exactRows.some((row) => row.scope === scope)) {
+    errors.push("Golden summary row missing scope: " + scope);
+  }
+}
+
+const exactMarkdown = buildGoldenQaMarkdown(baseline, current, exact);
+if (!exactMarkdown.includes("**Result: PASS**")) {
+  errors.push("PASS heading missing from Golden markdown");
+}
+if (!exactMarkdown.includes("| OVERDRIVE | Peak |")) {
+  errors.push("OVERDRIVE Peak row missing from Golden markdown");
+}
+if (!exactMarkdown.includes("Fingerprint changed: **NO**")) {
+  errors.push("unchanged fingerprint marker missing");
+}
+
+const hotMarkdown = buildGoldenQaMarkdown(baseline, hotOverall, hotOverallResult);
+if (!hotMarkdown.includes("**Result: FAIL**")) {
+  errors.push("FAIL heading missing from Golden markdown");
+}
+if (!hotMarkdown.includes("## Blocking regressions")) {
+  errors.push("blocking regressions section missing");
+}
+const hotRows = goldenComparisonRows(baseline, hotOverall);
+if (hotRows.find((row) => row.scope === "OVERALL" && row.metric === "Peak")?.status !== "FAIL") {
+  errors.push("overall +1 dB summary row should be FAIL");
+}
+
+const saferMarkdown = buildGoldenQaMarkdown(baseline, safer, saferResult);
+if (!saferMarkdown.includes("**IMPROVED**")) {
+  errors.push("improved metric marker missing from Golden markdown");
+}
+if (!saferMarkdown.includes("Fingerprint changed: **YES**")) {
+  errors.push("changed fingerprint marker missing");
+}
+
+const summaryPath = path.join(ROOT, "qa-golden-summary-test.md");
+try {
+  fs.writeFileSync(summaryPath, "");
+  const wrote = appendGoldenGitHubSummary(exactMarkdown, summaryPath);
+  if (!wrote) errors.push("appendGoldenGitHubSummary returned false");
+  const writtenSummary = fs.readFileSync(summaryPath, "utf8");
+  if (!writtenSummary.includes("# Music Golden QA")) {
+    errors.push("Golden summary file did not contain heading");
+  }
+} finally {
+  if (fs.existsSync(summaryPath)) fs.unlinkSync(summaryPath);
+}
+
 if (errors.length) {
   console.error("Music Golden QA Gate Check FAILED");
   errors.forEach((error) => console.error("- " + error));
@@ -84,3 +141,6 @@ console.log("- overall peak regression: BLOCKED");
 console.log("- stage peak/RMS regression: BLOCKED");
 console.log("- safer source change: ALLOWED + WARNING");
 console.log("- scenario/sample-rate mismatch: BLOCKED");
+console.log("- Actions Summary metric table: OK");
+console.log("- PASS / FAIL / IMPROVED rendering: OK");
+console.log("- Summary file append: OK");
