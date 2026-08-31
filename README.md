@@ -1450,8 +1450,14 @@ music.state("normal", {
   transitionCue: false
 });
 
-music.state("build", {
-  quantize: "bar"
+const buildCue = await music.transitionCue("riser", {
+  quantize: "bar",
+  position: "before"
+});
+
+await music.layer("build", {
+  quantize: "bar",
+  scheduledAt: buildCue.transitionAt
 });
 
 music.state("tension", {
@@ -1539,6 +1545,53 @@ metadata: {
 }
 ```
 
+### Scenario Stage集計
+
+自動Scenario中は、実際のAudio modeとは別にQA上のStageを各Meter sampleへ保存します。
+
+```text
+scenarioStage:
+normal
+build
+overdrive
+result
+```
+
+BUILDではRiserのpre-roll中やLayer切替境界があるため、単純に `meter.mode` だけを見るとQA区間と一致しない場合があります。
+
+そこでv23では、
+
+```js
+sample.scenarioStage
+
+report.summary.scenarioStages
+```
+
+を持たせています。
+
+各Stageについて、
+
+```text
+duration
+average RMS
+max Peak
+max Limiter Reduction
+```
+
+を集計します。
+
+Regression Compareも `scenarioStages` をBaseline / Currentで比較するため、
+
+```text
+BUILDだけPeak上昇
+OVERDRIVEは改善
+RESULTは変化なし
+```
+
+のように、固定Scenarioの同じ区間同士を比較できます。
+
+CSVにも `scenario_stage` 列を追加しています。
+
 v22 Regression CompareではScenario条件も比較します。
 
 以下はREVIEW warningです。
@@ -1555,7 +1608,7 @@ Scenario Engineは `src/music-qa-scenario.js` にUIから分離しています�
 CIの `tools/check_music_qa_scenario.mjs` では仮想時間を使い、実際に60秒待たず以下を検証します。
 
 - NORMAL @ 0 sec
-- BUILD @ 10 sec
+- RISER + BUILD Layer @ 10 sec
 - OVERDRIVE @ 20 sec
 - RESULT + VICTORY @ 40 sec
 - COMPLETE @ 60 sec
