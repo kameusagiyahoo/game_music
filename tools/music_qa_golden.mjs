@@ -284,6 +284,189 @@ function compareNumber(label, baseline, current, limit, failures, notes) {
   }
 }
 
+
+function summaryMetricStatus(deltaDb, limitDb) {
+  if (Number(deltaDb) > Number(limitDb) + 1e-9) return "FAIL";
+  if (Number(deltaDb) <= -0.1) return "IMPROVED";
+  return "PASS";
+}
+
+function metricRow(scope, metric, baselineValue, currentValue, limitDb) {
+  const baselineDb = Number(baselineValue);
+  const currentDb = Number(currentValue);
+  const deltaDb = currentDb - baselineDb;
+  return {
+    scope,
+    metric,
+    baselineDb,
+    currentDb,
+    deltaDb,
+    limitDb: Number(limitDb),
+    status: summaryMetricStatus(deltaDb, limitDb),
+  };
+}
+
+export function goldenComparisonRows(baseline, current) {
+  const policy = { ...POLICY, ...(baseline?.policy || {}) };
+  const rows = [
+    metricRow(
+      "OVERALL",
+      "Peak",
+      baseline?.overall?.peakDbfs,
+      current?.overall?.peakDbfs,
+      policy.maxOverallPeakIncreaseDb,
+    ),
+    metricRow(
+      "OVERALL",
+      "RMS",
+      baseline?.overall?.rmsDbfs,
+      current?.overall?.rmsDbfs,
+      policy.maxOverallRmsIncreaseDb,
+    ),
+  ];
+
+  const stageNames = [...new Set([
+    ...Object.keys(baseline?.stages || {}),
+    ...Object.keys(current?.stages || {}),
+  ])].sort();
+
+  for (const stage of stageNames) {
+    const before = baseline?.stages?.[stage];
+    const after = current?.stages?.[stage];
+    if (!before || !after) continue;
+
+    rows.push(
+      metricRow(
+        stage.toUpperCase(),
+        "Peak",
+        before.peakDbfs,
+        after.peakDbfs,
+        policy.maxStagePeakIncreaseDb,
+      ),
+      metricRow(
+        stage.toUpperCase(),
+        "RMS",
+        before.rmsDbfs,
+        after.rmsDbfs,
+        policy.maxStageRmsIncreaseDb,
+      ),
+    );
+  }
+
+  return rows;
+}
+
+function markdownDb(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(2) + " dB" : "—";
+}
+
+function markdownDelta(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return (number > 0 ? "+" : "") + number.toFixed(2) + " dB";
+}
+
+function markdownStatus(value) {
+  if (value === "FAIL") return "**FAIL**";
+  if (value === "IMPROVED") return "**IMPROVED**";
+  return "PASS";
+}
+
+export function buildGoldenQaMarkdown(
+  baseline,
+  current,
+  result = checkGoldenBaseline(baseline, current),
+) {
+  const rows = goldenComparisonRows(baseline, current);
+  const status = result.passed ? "PASS" : "FAIL";
+  const fingerprintChanged = baseline?.sourceFingerprint !== current?.sourceFingerprint;
+
+  const lines = [
+    "# Music Golden QA",
+    "",
+    "**Result: " + status + "** · " + (current?.scenario?.id || "unknown") + " · " +
+      (current?.overall?.durationSeconds ?? "?") + " sec",
+    "",
+    "| Scope | Metric | Baseline | Current | Delta | Allowed increase | Result |",
+    "| --- | --- | ---: | ---: | ---: | ---: | --- |",
+  ];
+
+  for (const row of rows) {
+    lines.push(
+      "| " + row.scope +
+      " | " + row.metric +
+      " | " + markdownDb(row.baselineDb) +
+      " | " + markdownDb(row.currentDb) +
+      " | " + markdownDelta(row.deltaDb) +
+      " | +" + Number(row.limitDb).toFixed(2) + " dB" +
+      " | " + markdownStatus(row.status) + " |"
+    );
+  }
+
+  lines.push(
+    "",
+    "## Run contract",
+    "",
+    "| Item | Baseline | Current |",
+    "| --- | --- | --- |",
+    "| Pack | " + (baseline?.pack?.id || "?") + "@" + (baseline?.pack?.version || "?") +
+      " | " + (current?.pack?.id || "?") + "@" + (current?.pack?.version || "?") + " |",
+    "| Facade API | " + (baseline?.pack?.facadeApi || "?") +
+      " | " + (current?.pack?.facadeApi || "?") + " |",
+    "| Scenario | " + (baseline?.scenario?.id || "?") + "@" + (baseline?.scenario?.version || "?") +
+      " | " + (current?.scenario?.id || "?") + "@" + (current?.scenario?.version || "?") + " |",
+    "| Sample rate | " + (baseline?.audio?.sampleRate || "?") +
+      " Hz | " + (current?.audio?.sampleRate || "?") + " Hz |",
+    "| Mastering | " + (baseline?.pack?.masteringProfile || "?") +
+      " | " + (current?.pack?.masteringProfile || "?") + " |",
+    "| Source fingerprint | " + String(baseline?.sourceFingerprint || "?").slice(0, 16) +
+      "… | " + String(current?.sourceFingerprint || "?").slice(0, 16) + "… |",
+    "",
+    "Fingerprint changed: **" + (fingerprintChanged ? "YES" : "NO") + "**",
+  );
+
+  if (result.failures.length) {
+    lines.push("", "## Blocking regressions", "");
+    result.failures.forEach((message) => lines.push("- " + message));
+  }
+
+  if (result.warnings.length) {
+    lines.push("", "## Warnings", "");
+    result.warnings.forEach((message) => lines.push("- " + message));
+  }
+
+  lines.push(
+    "",
+    "## Policy",
+    "",
+    "- Overall / Stage Peak: block increases above the configured Golden limit.",
+    "- Overall / Stage RMS: block increases above the configured Golden limit.",
+    "- Absolute pre-limiter peak guard: +" +
+      Number(baseline?.policy?.maxAbsolutePeakDbfs ?? POLICY.maxAbsolutePeakDbfs).toFixed(2) +
+      " dBFS.",
+    "- Post-limiter and device-specific behavior remain covered by the iPhone Audio QA Dashboard.",
+    "",
+    "_Generated from repository WAV files by tools/music_qa_golden.mjs._",
+    "",
+  );
+
+  return lines.join("\n");
+}
+
+export function appendGoldenGitHubSummary(markdown, summaryPath = process.env.GITHUB_STEP_SUMMARY) {
+  if (!summaryPath) return false;
+  fs.appendFileSync(summaryPath, markdown.endsWith("\n") ? markdown : markdown + "\n");
+  return true;
+}
+
+function githubCommandEscape(value) {
+  return String(value)
+    .replaceAll("%", "%25")
+    .replaceAll("\r", "%0D")
+    .replaceAll("\n", "%0A");
+}
+
 export function checkGoldenBaseline(baseline, current) {
   const failures = [];
   const warnings = [];
@@ -426,14 +609,22 @@ function main() {
 
   const baseline = JSON.parse(fs.readFileSync(BASELINE_PATH, "utf8"));
   const result = checkGoldenBaseline(baseline, candidate);
+  const markdown = buildGoldenQaMarkdown(baseline, candidate, result);
+  const summaryWritten = appendGoldenGitHubSummary(markdown);
 
   console.log("Music Golden QA Regression Gate");
   result.notes.forEach((line) => console.log("- " + line));
   result.warnings.forEach((line) => console.warn("WARNING: " + line));
+  if (summaryWritten) console.log("- GitHub Actions Summary: written");
 
   if (!result.passed) {
     console.error("Music Golden QA Regression Gate FAILED");
-    result.failures.forEach((line) => console.error("- " + line));
+    result.failures.forEach((line) => {
+      console.error("- " + line);
+      if (process.env.GITHUB_ACTIONS === "true") {
+        console.error("::error title=Music Golden QA::" + githubCommandEscape(line));
+      }
+    });
     process.exit(1);
   }
 
