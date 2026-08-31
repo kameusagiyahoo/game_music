@@ -25,6 +25,7 @@ on:
       - "qa/baselines/**"
       - "tools/check_pulse_mastering.py"
       - "tools/check_pulse_audio_profile.py"
+      - "tools/encode_pulse_audio.sh"
       - ".github/workflows/music-architecture-check.yml"
   pull_request:
     paths:
@@ -50,6 +51,7 @@ on:
       - "qa/baselines/**"
       - "tools/check_pulse_mastering.py"
       - "tools/check_pulse_audio_profile.py"
+      - "tools/encode_pulse_audio.sh"
       - ".github/workflows/music-architecture-check.yml"
 
 jobs:
@@ -65,6 +67,8 @@ jobs:
           node-version: "22"
       - name: Enforce Music Facade boundary
         run: python tools/check_music_boundary.py
+      - name: Check Pulse encoder shell syntax
+        run: bash -n tools/encode_pulse_audio.sh
       - name: Check JavaScript syntax
         run: |
           node --check src/music-pack-manifest.js
