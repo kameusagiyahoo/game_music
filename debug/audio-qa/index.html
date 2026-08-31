@@ -60,6 +60,37 @@
       <div id="modeSummary" class="mode-summary"></div>
     </section>
 
+    <section class="panel compare-panel">
+      <div class="compare-head">
+        <div>
+          <p class="eyebrow">BASELINE / REGRESSION</p>
+          <h2>QA Compare</h2>
+          <p id="baselineStatus" class="record-status">NO BASELINE · LOAD A v21 JSON REPORT</p>
+        </div>
+        <strong id="compareVerdict" class="compare-verdict idle">—</strong>
+      </div>
+      <div class="compare-actions">
+        <label class="file-button" for="baselineFile">LOAD BASELINE JSON</label>
+        <input id="baselineFile" type="file" accept="application/json,.json" hidden />
+        <button id="useCurrentBaselineButton" type="button" disabled>USE CURRENT AS BASELINE</button>
+        <button id="exportCompareJsonButton" type="button" disabled>SHARE DIFF JSON</button>
+        <button id="exportCompareCsvButton" type="button" disabled>SHARE DIFF CSV</button>
+      </div>
+      <div class="compare-summary">
+        <div><span>PEAK Δ</span><strong id="comparePeak">—</strong></div>
+        <div><span>RMS Δ</span><strong id="compareRms">—</strong></div>
+        <div><span>MAX GR Δ</span><strong id="compareReduction">—</strong></div>
+        <div><span>GR ≥3dB RATE Δ</span><strong id="compareOver3">—</strong></div>
+        <div><span>GR ≥6dB RATE Δ</span><strong id="compareOver6">—</strong></div>
+        <div><span>CLIP RATE Δ</span><strong id="compareClip">—</strong></div>
+        <div><span>BASE COVERAGE</span><strong id="compareBaseCoverage">—</strong></div>
+        <div><span>NOW COVERAGE</span><strong id="compareCurrentCoverage">—</strong></div>
+      </div>
+      <div id="compareDirections" class="compare-directions"></div>
+      <div id="compareWarnings" class="compare-warnings"></div>
+      <div id="compareModes" class="compare-modes"></div>
+    </section>
+
     <section class="meter-grid">
       <article class="panel meter-card">
         <div class="panel-head">
