@@ -7,6 +7,8 @@ import {
   goldenComparisonRows,
   buildGoldenQaMarkdown,
   appendGoldenGitHubSummary,
+  buildGoldenQaReport,
+  writeGoldenQaReport,
 } from "./music_qa_golden.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -129,6 +131,30 @@ try {
   if (fs.existsSync(summaryPath)) fs.unlinkSync(summaryPath);
 }
 
+const report = buildGoldenQaReport(baseline, hotOverall, hotOverallResult);
+if (report.type !== "music-golden-qa" || report.schemaVersion !== "1.0.0") {
+  errors.push("Golden JSON report identity mismatch");
+}
+if (report.passed !== false) errors.push("regression JSON report should be failed");
+if (!report.metrics.some((row) => row.scope === "OVERALL" && row.metric === "Peak" && row.status === "FAIL")) {
+  errors.push("Golden JSON report missing failed overall peak metric");
+}
+if (!report.failures.some((message) => message.includes("overall peak"))) {
+  errors.push("Golden JSON report missing failure reason");
+}
+
+const reportPath = path.join(ROOT, "qa-golden-report-test.json");
+try {
+  const wroteReport = writeGoldenQaReport(report, reportPath);
+  if (!wroteReport) errors.push("writeGoldenQaReport returned false");
+  const diskReport = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+  if (diskReport.type !== "music-golden-qa" || diskReport.metrics.length !== 10) {
+    errors.push("Golden JSON report file content mismatch");
+  }
+} finally {
+  if (fs.existsSync(reportPath)) fs.unlinkSync(reportPath);
+}
+
 if (errors.length) {
   console.error("Music Golden QA Gate Check FAILED");
   errors.forEach((error) => console.error("- " + error));
@@ -144,3 +170,4 @@ console.log("- scenario/sample-rate mismatch: BLOCKED");
 console.log("- Actions Summary metric table: OK");
 console.log("- PASS / FAIL / IMPROVED rendering: OK");
 console.log("- Summary file append: OK");
+console.log("- Machine-readable JSON report: OK");
