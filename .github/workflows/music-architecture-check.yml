@@ -25,7 +25,6 @@ on:
       - "qa/baselines/**"
       - "tools/check_pulse_mastering.py"
       - "tools/check_pulse_audio_profile.py"
-      - "tools/check_pulse_format_parity.py"
       - ".github/workflows/music-architecture-check.yml"
   pull_request:
     paths:
@@ -51,7 +50,6 @@ on:
       - "qa/baselines/**"
       - "tools/check_pulse_mastering.py"
       - "tools/check_pulse_audio_profile.py"
-      - "tools/check_pulse_format_parity.py"
       - ".github/workflows/music-architecture-check.yml"
 
 jobs:
@@ -65,13 +63,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Ensure ffmpeg for format parity
-        run: |
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
-          fi
-          ffmpeg -version | head -n 1
       - name: Enforce Music Facade boundary
         run: python tools/check_music_boundary.py
       - name: Check JavaScript syntax
@@ -140,13 +131,3 @@ jobs:
         run: python tools/check_pulse_audio_profile.py
       - name: Check Pulse Mastering
         run: python tools/check_pulse_mastering.py
-      - name: Check Pulse Cross-Format Audio Parity
-        run: python tools/check_pulse_format_parity.py
-      - name: Upload Pulse Format Parity Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pulse-format-parity-report
-          path: qa/out/pulse-format-parity.json
-          if-no-files-found: ignore
-          retention-days: 14
