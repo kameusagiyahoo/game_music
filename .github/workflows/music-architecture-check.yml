@@ -21,6 +21,7 @@ on:
       - "tools/check_music_qa_compare.mjs"
       - "tools/check_music_qa_scenario.mjs"
       - "tools/music_qa_golden.mjs"
+      - "tools/check_music_qa_golden.mjs"
       - "qa/baselines/**"
       - "tools/check_pulse_mastering.py"
       - "tools/check_pulse_audio_profile.py"
@@ -45,6 +46,7 @@ on:
       - "tools/check_music_qa_compare.mjs"
       - "tools/check_music_qa_scenario.mjs"
       - "tools/music_qa_golden.mjs"
+      - "tools/check_music_qa_golden.mjs"
       - "qa/baselines/**"
       - "tools/check_pulse_mastering.py"
       - "tools/check_pulse_audio_profile.py"
@@ -111,8 +113,10 @@ jobs:
         run: node tools/check_music_qa_compare.mjs
       - name: Check Automated QA Scenario
         run: node tools/check_music_qa_scenario.mjs
-      - name: Print Golden QA Candidate
-        run: node tools/music_qa_golden.mjs --print
+      - name: Check Golden QA Regression Gate
+        run: node tools/music_qa_golden.mjs --check
+      - name: Check Golden QA Gate Semantics
+        run: node tools/check_music_qa_golden.mjs
       - name: Check Pulse Audio Profile
         run: python tools/check_pulse_audio_profile.py
       - name: Check Pulse Mastering
