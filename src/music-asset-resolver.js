@@ -169,6 +169,10 @@ const STATE_MAP = Object.freeze({
     [MUSIC_ENGINES.PROCEDURAL]: { mode: "normal", preset: null },
     [MUSIC_ENGINES.WAV_STEM]: { mode: "normal", preset: "focus" },
   }),
+  build: Object.freeze({
+    [MUSIC_ENGINES.PROCEDURAL]: { mode: "tension", preset: null },
+    [MUSIC_ENGINES.WAV_STEM]: { mode: "build", preset: "build" },
+  }),
   tension: Object.freeze({
     [MUSIC_ENGINES.PROCEDURAL]: { mode: "tension", preset: null },
     [MUSIC_ENGINES.WAV_STEM]: { mode: "overdrive", preset: "overdrive" },
