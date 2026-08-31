@@ -18,6 +18,7 @@ on:
       - "tools/check_music_mastering.mjs"
       - "tools/check_music_metering.mjs"
       - "tools/check_music_qa_report.mjs"
+      - "tools/check_music_qa_compare.mjs"
       - "tools/check_pulse_mastering.py"
       - "tools/check_pulse_audio_profile.py"
       - ".github/workflows/music-architecture-check.yml"
@@ -38,6 +39,7 @@ on:
       - "tools/check_music_mastering.mjs"
       - "tools/check_music_metering.mjs"
       - "tools/check_music_qa_report.mjs"
+      - "tools/check_music_qa_compare.mjs"
       - "tools/check_pulse_mastering.py"
       - "tools/check_pulse_audio_profile.py"
       - ".github/workflows/music-architecture-check.yml"
@@ -67,6 +69,7 @@ jobs:
           node --check src/music-asset-resolver.js
           node --check src/music-facade.js
           node --check src/music-qa-report.js
+          node --check src/music-qa-compare.js
           node --check src/game.js
           node --check games/orbit-rush/game.js
           node --check games/pulse-forge/game.js
@@ -96,6 +99,8 @@ jobs:
         run: node tools/check_music_metering.mjs
       - name: Check QA Session Reports
         run: node tools/check_music_qa_report.mjs
+      - name: Check QA Baseline Regression Compare
+        run: node tools/check_music_qa_compare.mjs
       - name: Check Pulse Audio Profile
         run: python tools/check_pulse_audio_profile.py
       - name: Check Pulse Mastering
