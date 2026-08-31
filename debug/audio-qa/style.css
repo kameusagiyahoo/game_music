@@ -219,3 +219,50 @@ canvas { display: block; width: 100%; height: 190px; margin-top: 14px; border-ra
   .compare-mode-row { grid-template-columns: 75px 76px 1fr 1fr; }
   .compare-mode-row span:last-child { display: none; }
 }
+
+.scenario-panel { padding: 17px; margin-bottom: 12px; }
+.scenario-head { display: flex; justify-content: space-between; gap: 18px; align-items: start; }
+.scenario-head > strong { font-variant-numeric: tabular-nums; font-size: .92rem; }
+.scenario-progress {
+  height: 8px; border-radius: 999px; overflow: hidden; background: #090b0f;
+  border: 1px solid #2f3540; margin: 16px 0 12px;
+}
+.scenario-progress > div {
+  width: 0%; height: 100%; border-radius: inherit; background: #c0c7d2;
+  transition: width 100ms linear;
+}
+.scenario-actions { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
+.scenario-actions button {
+  min-height: 46px; border-radius: 11px; border: 1px solid #353b47;
+  color: #e9edf6; background: #1a1e27; font-weight: 800;
+}
+.scenario-actions button:disabled { opacity: .35; }
+.scenario-actions .scenario-run-button { background: #e9edf6; color: #11141a; border-color: #e9edf6; }
+.scenario-actions .scenario-run-button.is-running { background: #1c2635; color: #d9e4f2; border-color: #4d627e; }
+.scenario-timeline {
+  display: grid; grid-template-columns: 1fr 1fr 2fr 2fr; gap: 5px; margin-top: 13px;
+}
+.scenario-timeline > div {
+  min-height: 58px; border: 1px solid #292f39; border-radius: 10px;
+  background: #101319; padding: 9px 10px; display: grid; align-content: center; gap: 4px;
+  opacity: .46;
+}
+.scenario-timeline > div strong { font-size: .68rem; letter-spacing: .08em; }
+.scenario-timeline > div span { color: #818b9a; font-size: .66rem; }
+.scenario-timeline > div.done { opacity: .72; border-color: #40524a; }
+.scenario-timeline > div.active { opacity: 1; border-color: #697789; background: #171d26; }
+.scenario-timeline > div.failed { opacity: 1; border-color: #8e4d4d; background: #2a1719; }
+.scenario-metrics {
+  display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 1px;
+  background: #292f39; border: 1px solid #292f39; border-radius: 10px;
+  overflow: hidden; margin-top: 10px;
+}
+.scenario-metrics > div { background: #101319; padding: 9px 10px; display: grid; gap: 4px; }
+.scenario-metrics span { color: #7f8998; font-size: .60rem; letter-spacing: .09em; }
+.scenario-metrics strong { font-size: .74rem; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .scenario-head { flex-direction: column; gap: 8px; }
+  .scenario-timeline { grid-template-columns: 1fr 1fr; }
+  .scenario-actions { grid-template-columns: 1fr; }
+  .scenario-metrics { grid-template-columns: 1fr; }
+}
