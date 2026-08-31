@@ -177,6 +177,34 @@ function compatibilityWarnings(baseline, current) {
     });
   }
 
+  const baselineScenarioId = bMeta.qaScenarioId || bMeta.qaScenarioExecution?.id || null;
+  const currentScenarioId = cMeta.qaScenarioId || cMeta.qaScenarioExecution?.id || null;
+  if (baselineScenarioId !== currentScenarioId) {
+    warnings.push({
+      code: "scenario-id",
+      severity: "review",
+      message: `QA scenario differs: ${baselineScenarioId || "manual"} → ${currentScenarioId || "manual"}`,
+    });
+  }
+
+  for (const [label, meta] of [["baseline", bMeta], ["current", cMeta]]) {
+    const execution = meta.qaScenarioExecution || null;
+    if (execution && execution.status !== "completed") {
+      warnings.push({
+        code: `${label}-scenario-status`,
+        severity: "review",
+        message: `${label} QA scenario did not complete: ${execution.status}${execution.abortReason ? ` (${execution.abortReason})` : ""}`,
+      });
+    }
+    if (execution && Number(execution.maxDriftMs || 0) > 500) {
+      warnings.push({
+        code: `${label}-scenario-drift`,
+        severity: "review",
+        message: `${label} QA scenario max drift is ${Math.round(Number(execution.maxDriftMs))} ms`,
+      });
+    }
+  }
+
   for (const [label, summary] of [["baseline", bSummary], ["current", cSummary]]) {
     const coverage = finite(summary.samplingCoveragePercent, 100);
     if (coverage < 80) {
@@ -361,6 +389,7 @@ export function compareQaReports(baseline, current) {
       packVersion: baseline.metadata?.packVersion || null,
       verdict: b.verdict || null,
       observedDurationSeconds: round(bDuration),
+      scenarioId: baseline.metadata?.qaScenarioId || baseline.metadata?.qaScenarioExecution?.id || null,
     },
     current: {
       generatedAt: current.generatedAt || null,
@@ -368,6 +397,7 @@ export function compareQaReports(baseline, current) {
       packVersion: current.metadata?.packVersion || null,
       verdict: c.verdict || null,
       observedDurationSeconds: round(cDuration),
+      scenarioId: current.metadata?.qaScenarioId || current.metadata?.qaScenarioExecution?.id || null,
     },
     status,
     metrics,
