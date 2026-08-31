@@ -64,8 +64,8 @@ URL: https://kameusagiyahoo.github.io/game_music/games/rune-relay/
 - Fantasy / Neon / Clockwork / Pulse WAVを同じPack UIから選択
 - Pack変更は次のウェーブ境界へ予約
 - procedural ↔ WAV Stemでもゲームロジックを変更せずRuntime交換
-- ゲーム側は `normal / tension / result` の共通Stateだけを送信
-- WAV EngineではStateがFocus / Overdrive / Result Stem Mixへ自動変換
+- ゲーム側は `normal / build / tension / result` の共通Stateだけを送信
+- WAV EngineではStateがFocus / Build / Overdrive / Result Stem Mixへ自動変換
 - 勝敗演出もStinger対応EngineならAudio Stinger、それ以外はSEへ自動フォールバック
 - 共通BGM / SE設定を利用
 
@@ -376,7 +376,7 @@ music.info().preload;
 // }
 ```
 
-Facade API versionはv14で `1.1.0`、v16で `1.2.0`、v17で `1.3.0`、v20のRealtime Meter API追加で現在は `1.4.0` です。
+Facade API versionはv14で `1.1.0`、v16で `1.2.0`、v17で `1.3.0`、v20で `1.4.0`、v23の共通`build` State追加で現在は `1.5.0` です。
 
 利用箇所:
 
@@ -1403,6 +1403,172 @@ CIの `tools/check_music_qa_compare.mjs` では以下を検証します。
 
 v22では音声Engine API自体は追加していないため、Facade API versionは引き続き `1.4.0` です。
 
+### v23 — Automated QA Scenario Runner
+
+v20〜v22でRealtime Meter / Recorder / Baseline Compareが揃ったため、v23ではQA操作そのものを固定します。
+
+標準Scenario:
+
+```text
+00–10 sec   NORMAL
+10–20 sec   BUILD
+20–40 sec   OVERDRIVE
+40–60 sec   RESULT + VICTORY
+```
+
+Audio QA Dashboardの `RUN STANDARD 60s` を押すと、
+
+```text
+Pulse transport reset
+        |
+        v
+NORMAL start
+        |
+        +--> Recorder start
+        |
+        v
+Automated Scenario
+        |
+        +-- 10s BUILD
+        +-- 20s OVERDRIVE
+        +-- 40s RESULT + VICTORY
+        |
+        v
+60s complete
+        |
+        +--> QA Report
+        +--> Baseline Compare
+```
+
+まで自動実行します。
+
+Scenario Runnerはゲーム内部Managerへ直接アクセスせず、通常ゲームと同じMusic Facade APIだけを使います。
+
+```js
+music.state("normal", {
+  quantize: "immediate",
+  transitionCue: false
+});
+
+music.state("build", {
+  quantize: "bar"
+});
+
+music.state("tension", {
+  quantize: "bar"
+});
+
+music.state("result", {
+  quantize: "bar"
+});
+
+music.outcome(true, {
+  quantize: "bar"
+});
+```
+
+### 共通BUILD State
+
+Pulse Manifestは以前から `build` Modeを持っていましたが、共通State Resolverには `build` がありませんでした。
+
+v23で正式に追加しています。
+
+```text
+Facade state("build")
+
+WAV Stem
+  -> mode: build
+  -> layer preset: build
+  -> Riser transition cue
+
+procedural
+  -> tension相当へfallback
+```
+
+このAPI追加によりFacade API versionは `1.5.0` です。
+
+Pulse Packの音源自体は変更していないためPack versionは引き続き `1.4.0` です。
+
+### Timing Drift Guard
+
+Scenarioは約10fpsのDashboard tickから進行しますが、各Stepには予定時刻があります。
+
+```text
+BUILD scheduled = 10,000 ms
+actual          = 10,120 ms
+drift           = 120 ms
+=> OK
+```
+
+最大許容遅延は750 msです。
+
+```text
+BUILD scheduled = 10,000 ms
+actual          = 11,000 ms
+drift           = 1,000 ms
+=> ABORT
+```
+
+Safariがbackgroundへ入りtimerが大きく遅れた場合、復帰後にBUILD / OVERDRIVE / RESULTを一気に実行しません。
+
+そのRunは、
+
+```text
+status: aborted
+abortReason: timing-drift:build:1000ms
+```
+
+としてRecorder metadataへ保存します。
+
+### Scenario metadata
+
+自動Runで作られたQA Reportには以下が追加されます。
+
+```js
+metadata: {
+  qaScenarioId: "pulse-standard-v1",
+  qaScenarioVersion: "1.0.0",
+  qaScenarioStatus: "completed",
+  qaScenarioExecution: {
+    durationMs: 60000,
+    maxDriftMs: 120,
+    completedSteps: 4,
+    totalSteps: 4,
+    executions: []
+  }
+}
+```
+
+v22 Regression CompareではScenario条件も比較します。
+
+以下はREVIEW warningです。
+
+- Baselineがmanual、Currentがautomated
+- Scenario IDが異なる
+- 片方のScenarioがABORT
+- max step driftが500 msを超える
+
+これにより音量差だけでなく、比較条件そのものが揃っているか確認できます。
+
+Scenario Engineは `src/music-qa-scenario.js` にUIから分離しています。
+
+CIの `tools/check_music_qa_scenario.mjs` では仮想時間を使い、実際に60秒待たず以下を検証します。
+
+- NORMAL @ 0 sec
+- BUILD @ 10 sec
+- OVERDRIVE @ 20 sec
+- RESULT + VICTORY @ 40 sec
+- COMPLETE @ 60 sec
+- bar quantization指定
+- RESULT → VICTORYの順序
+- 1,000 ms driftでABORT
+- manual cancel
+- action failureでABORT
+- shared `build` State Resolver
+- Facade API 1.5.0
+
+`tools/check_music_qa_compare.mjs` でもScenario mismatch / aborted / drift warningを検証します。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -1469,6 +1635,7 @@ Validation:
 - `tools/check_music_metering.mjs`
 - `tools/check_music_qa_report.mjs`
 - `tools/check_music_qa_compare.mjs`
+- `tools/check_music_qa_scenario.mjs`
 - `tools/check_pulse_audio_profile.py`
 - `tools/check_pulse_mastering.py`
 - `.github/workflows/music-architecture-check.yml`
@@ -1489,6 +1656,7 @@ src/
 ├── music-facade.js
 ├── music-qa-report.js
 ├── music-qa-compare.js
+├── music-qa-scenario.js
 ├── music-pack-manifest.js
 ├── audio-asset-cache.js
 ├── music-service-worker.js
