@@ -32,7 +32,7 @@ URL: https://kameusagiyahoo.github.io/game_music/games/orbit-rush/
 音楽の拍に同期して4方向の炉心を叩く40秒のリズム / 反射ゲーム。
 
 - 5本の同期Stemを同一AudioContext時刻でスタート
-- Pulse Pack v1.3.0は44.1 kHz stereoのM4A / OGG / WAVを収録
+- Pulse Pack v1.4.0は44.1 kHz stereoのM4A / OGG / WAVを収録
 - Browser Format Resolverが対応形式を自動選択
 - Energyに応じて次小節からStem Mixを変更
 - Victory / Game Over専用Stinger
@@ -1968,6 +1968,199 @@ Artifact uploadは `if: always()` のため、Golden GateがFAILしたrunでもR
 
 v25は音声Engine / Facade API自体を変更しないため、Facade API versionは引き続き `1.5.0` です。
 
+### v26 — Cross-Format Audio Parity Gate
+
+v12〜v15でM4A / OGG / WAVの選択・fallback・cacheは完成していましたが、v24 Golden QAはWAVを基準にしています。
+
+そのためv26では、実際にiPhoneで優先再生されるM4Aと、fallbackのOGGがWAVと同じ内容を保持していることをdecode後に検証します。
+
+```text
+11 Pulse assets
+  |
+  +-- 5 Stems
+  +-- 2 Stingers
+  +-- 4 Transition Cues
+  |
+  v
+WAV reference
+  |
+  +--> M4A decode
+  |
+  +--> OGG decode
+  |
+  v
+22 cross-format comparisons
+```
+
+単に拡張子・Sample Rate・Channel数を見るだけではありません。
+
+`ffmpeg` で各形式を44.1 kHz / stereo float PCMへdecodeし、以下を比較します。
+
+- Duration
+- RMS
+- Peak
+- 時間方向RMS Envelope
+- Envelope correlation
+- Envelope mean absolute error
+- codec delayを考慮した短いlag search
+
+現在のGate:
+
+```text
+Duration delta       <= 0.080 sec
+RMS delta            <= ±2.75 dB
+Peak delta           <= ±3.50 dB
+Envelope correlation >= 0.90
+Envelope MAE         <= 2.25 dB
+Envelope lag search  ±4 windows
+```
+
+Envelope windowは2048 framesです。
+
+44.1 kHzでは約46 msなので、lag searchは約±186 msの範囲です。
+
+AAC / Vorbisでは完全無音部分にcodec noiseやringingが生じるため、無音床そのものを比較すると実質聞こえない差が大きなdB差として現れます。
+
+v26ではWAV reference側が `-55 dBFS` より大きいActive Windowを中心にEnvelopeを比較します。
+
+```text
+WAV active content
+       |
+       +--> shape preserved?
+       +--> level preserved?
+       +--> timing preserved?
+       |
+       v
+M4A / OGG PASS
+```
+
+これにより、lossy codecとして正常な微小noiseは無視しつつ、
+
+```text
+drums.wav
+vs
+bass.m4a
+```
+
+のような誤った音源差し替えはEnvelope形状の違いでrejectできます。
+
+### 現在の実測
+
+現在の22比較はすべてPASSしています。
+
+代表値:
+
+```text
+drums.m4a
+RMS   -0.038 dB
+Peak  -0.203 dB
+Env r  0.99866
+
+bass.m4a
+RMS   -0.076 dB
+Peak  +2.961 dB
+Env r  0.99997
+
+whoosh.m4a
+RMS   -2.165 dB
+Peak  -0.471 dB
+Env r  0.99776
+MAE    1.991 dB
+
+riser.m4a
+RMS   -1.417 dB
+Peak  -0.914 dB
+Env r  0.99098
+```
+
+最大Duration差は現在約23 msです。
+
+### Dedicated CI
+
+Cross-Format decodeにはffmpegが必要なため、通常のMusic Architecture Checkから分離しています。
+
+```text
+.github/workflows/pulse-format-parity.yml
+```
+
+このWorkflowは主に以下が変わった場合だけ実行します。
+
+- `assets/stems/pulse/**`
+- `assets/stingers/pulse/**`
+- `assets/transitions/pulse/**`
+- Parity checker自体
+
+通常のMusic Architecture Checkへ毎回ffmpegを導入しないため、一般的なコード変更時のCIを重くしません。
+
+専用Workflowでは、
+
+```text
+Install ffmpeg
+      |
+      v
+22 decoded parity checks
+      |
+      v
+Gate semantics check
+      |
+      v
+JSON Artifact
+```
+
+を実行します。
+
+Report:
+
+```text
+qa/out/pulse-format-parity.json
+```
+
+Artifact:
+
+```text
+pulse-format-parity-report
+retention: 14 days
+```
+
+### Audio Generation Gate
+
+`.github/workflows/generate-pulse-stems.yml` でも、M4A / OGG encode後、GitHubへcommitする前に同じParity Gateを実行します。
+
+```text
+Generate WAV
+   |
+   v
+Mastering / Stereo checks
+   |
+   v
+Encode M4A / OGG
+   |
+   v
+ffprobe profile check
+   |
+   v
+Cross-Format Parity
+   |
+   v
+Parity semantics
+   |
+   v
+Commit generated audio
+```
+
+したがって、壊れたcompressed variantはRepositoryへ自動commitされません。
+
+### Gate Semantics
+
+`tools/check_pulse_format_parity_semantics.py` はGate自体の検出力を確認します。
+
+- drums WAV vs drums M4A -> PASS
+- victory WAV vs victory OGG -> PASS
+- drums WAV vs bass M4A -> FAIL
+- victory WAV vs gameover OGG -> FAIL
+
+v26は音声Engine / Facade APIを変更しないため、Facade API versionは引き続き `1.5.0`、Pulse Packは `1.4.0` です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -2040,6 +2233,9 @@ Validation:
 - `qa/baselines/pulse-standard-v1.json`
 - `tools/check_pulse_audio_profile.py`
 - `tools/check_pulse_mastering.py`
+- `tools/check_pulse_format_parity.py`
+- `tools/check_pulse_format_parity_semantics.py`
+- `.github/workflows/pulse-format-parity.yml`
 - `.github/workflows/music-architecture-check.yml`
 
 ## Structure
