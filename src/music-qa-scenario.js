@@ -7,9 +7,11 @@ export const STANDARD_QA_SCENARIO = Object.freeze({
   version: "1.0.0",
   durationMs: 60_000,
   maxStepLatenessMs: 750,
+  maxSchedulerGapMs: 1_500,
   steps: Object.freeze([
     Object.freeze({
       id: "normal",
+      stage: "normal",
       label: "NORMAL",
       atMs: 0,
       actions: Object.freeze([
@@ -25,18 +27,29 @@ export const STANDARD_QA_SCENARIO = Object.freeze({
     }),
     Object.freeze({
       id: "build",
+      stage: "build",
       label: "BUILD",
       atMs: 10_000,
       actions: Object.freeze([
         Object.freeze({
-          type: "state",
+          type: "transitionCue",
+          name: "riser",
+          options: Object.freeze({
+            quantize: "bar",
+            position: "before",
+          }),
+        }),
+        Object.freeze({
+          type: "layer",
           name: "build",
+          alignToPreviousTransition: true,
           options: Object.freeze({ quantize: "bar" }),
         }),
       ]),
     }),
     Object.freeze({
       id: "overdrive",
+      stage: "overdrive",
       label: "OVERDRIVE",
       atMs: 20_000,
       actions: Object.freeze([
@@ -49,6 +62,7 @@ export const STANDARD_QA_SCENARIO = Object.freeze({
     }),
     Object.freeze({
       id: "result-victory",
+      stage: "result",
       label: "RESULT + VICTORY",
       atMs: 40_000,
       actions: Object.freeze([
@@ -126,9 +140,13 @@ export function validateQaScenario(scenario) {
 
     step.actions.forEach((action, actionIndex) => {
       const actionPrefix = `${prefix}.actions[${actionIndex}]`;
-      if (action?.type === "state") {
+      if (
+        action?.type === "state" ||
+        action?.type === "layer" ||
+        action?.type === "transitionCue"
+      ) {
         if (!action.name || typeof action.name !== "string") {
-          errors.push(`${actionPrefix}.name is required for state action`);
+          errors.push(`${actionPrefix}.name is required for ${action.type} action`);
         }
       } else if (action?.type === "outcome") {
         if (typeof action.success !== "boolean") {
@@ -160,6 +178,8 @@ export function createQaScenarioRun(
     startedAtMs: finite(startedAtMs, 0),
     status: "running",
     nextStepIndex: 0,
+    currentStage: scenario.steps?.[0]?.stage || scenario.steps?.[0]?.id || null,
+    lastAdvanceAtMs: finite(startedAtMs, 0),
     executions: [],
     abortReason: null,
     completedAtMs: null,
@@ -185,6 +205,7 @@ export function getQaScenarioProgress(run, nowMs = run?.startedAtMs || 0) {
       remainingMs: 0,
       progress: 0,
       nextStep: null,
+      currentStage: null,
     };
   }
 
@@ -198,6 +219,7 @@ export function getQaScenarioProgress(run, nowMs = run?.startedAtMs || 0) {
     remainingMs: Math.max(0, durationMs - clamped),
     progress: durationMs > 0 ? clamped / durationMs : 0,
     nextStep: run.scenario?.steps?.[run.nextStepIndex] || null,
+    currentStage: run.currentStage || null,
   };
 }
 
@@ -205,11 +227,25 @@ export async function executeQaScenarioStep(music, step) {
   if (!music) throw new Error("music facade is required");
 
   const results = [];
+  let alignedTransitionAt = null;
+
   for (const action of step.actions || []) {
+    const options = cloneOptions(action.options);
+
+    if (action.alignToPreviousTransition && alignedTransitionAt) {
+      options.scheduledAt = alignedTransitionAt;
+    }
+
     if (action.type === "state") {
-      results.push(await music.state(action.name, cloneOptions(action.options)));
+      results.push(await music.state(action.name, options));
+    } else if (action.type === "layer") {
+      results.push(await music.layer(action.name, options));
+    } else if (action.type === "transitionCue") {
+      const result = await music.transitionCue(action.name, options);
+      alignedTransitionAt = Number(result?.transitionAt || result?.scheduledAt || 0) || null;
+      results.push(result);
     } else if (action.type === "outcome") {
-      results.push(await music.outcome(Boolean(action.success), cloneOptions(action.options)));
+      results.push(await music.outcome(Boolean(action.success), options));
     } else {
       throw new Error(`Unsupported QA scenario action: ${action.type}`);
     }
@@ -230,6 +266,18 @@ export async function advanceQaScenarioRun(run, {
   const elapsedMs = Math.max(0, currentTime - run.startedAtMs);
   const steps = run.scenario.steps;
   const maxLate = Math.max(0, finite(run.scenario.maxStepLatenessMs, 750));
+  const maxSchedulerGap = Math.max(250, finite(run.scenario.maxSchedulerGapMs, 1_500));
+
+  if (
+    run.lastAdvanceAtMs != null &&
+    currentTime - run.lastAdvanceAtMs > maxSchedulerGap
+  ) {
+    run.status = "aborted";
+    run.abortReason = `scheduler-gap:${Math.round(currentTime - run.lastAdvanceAtMs)}ms`;
+    run.completedAtMs = currentTime;
+    return run;
+  }
+  run.lastAdvanceAtMs = currentTime;
 
   while (run.nextStepIndex < steps.length) {
     const step = steps[run.nextStepIndex];
@@ -246,12 +294,14 @@ export async function advanceQaScenarioRun(run, {
     const execution = {
       stepId: step.id,
       label: step.label || step.id,
+      stage: step.stage || step.id,
       scheduledAtMs: step.atMs,
       executedAtMs: elapsedMs,
       driftMs,
       status: "running",
     };
     run.executions.push(execution);
+    run.currentStage = step.stage || step.id;
 
     try {
       await executeStep(step);
@@ -297,6 +347,7 @@ export function qaScenarioExecutionSummary(run) {
     maxDriftMs: Math.round(maxDriftMs),
     completedSteps: run.executions.filter((execution) => execution.status === "completed").length,
     totalSteps: run.scenario?.steps?.length || 0,
+    currentStage: run.currentStage || null,
     executions: run.executions.map((execution) => ({ ...execution })),
   };
 }
