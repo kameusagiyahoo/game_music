@@ -6,6 +6,12 @@ import {
   qaReportToCsv,
   qaReportFilename,
 } from "../../src/music-qa-report.js";
+import {
+  validateQaReport,
+  compareQaReports,
+  qaComparisonToCsv,
+  qaComparisonFilename,
+} from "../../src/music-qa-compare.js";
 
 const $ = (selector) => document.querySelector(selector);
 const qaBadge = $("#qaBadge");
@@ -47,6 +53,23 @@ const reportReduction = $("#reportReduction");
 const reportOver3 = $("#reportOver3");
 const reportOver6 = $("#reportOver6");
 const modeSummary = $("#modeSummary");
+const baselineFile = $("#baselineFile");
+const baselineStatus = $("#baselineStatus");
+const compareVerdict = $("#compareVerdict");
+const useCurrentBaselineButton = $("#useCurrentBaselineButton");
+const exportCompareJsonButton = $("#exportCompareJsonButton");
+const exportCompareCsvButton = $("#exportCompareCsvButton");
+const comparePeak = $("#comparePeak");
+const compareRms = $("#compareRms");
+const compareReduction = $("#compareReduction");
+const compareOver3 = $("#compareOver3");
+const compareOver6 = $("#compareOver6");
+const compareClip = $("#compareClip");
+const compareBaseCoverage = $("#compareBaseCoverage");
+const compareCurrentCoverage = $("#compareCurrentCoverage");
+const compareDirections = $("#compareDirections");
+const compareWarnings = $("#compareWarnings");
+const compareModes = $("#compareModes");
 const canvas = $("#historyCanvas");
 const ctx = canvas.getContext("2d");
 
@@ -60,6 +83,8 @@ const RECORD_DURATION_SECONDS = 60;
 const RECORD_SAMPLE_INTERVAL_MS = 100;
 let recordingSession = null;
 let lastReport = null;
+let baselineReport = null;
+let comparisonReport = null;
 let lastRecordSampleAt = 0;
 
 const music = createMusicFacade({
@@ -249,12 +274,146 @@ function renderReportSummary() {
   `).join("");
 }
 
+function signed(value, digits = 1, suffix = "") {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  const sign = number > 0 ? "+" : "";
+  return `${sign}${number.toFixed(digits)}${suffix}`;
+}
+
+function signedPercentPoints(rate, digits = 1) {
+  const number = Number(rate);
+  if (!Number.isFinite(number)) return "—";
+  return signed(number * 100, digits, " pp");
+}
+
+function renderComparison() {
+  const comparison = comparisonReport;
+  useCurrentBaselineButton.disabled = !lastReport;
+  exportCompareJsonButton.disabled = !comparison?.valid;
+  exportCompareCsvButton.disabled = !comparison?.valid;
+
+  if (!baselineReport) {
+    baselineStatus.textContent = "NO BASELINE · LOAD A v21 JSON REPORT";
+  } else {
+    const version = baselineReport.metadata?.packVersion || "?";
+    const date = baselineReport.generatedAt
+      ? new Date(baselineReport.generatedAt).toLocaleString()
+      : "unknown time";
+    baselineStatus.textContent = `BASELINE · PULSE v${version} · ${date}`;
+  }
+
+  if (!comparison?.valid) {
+    compareVerdict.textContent = baselineReport && lastReport ? "INVALID" : "—";
+    compareVerdict.className = "compare-verdict idle";
+    comparePeak.textContent = "—";
+    compareRms.textContent = "—";
+    compareReduction.textContent = "—";
+    compareOver3.textContent = "—";
+    compareOver6.textContent = "—";
+    compareClip.textContent = "—";
+    compareBaseCoverage.textContent = "—";
+    compareCurrentCoverage.textContent = "—";
+    compareDirections.innerHTML = "";
+    compareWarnings.innerHTML = comparison?.errors?.map(
+      (message) => `<div class="compare-warning">${message}</div>`
+    ).join("") || "";
+    compareModes.innerHTML = "";
+    return;
+  }
+
+  const metrics = comparison.metrics;
+  const status = String(comparison.status || "pass");
+  compareVerdict.textContent = status.toUpperCase();
+  compareVerdict.className = `compare-verdict ${status}`;
+  comparePeak.textContent = signed(metrics.maxOutputPeakDb.delta, 1, " dB");
+  compareRms.textContent = signed(metrics.averageOutputRmsDb.delta, 1, " dB");
+  compareReduction.textContent = signed(metrics.maxLimiterReductionMagnitudeDb.delta, 1, " dB");
+  compareOver3.textContent = signedPercentPoints(metrics.limiterOver3.deltaRate);
+  compareOver6.textContent = signedPercentPoints(metrics.limiterOver6.deltaRate);
+  compareClip.textContent = signedPercentPoints(metrics.clipRisk.deltaRate);
+  compareBaseCoverage.textContent = `${Number(metrics.coveragePercent.baseline || 0).toFixed(0)}%`;
+  compareCurrentCoverage.textContent = `${Number(metrics.coveragePercent.current || 0).toFixed(0)}%`;
+
+  compareDirections.innerHTML = [
+    `PEAK ${String(comparison.summary?.peakDirection || "stable").toUpperCase()}`,
+    `RMS ${String(comparison.summary?.rmsDirection || "stable").toUpperCase()}`,
+    `LIMITER ${String(comparison.summary?.limiterDirection || "stable").toUpperCase()}`,
+    `REGRESSION MODES ${comparison.summary?.regressionModeCount || 0}`,
+    `IMPROVED MODES ${comparison.summary?.improvedModeCount || 0}`,
+  ].map((label) => `<span class="direction-chip">${label}</span>`).join("");
+
+  compareWarnings.innerHTML = (comparison.warnings || []).map((warning) =>
+    `<div class="compare-warning ${warning.severity === "info" ? "info" : ""}">${warning.message}</div>`
+  ).join("");
+
+  compareModes.innerHTML = Object.entries(comparison.modes || {}).map(([name, mode]) => {
+    const peak = mode.delta ? signed(mode.delta.maxOutputPeakDb, 1, " dB") : mode.presence.toUpperCase();
+    const rms = mode.delta ? signed(mode.delta.averageOutputRmsDb, 1, " dB") : "—";
+    const reduction = mode.delta ? signed(mode.delta.maxLimiterReductionMagnitudeDb, 1, " dB") : "—";
+    return `
+      <div class="compare-mode-row">
+        <strong>${name}</strong>
+        <span class="compare-mode-status ${mode.status}">${mode.status}</span>
+        <span>PK ${peak}</span>
+        <span>RMS ${rms}</span>
+        <span>GR ${reduction}</span>
+      </div>
+    `;
+  }).join("");
+}
+
+function runComparison() {
+  if (!baselineReport || !lastReport) {
+    comparisonReport = null;
+    renderComparison();
+    return null;
+  }
+  comparisonReport = compareQaReports(baselineReport, lastReport);
+  renderComparison();
+  return comparisonReport;
+}
+
+function setBaseline(report) {
+  const validation = validateQaReport(report);
+  if (!validation.valid) {
+    baselineReport = null;
+    comparisonReport = {
+      valid: false,
+      errors: validation.errors.map((message) => `baseline: ${message}`),
+    };
+    renderComparison();
+    return false;
+  }
+  baselineReport = report;
+  runComparison();
+  return true;
+}
+
+async function loadBaselineFile(file) {
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const report = JSON.parse(text);
+    if (!setBaseline(report)) return;
+    baselineStatus.textContent = `BASELINE LOADED · ${file.name}`;
+  } catch (error) {
+    baselineReport = null;
+    comparisonReport = {
+      valid: false,
+      errors: [`baseline file: ${error.message}`],
+    };
+    renderComparison();
+  }
+}
+
 function finishRecording(endedAtMs = Date.now()) {
   if (!recordingSession) return null;
   lastReport = finalizeQaSession(recordingSession, { endedAtMs });
   recordingSession = null;
   lastRecordSampleAt = 0;
   renderReportSummary();
+  runComparison();
   return lastReport;
 }
 
@@ -271,6 +430,8 @@ async function startRecording() {
   const now = Date.now();
 
   lastReport = null;
+  comparisonReport = null;
+  renderComparison();
   recordingSession = createQaSession({
     startedAtMs: now,
     targetDurationSeconds: RECORD_DURATION_SECONDS,
@@ -328,6 +489,30 @@ function downloadBlob(blob, filename) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
+async function shareOrDownload(contents, {
+  mime,
+  filename,
+  title,
+  text,
+}) {
+  const blob = new Blob([contents], { type: `${mime};charset=utf-8` });
+
+  if (typeof File === "function" && typeof navigator.share === "function") {
+    const file = new File([blob], filename, { type: mime });
+    try {
+      if (typeof navigator.canShare !== "function" || navigator.canShare({ files: [file] })) {
+        await navigator.share({ title, text, files: [file] });
+        return;
+      }
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+      console.warn("File share failed; using download fallback", error);
+    }
+  }
+
+  downloadBlob(blob, filename);
+}
+
 async function exportReport(format) {
   if (!lastReport) return;
 
@@ -337,28 +522,31 @@ async function exportReport(format) {
     : qaReportToCsv(lastReport);
   const mime = json ? "application/json" : "text/csv";
   const filename = qaReportFilename(lastReport, format);
-  const blob = new Blob([contents], { type: `${mime};charset=utf-8` });
 
-  if (typeof File === "function" && typeof navigator.share === "function") {
-    const file = new File([blob], filename, { type: mime });
-    const shareData = {
-      title: "Game Music QA Report",
-      text: `${lastReport.metadata?.packName || "Music"} · ${lastReport.summary?.verdict || "qa"}`,
-      files: [file],
-    };
+  await shareOrDownload(contents, {
+    mime,
+    filename,
+    title: "Game Music QA Report",
+    text: `${lastReport.metadata?.packName || "Music"} · ${lastReport.summary?.verdict || "qa"}`,
+  });
+}
 
-    try {
-      if (typeof navigator.canShare !== "function" || navigator.canShare({ files: [file] })) {
-        await navigator.share(shareData);
-        return;
-      }
-    } catch (error) {
-      if (error?.name === "AbortError") return;
-      console.warn("QA report share failed; using download fallback", error);
-    }
-  }
+async function exportComparison(format) {
+  if (!comparisonReport?.valid) return;
 
-  downloadBlob(blob, filename);
+  const json = format === "json";
+  const contents = json
+    ? JSON.stringify(comparisonReport, null, 2)
+    : qaComparisonToCsv(comparisonReport);
+  const mime = json ? "application/json" : "text/csv";
+  const filename = qaComparisonFilename(comparisonReport, format);
+
+  await shareOrDownload(contents, {
+    mime,
+    filename,
+    title: "Game Music QA Regression Compare",
+    text: `${comparisonReport.current?.packId || "Music"} · ${comparisonReport.status}`,
+  });
 }
 
 function render() {
@@ -451,10 +639,27 @@ recordStopButton.addEventListener("click", () => finishRecording());
 exportJsonButton.addEventListener("click", () => void exportReport("json"));
 exportCsvButton.addEventListener("click", () => void exportReport("csv"));
 
+baselineFile.addEventListener("change", () => {
+  const [file] = baselineFile.files || [];
+  void loadBaselineFile(file);
+  baselineFile.value = "";
+});
+useCurrentBaselineButton.addEventListener("click", () => {
+  if (!lastReport) return;
+  setBaseline(
+    typeof structuredClone === "function"
+      ? structuredClone(lastReport)
+      : JSON.parse(JSON.stringify(lastReport))
+  );
+});
+exportCompareJsonButton.addEventListener("click", () => void exportComparison("json"));
+exportCompareCsvButton.addEventListener("click", () => void exportComparison("csv"));
+
 void music.preload({ stingers: true, transitions: true }).catch((error) => {
   console.warn("QA preload failed; START will retry", error);
 });
 
 renderReportSummary();
+renderComparison();
 render();
 requestAnimationFrame(animationFrame);
