@@ -4,7 +4,7 @@
   "renderProfile": "offline-pre-limiter-v1",
   "pack": {
     "id": "pulse",
-    "version": "1.4.0",
+    "version": "1.4.1",
     "masteringProfile": "game-balanced-v1",
     "facadeApi": "1.5.0"
   },
