@@ -113,7 +113,7 @@ jobs:
         run: node tools/check_music_qa_compare.mjs
       - name: Check Automated QA Scenario
         run: node tools/check_music_qa_scenario.mjs
-      - name: Check Golden QA Regression Gate
+      - name: Check Golden QA + Publish Summary
         run: node tools/music_qa_golden.mjs --check
       - name: Check Golden QA Gate Semantics
         run: node tools/check_music_qa_golden.mjs
