@@ -5,8 +5,7 @@ on:
   push:
     paths:
       - "tools/generate_pulse_stems.py"
-      - "src/music-packs/pulse.js"
-      - ".github/workflows/generate-pulse-stems.yml"
+      - "tools/encode_pulse_audio.sh"
 
 permissions:
   contents: write
@@ -34,23 +33,7 @@ jobs:
       - name: Validate generated mastering targets
         run: python tools/check_pulse_mastering.py
       - name: Encode OGG and AAC/M4A variants
-        run: |
-          set -euo pipefail
-          for src in assets/stems/pulse/*.wav; do
-            base="${src%.wav}"
-            ffmpeg -y -loglevel error -i "$src" -ar 44100 -ac 2 -c:a libvorbis -q:a 5 "${base}.ogg"
-            ffmpeg -y -loglevel error -i "$src" -ar 44100 -ac 2 -c:a aac -b:a 160k -movflags +faststart "${base}.m4a"
-          done
-          for src in assets/stingers/pulse/*.wav; do
-            base="${src%.wav}"
-            ffmpeg -y -loglevel error -i "$src" -ar 44100 -ac 2 -c:a libvorbis -q:a 5 "${base}.ogg"
-            ffmpeg -y -loglevel error -i "$src" -ar 44100 -ac 2 -c:a aac -b:a 160k -movflags +faststart "${base}.m4a"
-          done
-          for src in assets/transitions/pulse/*.wav; do
-            base="${src%.wav}"
-            ffmpeg -y -loglevel error -i "$src" -ar 44100 -ac 2 -c:a libvorbis -q:a 5 "${base}.ogg"
-            ffmpeg -y -loglevel error -i "$src" -ar 44100 -ac 2 -c:a aac -b:a 160k -movflags +faststart "${base}.m4a"
-          done
+        run: bash tools/encode_pulse_audio.sh
       - name: Validate generated audio profile
         run: |
           set -euo pipefail
