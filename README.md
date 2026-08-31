@@ -234,7 +234,7 @@ music.info();
   transitionCues: ["fill", "whoosh", "riser", "impact"],
   masteringProfile: "game-balanced-v1",
   formats: ["m4a", "ogg", "wav"],
-  facadeApi: "1.3.0"
+  facadeApi: "1.5.0"
 }
 ```
 
@@ -1618,9 +1618,15 @@ CIの `tools/check_music_qa_scenario.mjs` では仮想時間を使い、実際�
 - manual cancel
 - action failureでABORT
 - shared `build` State Resolver
+- BUILD Riser / Layerの同一境界予約
+- scheduler gapでABORT
+- Scenario Stage別Report集計
+- Scenario Stage別Regression Compare
 - Facade API 1.5.0
 
 `tools/check_music_qa_compare.mjs` でもScenario mismatch / aborted / drift warningを検証します。
+
+Scenario中にページを非表示へするとRunを中断するため、iPhoneでは60秒間Audio QA Dashboardを前面にしたまま計測します。
 
 ## Music Debug / Mixer
 
