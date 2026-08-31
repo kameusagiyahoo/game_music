@@ -12,6 +12,15 @@ import {
   qaComparisonToCsv,
   qaComparisonFilename,
 } from "../../src/music-qa-compare.js";
+import {
+  STANDARD_QA_SCENARIO,
+  createQaScenarioRun,
+  advanceQaScenarioRun,
+  cancelQaScenarioRun,
+  getQaScenarioProgress,
+  executeQaScenarioStep,
+  qaScenarioExecutionSummary,
+} from "../../src/music-qa-scenario.js";
 
 const $ = (selector) => document.querySelector(selector);
 const qaBadge = $("#qaBadge");
@@ -53,6 +62,15 @@ const reportReduction = $("#reportReduction");
 const reportOver3 = $("#reportOver3");
 const reportOver6 = $("#reportOver6");
 const modeSummary = $("#modeSummary");
+const scenarioStatus = $("#scenarioStatus");
+const scenarioTimer = $("#scenarioTimer");
+const scenarioProgressBar = $("#scenarioProgressBar");
+const runScenarioButton = $("#runScenarioButton");
+const cancelScenarioButton = $("#cancelScenarioButton");
+const scenarioTimeline = $("#scenarioTimeline");
+const scenarioIdValue = $("#scenarioIdValue");
+const scenarioDriftValue = $("#scenarioDriftValue");
+const scenarioRunStatus = $("#scenarioRunStatus");
 const baselineFile = $("#baselineFile");
 const baselineStatus = $("#baselineStatus");
 const compareVerdict = $("#compareVerdict");
@@ -85,6 +103,9 @@ let recordingSession = null;
 let lastReport = null;
 let baselineReport = null;
 let comparisonReport = null;
+let scenarioRun = null;
+let lastScenarioSummary = null;
+let scenarioAdvancing = false;
 let lastRecordSampleAt = 0;
 
 const music = createMusicFacade({
@@ -208,6 +229,145 @@ function formatTimeMs(value) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${tenths}`;
 }
 
+function renderScenario() {
+  const now = performance.now();
+  const progress = scenarioRun
+    ? getQaScenarioProgress(scenarioRun, now)
+    : null;
+  const summary = scenarioRun
+    ? qaScenarioExecutionSummary(scenarioRun)
+    : lastScenarioSummary;
+
+  scenarioIdValue.textContent = STANDARD_QA_SCENARIO.id;
+  scenarioProgressBar.style.width = `${Math.round((progress?.progress || (summary?.status === "completed" ? 1 : 0)) * 100)}%`;
+  scenarioTimer.textContent = `${formatTimeMs(progress?.elapsedMs || (summary?.status === "completed" ? STANDARD_QA_SCENARIO.durationMs : 0))} / ${formatTimeMs(STANDARD_QA_SCENARIO.durationMs)}`;
+
+  const running = scenarioRun?.status === "running";
+  runScenarioButton.disabled = running || Boolean(recordingSession && !scenarioRun);
+  runScenarioButton.classList.toggle("is-running", running);
+  runScenarioButton.textContent = running ? "RUNNING STANDARD 60s…" : "RUN STANDARD 60s";
+  cancelScenarioButton.disabled = !running;
+
+  const status = scenarioRun?.status || summary?.status || "idle";
+  scenarioRunStatus.textContent = status.toUpperCase();
+  scenarioDriftValue.textContent = summary?.executions?.length || scenarioRun?.executions?.length
+    ? `${Number(summary?.maxDriftMs ?? qaScenarioExecutionSummary(scenarioRun)?.maxDriftMs ?? 0)} ms`
+    : "—";
+
+  if (running) {
+    const next = progress?.nextStep;
+    scenarioStatus.textContent = next
+      ? `RUNNING · NEXT ${String(next.label || next.id).toUpperCase()} @ ${formatTimeMs(next.atMs)}`
+      : "RUNNING · FINAL HOLD";
+  } else if (summary?.status === "completed") {
+    scenarioStatus.textContent = `COMPLETED · ${summary.completedSteps}/${summary.totalSteps} STEPS`;
+  } else if (summary?.status === "aborted") {
+    scenarioStatus.textContent = `ABORTED · ${summary.abortReason || "unknown"}`;
+  } else {
+    scenarioStatus.textContent = "READY · SAME TIMELINE EVERY RUN";
+  }
+
+  const elapsed = progress?.elapsedMs || (summary?.status === "completed" ? STANDARD_QA_SCENARIO.durationMs : -1);
+  const executions = new Map(
+    (scenarioRun?.executions || summary?.executions || []).map((item) => [item.stepId, item])
+  );
+
+  scenarioTimeline.querySelectorAll("[data-scenario-step]").forEach((element) => {
+    const id = element.dataset.scenarioStep;
+    const step = STANDARD_QA_SCENARIO.steps.find((item) => item.id === id);
+    const nextStep = STANDARD_QA_SCENARIO.steps[
+      STANDARD_QA_SCENARIO.steps.findIndex((item) => item.id === id) + 1
+    ];
+    const execution = executions.get(id);
+    const active = elapsed >= step.atMs && (!nextStep || elapsed < nextStep.atMs) && running;
+    const done = execution?.status === "completed" && !active;
+    const failed = execution?.status === "failed" || (
+      summary?.status === "aborted" && summary?.abortReason?.includes(id)
+    );
+    element.classList.toggle("active", active);
+    element.classList.toggle("done", Boolean(done));
+    element.classList.toggle("failed", Boolean(failed));
+  });
+}
+
+function attachScenarioMetadata(summary) {
+  if (!recordingSession || !summary) return;
+  recordingSession.metadata.qaScenarioId = summary.id;
+  recordingSession.metadata.qaScenarioVersion = summary.version;
+  recordingSession.metadata.qaScenarioStatus = summary.status;
+  recordingSession.metadata.qaScenarioExecution = summary;
+}
+
+function closeScenarioRun() {
+  if (!scenarioRun) return;
+  const summary = qaScenarioExecutionSummary(scenarioRun);
+  lastScenarioSummary = summary;
+  attachScenarioMetadata(summary);
+
+  const shouldFinishRecording = Boolean(recordingSession);
+  scenarioRun = null;
+  scenarioAdvancing = false;
+
+  if (shouldFinishRecording) finishRecording(Date.now());
+  renderScenario();
+}
+
+async function advanceScenario(now = performance.now()) {
+  if (!scenarioRun || scenarioRun.status !== "running" || scenarioAdvancing) return;
+  scenarioAdvancing = true;
+  try {
+    await advanceQaScenarioRun(scenarioRun, {
+      nowMs: now,
+      executeStep: (step) => executeQaScenarioStep(music, step),
+    });
+  } finally {
+    scenarioAdvancing = false;
+  }
+
+  if (scenarioRun?.status === "completed" || scenarioRun?.status === "aborted") {
+    closeScenarioRun();
+  }
+}
+
+async function startStandardScenario() {
+  if (scenarioRun?.status === "running" || recordingSession) return;
+
+  lastScenarioSummary = null;
+  music.cancel("all");
+  if (music.running) music.stop();
+
+  qaBadge.textContent = "STARTING";
+  await music.start("normal");
+  refreshStaticInfo();
+
+  const startedAt = performance.now();
+  scenarioRun = createQaScenarioRun(STANDARD_QA_SCENARIO, {
+    startedAtMs: startedAt,
+  });
+
+  await startRecording({
+    targetDurationSeconds: STANDARD_QA_SCENARIO.durationMs / 1000,
+    metadata: {
+      qaScenarioId: STANDARD_QA_SCENARIO.id,
+      qaScenarioVersion: STANDARD_QA_SCENARIO.version,
+      qaScenarioSchemaVersion: STANDARD_QA_SCENARIO.schemaVersion,
+      qaScenarioStatus: "running",
+    },
+  });
+
+  renderScenario();
+  await advanceScenario(startedAt);
+}
+
+function abortScenario(reason = "cancelled") {
+  if (!scenarioRun || scenarioRun.status !== "running") return;
+  cancelQaScenarioRun(scenarioRun, {
+    nowMs: performance.now(),
+    reason,
+  });
+  closeScenarioRun();
+}
+
 function renderReportSummary() {
   const summary = lastReport?.summary;
   const recording = Boolean(recordingSession);
@@ -215,7 +375,12 @@ function renderReportSummary() {
   const elapsedMs = recording
     ? Math.max(0, now - recordingSession.startedAtMs)
     : Math.max(0, Number(summary?.durationSeconds || 0) * 1000);
-  const targetMs = RECORD_DURATION_SECONDS * 1000;
+  const targetSeconds = Number(
+    recordingSession?.targetDurationSeconds
+      ?? lastReport?.targetDurationSeconds
+      ?? RECORD_DURATION_SECONDS
+  );
+  const targetMs = targetSeconds * 1000;
   const progress = recording
     ? Math.min(100, elapsedMs / targetMs * 100)
     : lastReport ? 100 : 0;
@@ -417,7 +582,10 @@ function finishRecording(endedAtMs = Date.now()) {
   return lastReport;
 }
 
-async function startRecording() {
+async function startRecording({
+  targetDurationSeconds = RECORD_DURATION_SECONDS,
+  metadata = {},
+} = {}) {
   if (recordingSession) return;
 
   if (!music.running) {
@@ -434,7 +602,7 @@ async function startRecording() {
   renderComparison();
   recordingSession = createQaSession({
     startedAtMs: now,
-    targetDurationSeconds: RECORD_DURATION_SECONDS,
+    targetDurationSeconds,
     sampleIntervalMs: RECORD_SAMPLE_INTERVAL_MS,
     metadata: {
       packId: info.packId || info.id || "pulse",
@@ -447,6 +615,7 @@ async function startRecording() {
       initialSampleRate: meter?.sampleRate || null,
       userAgent: navigator.userAgent,
       platform: navigator.platform || null,
+      ...metadata,
     },
   });
 
@@ -473,7 +642,7 @@ function captureRecorderSample(meter) {
   lastRecordSampleAt = now;
 
   const targetMs = recordingSession.targetDurationSeconds * 1000;
-  if (now - recordingSession.startedAtMs >= targetMs) {
+  if (now - recordingSession.startedAtMs >= targetMs && !scenarioRun) {
     finishRecording(now);
   }
 }
@@ -594,6 +763,8 @@ function render() {
 function animationFrame(time) {
   if (time - lastRenderAt >= 100) {
     lastRenderAt = time;
+    void advanceScenario(performance.now());
+    renderScenario();
     render();
   }
   requestAnimationFrame(animationFrame);
@@ -623,7 +794,8 @@ $("#stressButton").addEventListener("click", async () => {
 });
 
 $("#stopButton").addEventListener("click", () => {
-  if (recordingSession) finishRecording();
+  if (scenarioRun?.status === "running") abortScenario("audio-stop");
+  else if (recordingSession) finishRecording();
   music.stop();
   refreshStaticInfo();
   render();
@@ -635,7 +807,19 @@ recordButton.addEventListener("click", () => {
     recordStatus.textContent = `RECORD ERROR · ${error.message}`;
   });
 });
-recordStopButton.addEventListener("click", () => finishRecording());
+
+runScenarioButton.addEventListener("click", () => {
+  void startStandardScenario().catch((error) => {
+    console.error(error);
+    scenarioStatus.textContent = `SCENARIO ERROR · ${error.message}`;
+    if (scenarioRun?.status === "running") abortScenario("start-error");
+  });
+});
+cancelScenarioButton.addEventListener("click", () => abortScenario("user-cancelled"));
+recordStopButton.addEventListener("click", () => {
+  if (scenarioRun?.status === "running") abortScenario("manual-stop");
+  else finishRecording();
+});
 exportJsonButton.addEventListener("click", () => void exportReport("json"));
 exportCsvButton.addEventListener("click", () => void exportReport("csv"));
 
@@ -661,5 +845,6 @@ void music.preload({ stingers: true, transitions: true }).catch((error) => {
 
 renderReportSummary();
 renderComparison();
+renderScenario();
 render();
 requestAnimationFrame(animationFrame);
