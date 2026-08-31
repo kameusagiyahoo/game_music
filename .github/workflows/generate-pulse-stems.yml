@@ -63,6 +63,8 @@ jobs:
             fi
           done
           echo "All Pulse audio assets are 44.1 kHz stereo"
+      - name: Validate decoded cross-format parity
+        run: python tools/check_pulse_format_parity.py
       - name: Commit generated audio
         run: |
           set -euo pipefail
