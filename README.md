@@ -1794,6 +1794,180 @@ iPhone Audio QA
 
 という二段構成です。
 
+### v25 — CI QA Report / GitHub Actions Summary
+
+v24のGolden QA Gateを、Actionsログを読まなくても原因を把握できるQA Reportへ拡張しています。
+
+Golden Gate実行時にGitHub Actionsの `GITHUB_STEP_SUMMARY` へ自動でMarkdownを書き込みます。
+
+表示例:
+
+```text
+Music Golden QA
+Result: FAIL
+
+Scope       Metric   Baseline   Current   Delta      Allowed   Result
+OVERALL     Peak      -3.96      -3.20    +0.76 dB   +0.75     FAIL
+OVERDRIVE   Peak      -4.06      -2.90    +1.16 dB   +0.75     FAIL
+BUILD       RMS      -21.62     -21.40    +0.22 dB   +1.50     PASS
+RESULT      Peak      -3.96      -4.40    -0.44 dB   +0.75     IMPROVED
+```
+
+実際のSummaryには、
+
+- OVERALL Peak / RMS
+- NORMAL Peak / RMS
+- BUILD Peak / RMS
+- OVERDRIVE Peak / RMS
+- RESULT Peak / RMS
+- Baseline
+- Current
+- Delta
+- Golden許容値
+- PASS / IMPROVED / FAIL
+- Pack version
+- Facade API
+- Scenario ID / version
+- Sample rate
+- Mastering profile
+- source fingerprint
+
+を表示します。
+
+### FAIL時もSummaryを残す
+
+Golden GateはRegression時に終了コード1を返しますが、その前にSummaryを書き込みます。
+
+```text
+Golden comparison
+      |
+      +--> write Actions Summary
+      |
+      +--> write JSON Report
+      |
+      v
+FAIL detected
+      |
+      v
+process exit 1
+```
+
+そのため失敗したActions runでも、Summaryから直接「どのStageの何が悪化したか」を確認できます。
+
+GitHub Actions環境ではBlocking regressionをworkflow commandのError annotationとしても出力します。
+
+### PRでの確認
+
+`.github/workflows/music-architecture-check.yml` は `pull_request` でも実行されます。
+
+PRでは、
+
+```text
+Checks
+  -> Music Architecture Check
+      -> Summary
+```
+
+からGolden QA比較表を確認できます。
+
+PR本文へBotコメントを書き込む方式ではないため、追加のwrite権限は不要です。
+
+### Machine-readable QA Report
+
+Actions Summaryとは別に、同じ比較結果をJSONでも生成します。
+
+CI内の生成先:
+
+```text
+qa/out/pulse-standard-v1-golden-report.json
+```
+
+GitHub Actionsでは14日保持のArtifactとして、
+
+```text
+music-golden-qa-report
+```
+
+をアップロードします。
+
+JSON概略:
+
+```js
+{
+  schemaVersion: "1.0.0",
+  type: "music-golden-qa",
+  passed: false,
+  baseline: {
+    pack: {},
+    scenario: {},
+    overall: {},
+    stages: {}
+  },
+  current: {
+    pack: {},
+    scenario: {},
+    overall: {},
+    stages: {}
+  },
+  policy: {},
+  metrics: [
+    {
+      scope: "OVERDRIVE",
+      metric: "Peak",
+      baselineDb: -4.06,
+      currentDb: -2.90,
+      deltaDb: 1.16,
+      limitDb: 0.75,
+      status: "FAIL"
+    }
+  ],
+  failures: [],
+  warnings: []
+}
+```
+
+これにより後工程で、
+
+- QA履歴集計
+- Release判定
+- PR差分解析
+- 将来のDashboard取り込み
+
+へそのまま利用できます。
+
+### v25 self-check
+
+`tools/check_music_qa_golden.mjs` はGate semanticsに加えてSummary / Report生成も検証します。
+
+- 10 metric rows生成
+- OVERALL / NORMAL / BUILD / OVERDRIVE / RESULT存在確認
+- PASS heading
+- FAIL heading
+- IMPROVED表示
+- Blocking regressions節
+- fingerprint change表示
+- `GITHUB_STEP_SUMMARY`相当ファイルへの追記
+- JSON Report schema
+- JSON ReportのFAIL metric
+- JSON file書き出し
+
+通常CIの中心部分:
+
+```yaml
+- name: Check Golden QA + Publish Summary
+  env:
+    GOLDEN_QA_REPORT_PATH: qa/out/pulse-standard-v1-golden-report.json
+  run: node tools/music_qa_golden.mjs --check
+
+- name: Upload Golden QA Report
+  if: always()
+  uses: actions/upload-artifact@v4
+```
+
+Artifact uploadは `if: always()` のため、Golden GateがFAILしたrunでもReportを回収できます。
+
+v25は音声Engine / Facade API自体を変更しないため、Facade API versionは引き続き `1.5.0` です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
