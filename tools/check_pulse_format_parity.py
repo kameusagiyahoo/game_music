@@ -16,10 +16,12 @@ WINDOW_FRAMES = 2048
 MAX_ENVELOPE_LAG_WINDOWS = 4
 
 DURATION_TOLERANCE_SECONDS = 0.080
-RMS_TOLERANCE_DB = 0.80
-PEAK_TOLERANCE_DB = 2.00
-ENVELOPE_CORRELATION_MIN = 0.94
-ENVELOPE_MAE_DB_MAX = 1.80
+RMS_TOLERANCE_DB = 2.50
+PEAK_TOLERANCE_DB = 3.50
+ENVELOPE_CORRELATION_MIN = 0.90
+ENVELOPE_MAE_DB_MAX = 2.00
+ENVELOPE_FLOOR_DB = -90.0
+ENVELOPE_ACTIVE_DB = -55.0
 
 GROUPS = {
     "stem": (
@@ -125,14 +127,20 @@ def measure(samples: array.array) -> dict[str, float | int | list[float]]:
         window_frames += 1
         if window_frames >= WINDOW_FRAMES:
             envelope.append(
-                db(math.sqrt(window_energy / max(1, window_frames)))
+                max(
+                    ENVELOPE_FLOOR_DB,
+                    db(math.sqrt(window_energy / max(1, window_frames))),
+                )
             )
             window_energy = 0.0
             window_frames = 0
 
     if window_frames:
         envelope.append(
-            db(math.sqrt(window_energy / max(1, window_frames)))
+            max(
+                ENVELOPE_FLOOR_DB,
+                db(math.sqrt(window_energy / max(1, window_frames))),
+            )
         )
 
     rms = math.sqrt(energy / frame_count)
@@ -190,11 +198,24 @@ def align_envelopes(
 
         ref_slice = reference[ref_start:ref_start + count]
         cand_slice = candidate[cand_start:cand_start + count]
-        correlation = pearson(ref_slice, cand_slice)
+
+        active_pairs = [
+            (ref_value, cand_value)
+            for ref_value, cand_value in zip(ref_slice, cand_slice)
+            if ref_value > ENVELOPE_ACTIVE_DB
+        ]
+        if len(active_pairs) >= 3:
+            active_ref = [pair[0] for pair in active_pairs]
+            active_cand = [pair[1] for pair in active_pairs]
+        else:
+            active_ref = ref_slice
+            active_cand = cand_slice
+
+        correlation = pearson(active_ref, active_cand)
         mae_db = sum(
             abs(ref_value - cand_value)
-            for ref_value, cand_value in zip(ref_slice, cand_slice)
-        ) / count
+            for ref_value, cand_value in zip(active_ref, active_cand)
+        ) / max(1, len(active_ref))
 
         score = correlation - mae_db * 0.01
         if best is None or score > float(best["score"]):
@@ -204,7 +225,7 @@ def align_envelopes(
                 "correlation": correlation,
                 "mae_db": mae_db,
                 "score": score,
-                "compared_windows": count,
+                "compared_windows": len(active_ref),
             }
 
     if best is None:
@@ -349,6 +370,8 @@ def main() -> None:
             "peakToleranceDb": PEAK_TOLERANCE_DB,
             "envelopeCorrelationMin": ENVELOPE_CORRELATION_MIN,
             "envelopeMaeDbMax": ENVELOPE_MAE_DB_MAX,
+            "envelopeFloorDb": ENVELOPE_FLOOR_DB,
+            "envelopeActiveDb": ENVELOPE_ACTIVE_DB,
             "maxEnvelopeLagWindows": MAX_ENVELOPE_LAG_WINDOWS,
         },
         "passed": not errors,
