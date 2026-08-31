@@ -114,7 +114,17 @@ jobs:
       - name: Check Automated QA Scenario
         run: node tools/check_music_qa_scenario.mjs
       - name: Check Golden QA + Publish Summary
+        env:
+          GOLDEN_QA_REPORT_PATH: qa/out/pulse-standard-v1-golden-report.json
         run: node tools/music_qa_golden.mjs --check
+      - name: Upload Golden QA Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: music-golden-qa-report
+          path: qa/out/pulse-standard-v1-golden-report.json
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Check Golden QA Gate Semantics
         run: node tools/check_music_qa_golden.mjs
       - name: Check Pulse Audio Profile
