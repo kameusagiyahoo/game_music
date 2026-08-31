@@ -1194,6 +1194,215 @@ CIの `tools/check_music_qa_report.mjs` では以下を検証します。
 
 v21は既存Facadeへ新しい音声APIを追加しないため、Facade API versionは引き続き `1.4.0` です。
 
+### v22 — QA Baseline / Regression Compare
+
+v21で保存したQA Report JSONをBaselineとして読み込み、最新Sessionと自動比較できます。
+
+```text
+BEFORE
+  QA Report JSON
+       |
+       v
+LOAD BASELINE
+       |
+       +------------------+
+                          |
+AFTER                     |
+  RECORD 60s              |
+       |                  |
+       v                  v
+Current QA Report --> Regression Compare
+                          |
+                          +--> PASS / CHANGED
+                          +--> REVIEW
+                          +--> FAIL
+                          +--> IMPROVED
+```
+
+Audio QA Dashboardには以下を追加しています。
+
+- `LOAD BASELINE JSON`
+- `USE CURRENT AS BASELINE`
+- `SHARE DIFF JSON`
+- `SHARE DIFF CSV`
+
+Baselineを読み込んだ状態で新しいSessionが完成すると自動比較します。
+
+### 比較指標
+
+```text
+Max Output Peak Δ
+Average Output RMS Δ
+Max Limiter Reduction Δ
+Limiter >= 3 dB rate Δ
+Limiter >= 6 dB rate Δ
+Clip Risk rate Δ
+Sampling Coverage
+Mode別 Peak / RMS / Reduction
+```
+
+Limiter時間は単純な秒数差だけでは判定しません。
+
+例:
+
+```text
+Baseline
+60 sec observed
+Limiter >=3 dB = 6 sec
+=> 10%
+
+Current
+30 sec observed
+Limiter >=3 dB = 3 sec
+=> 10%
+
+Regression
+=> 0 percentage points
+```
+
+このため、Session長が違ってもLimiter依存率を比較できます。
+
+Raw secondsもDiff reportには残すため、
+
+```text
+seconds delta
+rate delta
+```
+
+の両方を確認できます。
+
+### RMSの扱い
+
+RMSが増えただけでは即Regressionとはしません。
+
+```text
+RMS +0.8 dB
+=> LOUDER
+
+RMS -0.8 dB
+=> QUIETER
+```
+
+主なRegression判定はPeak / Limiter / Clip Riskです。
+
+Peakの目安:
+
+```text
++0.75 dB  CHANGED
++1.5 dB   REVIEW
++3.0 dB   FAIL
+
+-1.5 dB以下
+=> IMPROVED候補
+```
+
+Limiter Reduction最大値:
+
+```text
++1.5 dB   REVIEW
++3.0 dB   FAIL
+```
+
+Limiter使用率:
+
+```text
++5 percentage points   REVIEW
++10 percentage points  FAIL
+```
+
+Clip Riskが新たに発生した場合はFAIL方向で扱います。
+
+### Mode別Regression
+
+共通Modeについて個別比較します。
+
+```text
+NORMAL
+  Peak      +0.2 dB
+  RMS       +0.3 dB
+  Reduction +0.1 dB
+  => PASS
+
+OVERDRIVE
+  Peak      +2.0 dB
+  RMS       +0.8 dB
+  Reduction +2.5 dB
+  => REVIEW
+
+RESULT
+  new mode
+  => CHANGED
+```
+
+これにより、全体平均だけではなく「Overdriveだけ悪化」のような変化を検出できます。
+
+### Compatibility Warning
+
+比較条件に差がある場合はwarningを表示します。
+
+- Report schemaが異なる
+- Pack IDが異なる
+- Mastering Profileが異なる
+- AudioContext Sample Rateが異なる
+- Sampling Coverageが80%未満
+
+Pack versionの違いはRegression比較の主目的になり得るため、versionが変わっただけではwarningにしません。
+
+### Diff Export
+
+比較結果もJSON / CSVで共有できます。
+
+JSON:
+
+```js
+{
+  baseline: {
+    packVersion: "1.4.0",
+    verdict: "pass"
+  },
+  current: {
+    packVersion: "1.5.0",
+    verdict: "review"
+  },
+  status: "review",
+  metrics: {
+    maxOutputPeakDb: {
+      baseline: -2.1,
+      current: -0.3,
+      delta: 1.8
+    },
+    limiterOver3: {
+      baselineRate: 0.04,
+      currentRate: 0.075,
+      deltaRate: 0.035
+    }
+  },
+  modes: {}
+}
+```
+
+CSVでは全体指標に加えてMode別Peak / Limiter Reduction差も行として出力します。
+
+iPhoneではv21と同様、対応環境なら共有シート、非対応環境ならBlob downloadへfallbackします。
+
+比較EngineはUIから分離した `src/music-qa-compare.js` にあります。
+
+CIの `tools/check_music_qa_compare.mjs` では以下を検証します。
+
+- Regression FAIL判定
+- Improvement判定
+- Peak / RMS / Limiter delta
+- 30秒 vs 60秒のLimiter rate正規化
+- Mode別Regression
+- 新規Mode検出
+- Sampling Coverage warning
+- AudioContext Sample Rate warning
+- Invalid report拒否
+- Diff CSV
+- Diff filename
+
+v22では音声Engine API自体は追加していないため、Facade API versionは引き続き `1.4.0` です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -1259,6 +1468,7 @@ Validation:
 - `tools/check_music_mastering.mjs`
 - `tools/check_music_metering.mjs`
 - `tools/check_music_qa_report.mjs`
+- `tools/check_music_qa_compare.mjs`
 - `tools/check_pulse_audio_profile.py`
 - `tools/check_pulse_mastering.py`
 - `.github/workflows/music-architecture-check.yml`
@@ -1278,6 +1488,7 @@ src/
 ├── music-format-resolver.js
 ├── music-facade.js
 ├── music-qa-report.js
+├── music-qa-compare.js
 ├── music-pack-manifest.js
 ├── audio-asset-cache.js
 ├── music-service-worker.js
