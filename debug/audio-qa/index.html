@@ -11,7 +11,7 @@
   <main class="shell">
     <header class="hero">
       <div>
-        <p class="eyebrow">GAME MUSIC LAB / ENGINE v22</p>
+        <p class="eyebrow">GAME MUSIC LAB / ENGINE v23</p>
         <h1>Audio QA Dashboard</h1>
         <p class="lead">Pulse Pack v1.4.0のMaster / Limiter / Stem状態を実機で監視します。</p>
       </div>
@@ -28,6 +28,33 @@
       <button id="overdriveButton" type="button">OVERDRIVE</button>
       <button id="stressButton" class="danger" type="button">RESULT + VICTORY</button>
       <button id="stopButton" type="button">STOP</button>
+    </section>
+
+    <section class="panel scenario-panel">
+      <div class="scenario-head">
+        <div>
+          <p class="eyebrow">AUTOMATED QA / STANDARD 60 SEC</p>
+          <h2>Scenario Runner</h2>
+          <p id="scenarioStatus" class="record-status">READY · SAME TIMELINE EVERY RUN</p>
+        </div>
+        <strong id="scenarioTimer">00:00.0 / 01:00.0</strong>
+      </div>
+      <div class="scenario-progress"><div id="scenarioProgressBar"></div></div>
+      <div class="scenario-actions">
+        <button id="runScenarioButton" class="scenario-run-button" type="button">RUN STANDARD 60s</button>
+        <button id="cancelScenarioButton" type="button" disabled>CANCEL SCENARIO</button>
+      </div>
+      <div id="scenarioTimeline" class="scenario-timeline">
+        <div data-scenario-step="normal"><strong>NORMAL</strong><span>00–10s</span></div>
+        <div data-scenario-step="build"><strong>BUILD</strong><span>10–20s</span></div>
+        <div data-scenario-step="overdrive"><strong>OVERDRIVE</strong><span>20–40s</span></div>
+        <div data-scenario-step="result-victory"><strong>RESULT + VICTORY</strong><span>40–60s</span></div>
+      </div>
+      <div class="scenario-metrics">
+        <div><span>SCENARIO</span><strong id="scenarioIdValue">pulse-standard-v1</strong></div>
+        <div><span>MAX STEP DRIFT</span><strong id="scenarioDriftValue">—</strong></div>
+        <div><span>STATUS</span><strong id="scenarioRunStatus">IDLE</strong></div>
+      </div>
     </section>
 
     <section class="panel recorder-panel">
@@ -188,6 +215,7 @@
       <p><strong>QA目安:</strong> Limiter Reductionが一瞬だけ動くのは正常です。長時間 -6 dB以下が続く場合はMixが強すぎる可能性があります。</p>
       <p>このMeterは0音量の監視branchで、ゲーム本来のMastering経路には加算されません。</p>
       <p>Recorderは約10fpsのMeter値を最大60秒記録し、終了後にJSON / CSVをiPhone共有シートまたはダウンロードへ出力します。</p>
+      <p>STANDARD 60sはNORMAL 10s → BUILD 10s → OVERDRIVE 20s → RESULT + VICTORY 20sを自動実行し、Recorderも同時に開始します。</p>
     </section>
   </main>
   <script type="module" src="./qa.js"></script>
