@@ -50,7 +50,7 @@
       <div class="hot-swap-head">
         <div>
           <p class="eyebrow">REALTIME QA / PACK HOT SWAP</p>
-          <h2>Equal-Power Crossfade Monitor</h2>
+          <h2>Equal-Power Crossfade Monitor + Gate</h2>
           <p class="record-status">録画中でも次小節Hot Swapを実行し、Crossfade区間だけのPeak / RMS / LimiterをReportへ保存します。</p>
         </div>
         <strong id="hotSwapStatus" class="hot-swap-status idle">IDLE</strong>
@@ -150,6 +150,7 @@
         <div><span>XFADE MIN RMS</span><strong id="reportHotSwapRms">—</strong></div>
         <div><span>XFADE MAX GR</span><strong id="reportHotSwapReduction">—</strong></div>
         <div><span>MIN POWER Σ</span><strong id="reportHotSwapPower">—</strong></div>
+        <div><span>HOT SWAP QA</span><strong id="reportHotSwapQa">—</strong></div>
       </div>
       <div id="modeSummary" class="mode-summary"></div>
       <div id="scenarioStageSummary" class="mode-summary"></div>
@@ -283,6 +284,7 @@
 
     <section class="panel notes">
       <p><strong>QA目安:</strong> Limiter Reductionが一瞬だけ動くのは正常です。長時間 -6 dB以下が続く場合はMixが強すぎる可能性があります。</p>
+      <p><strong>Hot Swap Gate:</strong> Power Σ &lt; 0.80、Output Peak &gt; -0.15 dBFS、Limiter Reduction &gt; 6 dB、またはCrossfade中央RMSが両端平均より9 dB超低下するとFAILです。中間域はREVIEWになります。</p>
       <p>このMeterは0音量の監視branchで、ゲーム本来のMastering経路には加算されません。</p>
       <p>Recorderは約10fpsのMeter値を最大60秒記録し、終了後にJSON / CSVをiPhone共有シートまたはダウンロードへ出力します。</p>
       <p>STANDARD 60sは選択中PackでNORMAL 10s → BUILD 10s → OVERDRIVE 20s → RESULT + VICTORY 20sを自動実行し、Recorderも同時に開始します。</p>
