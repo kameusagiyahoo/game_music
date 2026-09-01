@@ -37,6 +37,10 @@ on:
       - "tools/check_music_neon_mastering.mjs"
       - "tools/check_neon_audio_profile.py"
       - "tools/encode_neon_audio.sh"
+      - "tools/music_qa_golden_clockwork.mjs"
+      - "tools/check_music_clockwork_mastering.mjs"
+      - "tools/check_clockwork_audio_profile.py"
+      - "tools/encode_clockwork_audio.sh"
       - ".github/workflows/music-architecture-check.yml"
   pull_request:
     paths:
@@ -73,6 +77,10 @@ on:
       - "tools/check_music_neon_mastering.mjs"
       - "tools/check_neon_audio_profile.py"
       - "tools/encode_neon_audio.sh"
+      - "tools/music_qa_golden_clockwork.mjs"
+      - "tools/check_music_clockwork_mastering.mjs"
+      - "tools/check_clockwork_audio_profile.py"
+      - "tools/encode_clockwork_audio.sh"
       - ".github/workflows/music-architecture-check.yml"
 
 jobs:
@@ -93,6 +101,7 @@ jobs:
           bash -n tools/encode_pulse_audio.sh
           bash -n tools/encode_fantasy_audio.sh
           bash -n tools/encode_neon_audio.sh
+          bash -n tools/encode_clockwork_audio.sh
       - name: Check JavaScript syntax
         run: |
           node --check src/music-pack-manifest.js
@@ -113,6 +122,8 @@ jobs:
           node --check tools/music_qa_golden_neon.mjs
           node --check tools/check_music_qa_golden_neon.mjs
           node --check tools/check_music_neon_mastering.mjs
+          node --check tools/music_qa_golden_clockwork.mjs
+          node --check tools/check_music_clockwork_mastering.mjs
           node --check tools/check_music_multi_wav_packs.mjs
           node --check tools/check_music_fantasy_mastering.mjs
           node --check src/game.js
@@ -146,6 +157,8 @@ jobs:
         run: node tools/check_music_fantasy_mastering.mjs
       - name: Check Neon Runtime Mastering
         run: node tools/check_music_neon_mastering.mjs
+      - name: Check Clockwork Runtime Mastering
+        run: node tools/check_music_clockwork_mastering.mjs
       - name: Check Realtime Audio Meter
         run: node tools/check_music_metering.mjs
       - name: Check QA Session Reports
@@ -196,11 +209,15 @@ jobs:
           retention-days: 14
       - name: Check Neon Golden QA Gate Semantics
         run: node tools/check_music_qa_golden_neon.mjs
+      - name: Print Clockwork Golden QA Candidate
+        run: node tools/music_qa_golden_clockwork.mjs --print
       - name: Check Pulse Audio Profile
         run: python tools/check_pulse_audio_profile.py
       - name: Check Fantasy Audio Profile
         run: python tools/check_fantasy_audio_profile.py
       - name: Check Neon Audio Profile
         run: python tools/check_neon_audio_profile.py
+      - name: Check Clockwork Audio Profile
+        run: python tools/check_clockwork_audio_profile.py
       - name: Check Pulse Mastering
         run: python tools/check_pulse_mastering.py
