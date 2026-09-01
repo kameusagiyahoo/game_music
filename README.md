@@ -54,9 +54,9 @@ URL: https://kameusagiyahoo.github.io/game_music/games/pulse-forge/
 - `createMusicFacade()` で共通Facadeを生成
 - Music PackボタンをRegistryから自動生成
 - Fantasy WAV / Neon WAV / Clockwork WAV / Pulse WAVを選択可能
-- 同一Engine内のPack変更は次小節頭へ予約
-- procedural ↔ WAV Stemは次のシーケンス境界でRuntime交換
-- WAV Packは選択時にpreload
+- Pack変更は同じAudioContextのまま次小節頭へ予約
+- 旧Pack / 新Packの5 Stemを2 beatクロスフェード
+- Pack選択時に次Packの11 Assetをpreload
 - Pack変更を共通Settingsへ保存
 - 残り10秒で現在または予約中PackのTensionへ移行
 
@@ -69,7 +69,7 @@ URL: https://kameusagiyahoo.github.io/game_music/games/rune-relay/
 - `createMusicFacade()` だけで再生Facadeを生成
 - Fantasy WAV / Neon WAV / Clockwork WAV / Pulse WAVを同じPack UIから選択
 - Pack変更は次のウェーブ境界へ予約
-- Pack変更は同一WAV Stem Engine内で次のウェーブ境界へ適用
+- Facade / AudioContextを作り直さず2 beat Hot Swap
 - ゲーム側は `normal / build / tension / result` の共通Stateだけを送信
 - WAV EngineではStateがFocus / Build / Overdrive / Result Stem Mixへ自動変換
 - 勝敗演出もStinger対応EngineならAudio Stinger、それ以外はSEへ自動フォールバック
@@ -149,6 +149,7 @@ Packの再生方式を意識せず、4つの登録Packを同じ画面から試�
 - Engine capabilitiesを表示
 - PackごとのModeを自動生成
 - WAV Stem PackではStem Mix preset / Stingerも自動表示
+- 再生中に別Packを選ぶと次小節で2 beat Hot Swap
 
 URL: https://kameusagiyahoo.github.io/game_music/debug/resolver/
 
@@ -3005,6 +3006,324 @@ M4A -> OGG -> WAV
 
 v29でもFacade API surfaceは変更していないため、Facade API versionは `1.5.0` のままです。
 
+### v30 — Real Audio Pack Hot Swap / Quantized Crossfade
+
+v29で登録済み4 Packがすべて `wav-stem` になったため、Pack変更を「Runtime停止 → 再生成」ではなく、**同じAudioContext / 同じMaster Graph内のHot Swap**へ統一しました。
+
+```text
+OLD Pack
+5 Stem Sources
+      |
+      v
+oldPackGain -----\
+                  +--> musicRoot --> Master --> Limiter
+newPackGain -----/
+      ^
+      |
+NEW Pack
+5 Stem Sources
+```
+
+Pack切替時は次Packの5 Stemを先にdecodeします。
+
+```text
+Pack request
+    |
+    v
+versioned asset URLs
+?gmv=<pack-version>
+    |
+    v
+M4A -> OGG -> WAV fallback
+    |
+    v
+decode all 5 stems
+    |
+    v
+next beat / next bar boundary
+    |
+    +-- oldPackGain 1.0 -> 0.0001
+    +-- newPackGain 0.0001 -> 1.0
+    |
+    v
+old source cleanup
+```
+
+decode完了後に境界時刻を決めるため、iPhone上でdecodeが長引いても「すでに過ぎた小節頭」へ予約しません。
+
+### Same AudioContext
+
+Hot Swap中もAudioContextは作り直しません。
+
+```text
+Fantasy 108 BPM
+       |
+       | NEXT BAR
+       v
+same AudioContext
+       |
+       +-- Fantasy fade out
+       +-- Neon fade in
+       |
+       v
+Neon 132 BPM
+```
+
+新Packの5 Stemはすべて**同一のAudioContext時刻**で開始します。
+
+新Packが有効になる境界を、
+
+```text
+new transportStart
+```
+
+として再設定するため、PackごとにBPMが異なっても、新しいbeat / bar gridは切替境界から正しく始まります。
+
+### Crossfade
+
+Facade APIは従来の `music.pack()` のままです。
+
+```js
+await music.pack("neon", {
+  quantize: "bar",
+  crossfadeBeats: 2,
+  mode: "normal",
+});
+```
+
+対応quantize:
+
+```text
+immediate
+beat
+bar
+```
+
+既定crossfade:
+
+```text
+2 beats
+```
+
+fade時間は切替前PackのBPMから計算します。
+
+### State-aware Hot Swap
+
+予約中PackへState変更が入った場合、同じ音源を二重decodeしません。
+
+例:
+
+```text
+Clockwork NORMALを次小節へ予約
+        |
+        | 残り10秒へ到達
+        v
+同じClockwork予約をTENSIONへ更新
+        |
+        v
+mode   -> overdrive
+preset -> overdrive
+```
+
+予約済み5 Stemはそのまま使い、target Mode / Layer Presetだけ更新します。
+
+これによりRune Relayで、
+
+```text
+Pack switch予約
++
+Tension開始
+```
+
+が同じ小節へ重なっても余分なSourceを生成しません。
+
+### Mastering transition
+
+PackごとにMastering Profileが違うため、Hot Swap時にはStemだけでなくMasteringも切り替えます。
+
+```text
+old headroom
+      |
+      | crossfade
+      v
+new headroom
+
+Limiter threshold / ratio / attack / release
+      |
+      v
+new Pack boundary
+```
+
+4 Packの例:
+
+```text
+Fantasy   fantasy-gentle-v1
+Neon      neon-drive-v1
+Pulse     game-balanced-v1
+Clockwork clockwork-balanced-v1
+```
+
+Master / Limiter自体は共通Nodeを維持するため、AudioContextの再構築はありません。
+
+### Cancel
+
+境界前なら、
+
+```js
+music.cancel("pack");
+```
+
+で予約を取り消せます。
+
+```text
+scheduled new 5 stems
+        |
+        v
+STOP / DISCONNECT
+
+old Pack
+        |
+        v
+continue playing
+```
+
+Masteringの未来予約も解除し、現在Packの設定へ戻します。
+
+クロスフェードが開始済みの場合は巻き戻さず、そのHot Swapを完了させます。
+
+### Runtime / Facade consistency
+
+Hot Swap境界でManagerが `onPackChange()` を発火し、その時点でResolverの `runtime.entry` も新Packへ更新します。
+
+したがって、
+
+```text
+表示 = Fantasy
+内部Manifest = Pulse
+```
+
+のような不整合を作りません。
+
+Facade:
+
+```js
+music.info().pendingId
+music.info().pendingName
+music.info().hotSwap
+```
+
+Hot Swap状態:
+
+```text
+scheduled
+crossfading
+complete
+```
+
+Capabilities:
+
+```text
+quantizedPackSwitch    = true
+hotSwapPackCrossfade   = true
+```
+
+### Rune Relay
+
+再生中のPackボタンは現在、
+
+```text
+Pack select
+    |
+    v
+decode / cache
+    |
+    v
+NEXT BAR
+    |
+    v
+2 beat Hot Swap
+```
+
+です。
+
+以前のcross-engine Runtime再生成経路は通常利用しません。v29以降、登録PackはすべてReal Audioです。
+
+残り10秒でPack Hot Swapがまだ予約中の場合は、その予約済みPackのtarget StateをTension / Overdriveへ更新します。
+
+URL: https://kameusagiyahoo.github.io/game_music/games/rune-relay/
+
+### Aether Shift
+
+Aether ShiftではPack変更を次Wave境界まで保持します。
+
+```text
+WAVE N
+  |
+  | user selects next Pack
+  v
+preload
+  |
+  v
+WAVE boundary
+  |
+  +-- same AudioContext
+  +-- immediate Hot Swap start
+  +-- 2 beat crossfade
+  |
+  v
+WAVE N+1
+```
+
+旧実装の、
+
+```text
+music.stop()
+new MusicFacade()
+new AudioContext / Runtime
+```
+
+はPack変更時には使いません。
+
+URL: https://kameusagiyahoo.github.io/game_music/games/aether-shift/
+
+### Resolver Lab
+
+Resolver LabはHot Swapを直接試せます。
+
+1. PLAY
+2. 再生中に別Packを選択
+3. 次小節頭で5 Stem同時開始
+4. 2 beatクロスフェード
+5. 新Pack BPMへTransport移行
+
+SYNC欄には `SCHEDULED / CROSSFADING` 状態も表示します。
+
+URL: https://kameusagiyahoo.github.io/game_music/debug/resolver/
+
+### Hot Swap CI
+
+専用Integration Check:
+
+```text
+tools/check_music_pack_hot_swap.mjs
+```
+
+検証内容:
+
+- Pulse → Fantasyを次小節へ予約
+- 新5 Stemが完全に同じAudioContext時刻でstart
+- 境界前は旧Packを維持
+- AudioContext objectを交換しない
+- 境界でFacade entryも新Packへ更新
+- 新Pack BPMのtransportStartを境界へ設定
+- 2 beat後に旧5 Stemをcleanup
+- pending Pack cancel
+- 同一pending PackのState更新でduplicate Sourceを生成しない
+- tension → overdrive preset mapping
+- Hot Swap callback phaseを検証
+
+v30でもFacadeの公開メソッド自体は増やしていないため、Facade API versionは `1.5.0` のままです。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -3051,7 +3370,8 @@ assets/
 ├── stingers/
 │   ├── pulse/
 │   ├── fantasy/
-│   └── neon/
+│   ├── neon/
+│   └── clockwork/
 └── transitions/
     ├── pulse/
     ├── fantasy/
@@ -3077,6 +3397,7 @@ Validation:
 - `tools/check_music_preload_cache.mjs`
 - `tools/check_music_persistent_cache.mjs`
 - `tools/check_music_quantization.mjs`
+- `tools/check_music_pack_hot_swap.mjs`
 - `tools/check_music_transition_cues.mjs`
 - `tools/check_music_mastering.mjs`
 - `tools/check_music_metering.mjs`
@@ -3168,7 +3489,8 @@ assets/
 ├── stems/
 │   ├── pulse/
 │   ├── fantasy/
-│   └── neon/
+│   ├── neon/
+│   └── clockwork/
 ├── stingers/
 │   ├── pulse/
 │   └── fantasy/
@@ -3181,6 +3503,6 @@ assets/
 
 ## Next candidates
 
-- Real Audio Pack間のクロスフェードHot Swap改善
 - Packごとの実機QA Baseline取り込み
+- Hot Swap時のEqual-Power Crossfade比較
 - Game 06追加
