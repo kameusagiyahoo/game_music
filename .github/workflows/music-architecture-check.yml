@@ -17,6 +17,7 @@ on:
       - "tools/check_music_quantization.mjs"
       - "tools/check_music_transition_cues.mjs"
       - "tools/check_music_mastering.mjs"
+      - "tools/check_music_fantasy_mastering.mjs"
       - "tools/check_music_metering.mjs"
       - "tools/check_music_qa_report.mjs"
       - "tools/check_music_qa_compare.mjs"
@@ -48,6 +49,7 @@ on:
       - "tools/check_music_quantization.mjs"
       - "tools/check_music_transition_cues.mjs"
       - "tools/check_music_mastering.mjs"
+      - "tools/check_music_fantasy_mastering.mjs"
       - "tools/check_music_metering.mjs"
       - "tools/check_music_qa_report.mjs"
       - "tools/check_music_qa_compare.mjs"
@@ -98,6 +100,7 @@ jobs:
           node --check tools/music_qa_golden_fantasy.mjs
           node --check tools/check_music_qa_golden_fantasy.mjs
           node --check tools/check_music_multi_wav_packs.mjs
+          node --check tools/check_music_fantasy_mastering.mjs
           node --check src/game.js
           node --check games/orbit-rush/game.js
           node --check games/pulse-forge/game.js
@@ -125,6 +128,8 @@ jobs:
         run: node tools/check_music_transition_cues.mjs
       - name: Check Runtime Mastering Graph
         run: node tools/check_music_mastering.mjs
+      - name: Check Fantasy Runtime Mastering
+        run: node tools/check_music_fantasy_mastering.mjs
       - name: Check Realtime Audio Meter
         run: node tools/check_music_metering.mjs
       - name: Check QA Session Reports
