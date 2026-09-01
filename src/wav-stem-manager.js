@@ -126,6 +126,42 @@ export function scheduleLegacyExponentialCrossfade({
   };
 }
 
+export function samplePackCrossfadePoint({
+  mode = PACK_CROSSFADE_CURVE,
+  progress = 0,
+  outgoingGain = 1,
+} = {}) {
+  const p = clamp01(progress);
+  const oldScale = Math.max(0, Number(outgoingGain) || 0);
+
+  let outgoing = 0;
+  let incoming = 0;
+
+  if (mode === PACK_CROSSFADE_CURVE) {
+    const angle = p * Math.PI * 0.5;
+    outgoing = Math.cos(angle) * oldScale;
+    incoming = Math.sin(angle);
+  } else if (
+    mode === LEGACY_PACK_CROSSFADE_CURVE ||
+    mode === "exponential-fallback"
+  ) {
+    const floor = 0.0001;
+    const oldStart = Math.max(floor, oldScale);
+    outgoing = oldStart * ((floor / oldStart) ** p);
+    incoming = floor * ((1 / floor) ** p);
+  } else {
+    outgoing = oldScale * (1 - p);
+    incoming = p;
+  }
+
+  return {
+    progress: p,
+    outgoingGain: outgoing,
+    incomingGain: incoming,
+    powerCoefficientSum: outgoing * outgoing + incoming * incoming,
+  };
+}
+
 function amplitudeToDb(value) {
   return 20 * Math.log10(Math.max(Number(value) || 0, 1e-9));
 }
@@ -628,6 +664,7 @@ export class WavStemMusicManager {
       fadeEnd,
       fadeSeconds,
       crossfadeBeats,
+      outgoingStartGain: oldGain,
       crossfadeCurve: crossfade.mode,
       crossfadePoints: crossfade.points,
       targetMode: target.mode,
@@ -758,6 +795,48 @@ export class WavStemMusicManager {
     };
   }
 
+  getHotSwapMeterInfo() {
+    const swap = this.pendingPackSwitch;
+    if (!swap) return null;
+
+    const now = Number(this.context?.currentTime || 0);
+    const scheduledAt = Number(swap.scheduledAt || 0);
+    const fadeEnd = Number(swap.fadeEnd || scheduledAt);
+    const duration = Math.max(0.0001, fadeEnd - scheduledAt);
+    const progress = now <= scheduledAt
+      ? 0
+      : now >= fadeEnd
+        ? 1
+        : (now - scheduledAt) / duration;
+    const phase = now < scheduledAt
+      ? "scheduled"
+      : now < fadeEnd
+        ? "crossfading"
+        : "complete";
+    const point = samplePackCrossfadePoint({
+      mode: swap.crossfadeCurve || PACK_CROSSFADE_CURVE,
+      progress,
+      outgoingGain: Number(swap.outgoingStartGain ?? 1),
+    });
+
+    return {
+      phase,
+      fromId: swap.fromPack?.id || null,
+      toId: swap.nextPack?.id || null,
+      quantize: swap.quantize || null,
+      curve: swap.crossfadeCurve || null,
+      curvePoints: Number(swap.crossfadePoints || 0),
+      scheduledAt,
+      fadeEnd,
+      crossfadeBeats: Number(swap.crossfadeBeats || 0),
+      fadeSeconds: Number(swap.fadeSeconds || duration),
+      progress: point.progress,
+      outgoingGain: point.outgoingGain,
+      incomingGain: point.incomingGain,
+      powerCoefficientSum: point.powerCoefficientSum,
+    };
+  }
+
   getMeterSnapshot() {
     const supported = Boolean(
       this.preMasterAnalyser &&
@@ -781,8 +860,11 @@ export class WavStemMusicManager {
       output,
       limiterReductionDb: Number(this.limiter?.reduction ?? 0),
       headroomDb: this.#masteringConfig().headroomDb,
+      packId: this.pack?.id || null,
+      packName: this.pack?.name || null,
       mode: this.mode,
       layerPreset: this.layerPreset,
+      hotSwap: this.getHotSwapMeterInfo(),
       stems: Object.fromEntries(STEMS.map((name) => {
         const gain = Number(this.layerMix?.[name] ?? 0);
         return [name, {
