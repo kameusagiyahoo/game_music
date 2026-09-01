@@ -4030,6 +4030,265 @@ tools/check_music_hot_swap_qa.mjs
 
 v32はFacade公開メソッドを増やしていないため、Facade API versionは引き続き `1.5.0` です。
 
+### v33 — Hot Swap QA Baseline / Regression Compare
+
+v32では各Hot Swapを絶対Gateで判定していました。
+
+```text
+Current Hot Swap
+      |
+      v
+Power Σ / Peak / Limiter / Midpoint RMS
+      |
+      v
+PASS / REVIEW / FAIL
+```
+
+v33ではこれに加えて、過去のQA SessionをBaselineとしてHot Swap品質そのものをRegression比較します。
+
+```text
+Baseline QA Report
+        |
+        | same route / occurrence
+        v
+Current QA Report
+        |
+        v
+Hot Swap Regression Compare
+```
+
+比較単位:
+
+```text
+fromId -> toId
++
+同一路線のn回目
+```
+
+例:
+
+```text
+PULSE -> FANTASY #1
+PULSE -> FANTASY #2
+FANTASY -> NEON #1
+```
+
+Curveは同一路線内の属性として比較します。
+
+```text
+equal-power-v1
+        ↓
+exponential-v30
+
+=> REVIEW
+```
+
+### Regression metrics
+
+各Hot Swapについて比較する値:
+
+- Max Output Peak
+- Max Limiter Reduction
+- Midpoint RMS Delta
+- Minimum Power Coefficient Sum
+- Crossfade Duration
+- Curve
+- Quantize mode
+- Route presence
+
+Policy:
+
+```text
+PEAK INCREASE
+>= +1.0 dB    REVIEW
+>= +2.0 dB    FAIL
+
+LIMITER INCREASE
+>= +1.0 dB    REVIEW
+>= +2.5 dB    FAIL
+
+MIDPOINT RMS REGRESSION
+<= -2.0 dB    REVIEW
+<= -4.0 dB    FAIL
+
+MIN POWER Σ REGRESSION
+<= -0.03      REVIEW
+<= -0.08      FAIL
+
+CROSSFADE DURATION CHANGE
+>= 20%        REVIEW
+>= 40%        FAIL
+```
+
+これはv32のAbsolute Gateとは別です。
+
+```text
+Absolute Hot Swap Gate
+「今のSwap自体が安全か」
+        +
+Baseline Regression Gate
+「前回より悪化していないか」
+```
+
+したがってBaselineもCurrentも同じ危険値ならRegression差分だけではPASSになり得ますが、v32 Absolute Gate側ではFAILのままです。
+
+### Matching behavior
+
+BaselineとCurrentで同一路線をoccurrence順に対応付けます。
+
+Routeが増減した場合:
+
+```text
+Baseline
+PULSE -> FANTASY
+
+Current
+PULSE -> NEON
+
+=> route changed
+=> REVIEW
+```
+
+これにより異なるHot Swap条件を誤って同一Regressionとして扱いません。
+
+### Compare output
+
+`compareQaReports()` のschemaは `1.1.0` へ更新しました。
+
+追加:
+
+```js
+comparison.hotSwaps = {
+  status,
+  baselineCount,
+  currentCount,
+  comparedCount,
+  regressionCount,
+  improvementCount,
+  routeChangeCount,
+  policy,
+  items
+}
+```
+
+各item:
+
+```text
+route / occurrence
+presence
+status
+baseline
+current
+delta
+failures
+warnings
+```
+
+Overall ComparisonへもHot Swap結果を伝播します。
+
+```text
+Hot Swap FAIL
+  -> overall comparison FAIL
+
+Hot Swap REVIEW
+  -> overall comparison REVIEW以上
+
+Hot Swap IMPROVED
+  -> 他metricも安全ならoverall IMPROVEDへ寄与
+```
+
+### CSV
+
+Comparison CSVへHot Swap差分行も追加しました。
+
+例:
+
+```text
+hot-swap:pulse->fantasy#1:peak_db
+hot-swap:pulse->fantasy#1:midpoint_rms_delta_db
+hot-swap:pulse->fantasy#1:limiter_reduction_db
+hot-swap:pulse->fantasy#1:min_power_sum
+hot-swap:pulse->fantasy#1:duration_relative
+```
+
+### Audio QA Dashboard
+
+QA Compareパネルへ `HOT SWAP REGRESSION` セクションを追加しました。
+
+表示例:
+
+```text
+PULSE -> FANTASY #1
+PASS
+
+PK   +0.2 dB
+MID  -0.4 dB
+GR   +0.3 dB
+Σ    -0.004
+DUR  +3%
+EQUAL-POWER-V1
+```
+
+Curve変更時:
+
+```text
+EQUAL-POWER-V1 -> EXPONENTIAL-V30
+REVIEW
+```
+
+操作:
+
+1. RecorderでBaseline Sessionを作成
+2. `USE CURRENT AS BASELINE` またはBaseline JSONを読み込む
+3. 同じHot Swap routeを再実行
+4. Recorder終了
+5. QA Compareで差分確認
+6. JSON / CSV Diffを共有
+
+URL:
+
+https://kameusagiyahoo.github.io/game_music/debug/audio-qa/
+
+### v33 implementation
+
+新規module:
+
+```text
+src/music-qa-hot-swap-compare.js
+```
+
+通常のQA Compareとは分離しているため、Hot Swap policyを独立して調整できます。
+
+既存:
+
+```text
+src/music-qa-compare.js
+```
+
+から呼び出します。
+
+CI:
+
+```text
+tools/check_music_qa_compare.mjs
+```
+
+で以下を検証します。
+
+- identical Hot Swap -> PASS
+- Peak +2.1 dB -> FAIL
+- Limiter +2.6 dB -> FAIL
+- Midpoint RMS regression -> FAIL
+- Power Σ regression -> FAIL
+- duration +25% -> REVIEW
+- Route change -> REVIEW
+- Curve change -> REVIEW
+- safer swap -> IMPROVED
+- Hot Swap RegressionがOverall Comparisonへ伝播
+- CSV Hot Swap rows
+
+Facade APIは変更していないため、引き続き `1.5.0` です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -4111,6 +4370,7 @@ Validation:
 - `tools/check_music_metering.mjs`
 - `tools/check_music_qa_report.mjs`
 - `tools/check_music_qa_compare.mjs`
+- `src/music-qa-hot-swap-compare.js`
 - `tools/check_music_qa_scenario.mjs`
 - `tools/music_qa_golden.mjs`
 - `tools/check_music_qa_golden.mjs`
@@ -4213,6 +4473,6 @@ assets/
 
 ## Next candidates
 
-- Hot Swap QA ReportのBaseline / Regression Compare統合
 - Packごとの実機QA Baseline取り込み
+- Hot Swap route matrixの自動実機Scenario
 - Game 06追加
