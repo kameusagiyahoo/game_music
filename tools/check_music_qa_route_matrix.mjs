@@ -101,16 +101,14 @@ const fakeMusic = {
 const startedAtMs = 10_000;
 const run = createQaScenarioRun(scenario, { startedAtMs });
 
-for (const step of scenario.steps) {
+// Simulate the browser scheduler continuously. Jumping directly from 0s to
+// the first 3s step would correctly look like a background/scheduler gap.
+for (let elapsedMs = 0; elapsedMs <= scenario.durationMs; elapsedMs += 500) {
   await advanceQaScenarioRun(run, {
-    nowMs: startedAtMs + step.atMs,
+    nowMs: startedAtMs + elapsedMs,
     executeStep: (currentStep) => executeQaScenarioStep(fakeMusic, currentStep),
   });
 }
-await advanceQaScenarioRun(run, {
-  nowMs: startedAtMs + scenario.durationMs,
-  executeStep: (currentStep) => executeQaScenarioStep(fakeMusic, currentStep),
-});
 
 if (run.status !== "completed") {
   errors.push(`route matrix virtual run should complete: ${run.status} / ${run.abortReason}`);
@@ -135,10 +133,14 @@ if (
 }
 
 const driftRun = createQaScenarioRun(scenario, { startedAtMs: 50_000 });
-await advanceQaScenarioRun(driftRun, {
-  nowMs: 50_000 + scenario.steps[0].atMs + 1_100,
-  executeStep: (step) => executeQaScenarioStep(fakeMusic, step),
-});
+// Keep scheduler gaps <= 1.5s, then intentionally execute the first 3s step
+// 1.1s late so the timing-drift guard, not the background guard, fires.
+for (const elapsedMs of [0, 1_500, 2_900, 4_100]) {
+  await advanceQaScenarioRun(driftRun, {
+    nowMs: 50_000 + elapsedMs,
+    executeStep: (step) => executeQaScenarioStep(fakeMusic, step),
+  });
+}
 if (driftRun.status !== "aborted" || !String(driftRun.abortReason).startsWith("timing-drift:")) {
   errors.push(`route matrix 1.1s drift should abort: ${driftRun.status}/${driftRun.abortReason}`);
 }
