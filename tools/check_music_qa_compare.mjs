@@ -22,6 +22,8 @@ function report({
   clip = 0,
   verdict = "pass",
   modes = {},
+  hotSwaps = [],
+  hotSwapQa = null,
 } = {}) {
   return {
     schemaVersion: "1.0.0",
@@ -44,6 +46,14 @@ function report({
       clipRiskSeconds: clip,
       verdict,
       modes,
+      hotSwaps,
+      hotSwapQa: hotSwapQa || {
+        status: hotSwaps.length ? "pass" : "not-applicable",
+        evaluatedCount: hotSwaps.length,
+        failures: [],
+        warnings: [],
+        swaps: [],
+      },
     },
     events: [],
     samples: [],
@@ -182,6 +192,127 @@ if (improvement.modes.overdrive?.status !== "improved") {
   errors.push("overdrive mode improvement not detected");
 }
 
+// Hot Swap baseline regression comparison.
+const swap = ({
+  fromId = "pulse",
+  toId = "fantasy",
+  curve = "equal-power-v1",
+  quantize = "bar",
+  durationSeconds = 1,
+  peak = -2,
+  reduction = 1,
+  midpointRmsDelta = -0.5,
+  minPower = 1,
+} = {}) => ({
+  fromId,
+  toId,
+  curve,
+  quantize,
+  durationSeconds,
+  crossfadeSampleCount: 10,
+  maxOutputPeakDbfs: peak,
+  maxLimiterReductionMagnitudeDb: reduction,
+  midpointRmsDeltaDb: midpointRmsDelta,
+  minPowerCoefficientSum: minPower,
+});
+
+const hotBaseline = report({
+  hotSwaps: [swap()],
+});
+const hotSame = report({
+  generatedAt: "2026-09-01T00:20:00.000Z",
+  hotSwaps: [swap()],
+});
+const hotSameComparison = compareQaReports(hotBaseline, hotSame);
+if (hotSameComparison.hotSwaps?.status !== "pass") {
+  errors.push(`identical Hot Swap should pass: ${hotSameComparison.hotSwaps?.status}`);
+}
+if (hotSameComparison.status !== "pass") {
+  errors.push(`identical Hot Swap overall should pass: ${hotSameComparison.status}`);
+}
+
+const hotPeakRegression = report({
+  hotSwaps: [swap({ peak: 0.1 })],
+});
+const hotPeakComparison = compareQaReports(hotBaseline, hotPeakRegression);
+if (hotPeakComparison.hotSwaps?.status !== "fail") {
+  errors.push(`Hot Swap +2.1 dB peak should fail: ${hotPeakComparison.hotSwaps?.status}`);
+}
+if (hotPeakComparison.status !== "fail") {
+  errors.push("Hot Swap regression did not propagate to overall comparison");
+}
+
+const hotLimiterRegression = report({
+  hotSwaps: [swap({ reduction: 3.6 })],
+});
+if (compareQaReports(hotBaseline, hotLimiterRegression).hotSwaps?.status !== "fail") {
+  errors.push("Hot Swap +2.6 dB limiter regression was not rejected");
+}
+
+const hotMidRmsRegression = report({
+  hotSwaps: [swap({ midpointRmsDelta: -4.7 })],
+});
+if (compareQaReports(hotBaseline, hotMidRmsRegression).hotSwaps?.status !== "fail") {
+  errors.push("Hot Swap midpoint RMS regression was not rejected");
+}
+
+const hotPowerRegression = report({
+  hotSwaps: [swap({ minPower: 0.91 })],
+});
+if (compareQaReports(hotBaseline, hotPowerRegression).hotSwaps?.status !== "fail") {
+  errors.push("Hot Swap power sum regression was not rejected");
+}
+
+const hotDurationReview = report({
+  hotSwaps: [swap({ durationSeconds: 1.25 })],
+});
+if (compareQaReports(hotBaseline, hotDurationReview).hotSwaps?.status !== "review") {
+  errors.push("Hot Swap +25% duration change should require review");
+}
+
+const hotRouteChange = report({
+  hotSwaps: [swap({ toId: "neon" })],
+});
+const hotRouteComparison = compareQaReports(hotBaseline, hotRouteChange);
+if (hotRouteComparison.hotSwaps?.status !== "review") {
+  errors.push("Hot Swap route change should require review");
+}
+if (hotRouteComparison.hotSwaps?.routeChangeCount !== 2) {
+  errors.push(`Hot Swap route change count mismatch: ${hotRouteComparison.hotSwaps?.routeChangeCount}`);
+}
+
+const hotCurveChange = report({
+  hotSwaps: [swap({ curve: "exponential-v30" })],
+});
+if (compareQaReports(hotBaseline, hotCurveChange).hotSwaps?.status !== "review") {
+  errors.push("Hot Swap curve change should require review");
+}
+
+const hotImproved = report({
+  peak: -2.5,
+  reduction: 1,
+  over3: 1,
+  hotSwaps: [swap({
+    peak: -3.2,
+    reduction: 0,
+    midpointRmsDelta: 1.6,
+    minPower: 1.04,
+  })],
+});
+const hotImprovedBaseline = report({
+  peak: -1.5,
+  reduction: 2,
+  over3: 3,
+  hotSwaps: [swap()],
+});
+const hotImprovementComparison = compareQaReports(hotImprovedBaseline, hotImproved);
+if (hotImprovementComparison.hotSwaps?.status !== "improved") {
+  errors.push(`Hot Swap improvement not detected: ${hotImprovementComparison.hotSwaps?.status}`);
+}
+if (hotImprovementComparison.status !== "improved") {
+  errors.push(`Hot Swap improvement should contribute to overall improved: ${hotImprovementComparison.status}`);
+}
+
 // Coverage/sample-rate warnings should be visible and make comparison reviewable.
 const lowCoverage = report({
   duration: 60,
@@ -252,6 +383,13 @@ if (invalid.valid) errors.push("invalid QA report passed validation");
 const csv = qaComparisonToCsv(comparison);
 if (!csv.includes("max_output_peak_dbfs")) errors.push("comparison CSV peak row missing");
 if (!csv.includes("mode:overdrive:limiter_reduction_db")) errors.push("comparison CSV mode row missing");
+const hotCsv = qaComparisonToCsv(hotPeakComparison);
+if (!hotCsv.includes("hot-swap:pulse->fantasy#1:peak_db")) {
+  errors.push("comparison CSV Hot Swap peak row missing");
+}
+if (!hotCsv.includes("hot-swap:pulse->fantasy#1:min_power_sum")) {
+  errors.push("comparison CSV Hot Swap power row missing");
+}
 
 const filename = qaComparisonFilename(comparison, "json");
 if (!filename.startsWith("game-music-qa-compare-pulse-") || !filename.endsWith(".json")) {
@@ -272,4 +410,7 @@ console.log(`- improvement status: ${improvement.status}`);
 console.log("- duration normalization: OK");
 console.log("- coverage warnings: OK");
 console.log("- scenario compatibility warnings: OK");
+console.log("- Hot Swap baseline regression compare: OK");
+console.log("- Hot Swap route/curve compatibility: OK");
+console.log("- Hot Swap CSV export: OK");
 console.log("- CSV export: OK");
