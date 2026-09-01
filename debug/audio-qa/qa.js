@@ -27,6 +27,11 @@ import {
   executeQaScenarioStep,
   qaScenarioExecutionSummary,
 } from "../../src/music-qa-scenario.js";
+import {
+  HOT_SWAP_ROUTE_MATRIX_PACKS,
+  createHotSwapRouteMatrixScenario,
+  hotSwapRouteMatrixExecutionSummary,
+} from "../../src/music-qa-route-matrix.js";
 
 const $ = (selector) => document.querySelector(selector);
 const qaBadge = $("#qaBadge");
@@ -99,6 +104,17 @@ const scenarioTimeline = $("#scenarioTimeline");
 const scenarioIdValue = $("#scenarioIdValue");
 const scenarioDriftValue = $("#scenarioDriftValue");
 const scenarioRunStatus = $("#scenarioRunStatus");
+const routeMatrixStatus = $("#routeMatrixStatus");
+const routeMatrixStatusText = $("#routeMatrixStatusText");
+const routeMatrixProgressBar = $("#routeMatrixProgressBar");
+const routeMatrixTimer = $("#routeMatrixTimer");
+const routeMatrixCompleted = $("#routeMatrixCompleted");
+const routeMatrixStartPack = $("#routeMatrixStartPack");
+const routeMatrixDrift = $("#routeMatrixDrift");
+const routeMatrixCurrentRoute = $("#routeMatrixCurrentRoute");
+const routeMatrixGrid = $("#routeMatrixGrid");
+const runRouteMatrixButton = $("#runRouteMatrixButton");
+const cancelRouteMatrixButton = $("#cancelRouteMatrixButton");
 const baselineFile = $("#baselineFile");
 const baselineStatus = $("#baselineStatus");
 const baselineRegistryStatus = $("#baselineRegistryStatus");
@@ -142,9 +158,25 @@ let comparisonReport = null;
 let scenarioRun = null;
 let lastScenarioSummary = null;
 let scenarioAdvancing = false;
+let routeMatrixRun = null;
+let lastRouteMatrixSummary = null;
+let routeMatrixAdvancing = false;
+let routeMatrixPreparing = false;
 let lastRecordSampleAt = 0;
 
 let selectedQaPackId = qaPackSelect?.value || "pulse";
+
+function routeMatrixIsRunning() {
+  return routeMatrixRun?.status === "running";
+}
+
+function activeQaStage() {
+  return routeMatrixRun?.currentStage || scenarioRun?.currentStage || null;
+}
+
+function routeMatrixBusy() {
+  return routeMatrixPreparing || routeMatrixIsRunning();
+}
 
 function createPackScenario(packId) {
   const label = packId === "fantasy"
@@ -192,6 +224,17 @@ function preloadCurrentQaPack() {
   return music.preload({ stingers: true, transitions: true }).catch((error) => {
     console.warn("QA preload failed; START will retry", error);
   });
+}
+
+async function preloadRouteMatrixPacks() {
+  await Promise.all(
+    HOT_SWAP_ROUTE_MATRIX_PACKS.map((packId) =>
+      preloadMusicAssets({
+        packId,
+        preloadOptions: { stingers: true, transitions: true },
+      })
+    )
+  );
 }
 
 function baselineOriginLabel() {
@@ -320,18 +363,20 @@ function syncHotSwapTargetOptions(activePackId = music.info().id || selectedQaPa
 function renderHotSwap(meter = music.meter()) {
   const hot = meter?.hotSwap || null;
   const scenarioRunning = scenarioRun?.status === "running";
+  const matrixBusy = routeMatrixBusy();
   const activePackId = meter?.packId || music.info().id || selectedQaPackId;
   syncHotSwapTargetOptions(activePackId);
 
   const targetIsActive = hotSwapTargetSelect.value === activePackId;
   scheduleHotSwapButton.disabled =
     scenarioRunning ||
+    matrixBusy ||
     !music.running ||
     Boolean(hot) ||
     targetIsActive;
   cancelHotSwapButton.disabled = hot?.phase !== "scheduled";
-  hotSwapTargetSelect.disabled = scenarioRunning || Boolean(hot);
-  hotSwapCurveSelect.disabled = scenarioRunning || Boolean(hot);
+  hotSwapTargetSelect.disabled = scenarioRunning || matrixBusy || Boolean(hot);
+  hotSwapCurveSelect.disabled = scenarioRunning || matrixBusy || Boolean(hot);
 
   if (!hot) {
     hotSwapStatus.textContent = music.running ? "READY" : "IDLE";
@@ -397,7 +442,7 @@ async function scheduleHotSwap() {
 
 async function switchQaPack(packId) {
   if (!["pulse", "fantasy", "neon", "clockwork"].includes(packId)) return;
-  if (recordingSession || scenarioRun?.status === "running") {
+  if (recordingSession || scenarioRun?.status === "running" || routeMatrixBusy()) {
     qaPackSelect.value = selectedQaPackId;
     return;
   }
@@ -645,8 +690,12 @@ function renderScenario() {
   scenarioTimer.textContent = `${formatTimeMs(progress?.elapsedMs || (summary?.status === "completed" ? qaScenario.durationMs : 0))} / ${formatTimeMs(qaScenario.durationMs)}`;
 
   const running = scenarioRun?.status === "running";
-  qaPackSelect.disabled = running || Boolean(recordingSession);
-  runScenarioButton.disabled = running || Boolean(recordingSession && !scenarioRun);
+  const matrixBusy = routeMatrixBusy();
+  qaPackSelect.disabled = running || matrixBusy || Boolean(recordingSession);
+  runScenarioButton.disabled =
+    running ||
+    matrixBusy ||
+    Boolean(recordingSession && !scenarioRun);
   runScenarioButton.classList.toggle("is-running", running);
   runScenarioButton.textContent = running ? "RUNNING STANDARD 60s…" : "RUN STANDARD 60s";
   cancelScenarioButton.disabled = !running;
@@ -733,7 +782,7 @@ async function advanceScenario(now = performance.now()) {
 }
 
 async function startStandardScenario() {
-  if (scenarioRun?.status === "running" || recordingSession) return;
+  if (scenarioRun?.status === "running" || routeMatrixBusy() || recordingSession) return;
 
   lastScenarioSummary = null;
   music.cancel("all");
@@ -790,7 +839,11 @@ function renderReportSummary() {
 
   recordTimer.textContent = `${formatTimeMs(elapsedMs)} / ${formatTimeMs(targetMs)}`;
   recordProgressBar.style.width = `${progress}%`;
-  recordButton.disabled = recording;
+  recordButton.disabled =
+    recording ||
+    routeMatrixPreparing ||
+    routeMatrixIsRunning() ||
+    scenarioRun?.status === "running";
   recordButton.classList.toggle("is-recording", recording);
   recordButton.textContent = recording ? "RECORDING…" : "RECORD 60s";
   recordStopButton.disabled = !recording;
@@ -1122,7 +1175,7 @@ async function startRecording({
     capturedAtMs: now,
     bar,
     beat,
-    scenarioStage: scenarioRun?.currentStage || null,
+    scenarioStage: activeQaStage(),
   });
   lastRecordSampleAt = now;
   renderReportSummary();
@@ -1138,12 +1191,16 @@ function captureRecorderSample(meter) {
     capturedAtMs: now,
     bar,
     beat,
-    scenarioStage: scenarioRun?.currentStage || null,
+    scenarioStage: activeQaStage(),
   });
   lastRecordSampleAt = now;
 
   const targetMs = recordingSession.targetDurationSeconds * 1000;
-  if (now - recordingSession.startedAtMs >= targetMs && !scenarioRun) {
+  if (
+    now - recordingSession.startedAtMs >= targetMs &&
+    !scenarioRun &&
+    !routeMatrixRun
+  ) {
     finishRecording(now);
   }
 }
