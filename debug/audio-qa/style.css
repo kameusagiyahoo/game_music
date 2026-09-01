@@ -535,3 +535,166 @@ canvas { display: block; width: 100%; height: 190px; margin-top: 14px; border-ra
     text-align: left;
   }
 }
+
+.route-matrix-panel {
+  padding: 17px;
+  margin-bottom: 12px;
+  display: grid;
+  gap: 12px;
+}
+.route-matrix-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+.route-matrix-head > div { display: grid; gap: 4px; }
+.route-matrix-status {
+  border: 1px solid #3b4350;
+  border-radius: 999px;
+  padding: 7px 11px;
+  min-width: 96px;
+  text-align: center;
+  font-size: .68rem;
+  letter-spacing: .08em;
+}
+.route-matrix-status.idle { color: #8c96a6; }
+.route-matrix-status.preparing,
+.route-matrix-status.running {
+  color: #d4c59a;
+  border-color: #665c3d;
+  background: #211e14;
+}
+.route-matrix-status.completed,
+.route-matrix-status.pass {
+  color: #b9e1ce;
+  border-color: #3f6856;
+  background: #12231c;
+}
+.route-matrix-status.aborted,
+.route-matrix-status.fail {
+  color: #e5b6b6;
+  border-color: #754545;
+  background: #2a1719;
+}
+.route-matrix-progress {
+  height: 9px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #090b0f;
+  border: 1px solid #2f3540;
+}
+.route-matrix-progress > div {
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: #c0c7d2;
+  transition: width 100ms linear;
+}
+.route-matrix-actions {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 8px;
+}
+.route-matrix-actions button {
+  min-height: 46px;
+  border-radius: 11px;
+  border: 1px solid #353b47;
+  color: #e9edf6;
+  background: #1a1e27;
+  font-weight: 800;
+}
+.route-matrix-actions button:disabled { opacity: .35; }
+.route-matrix-actions .route-matrix-run-button {
+  background: #e9edf6;
+  color: #11141a;
+  border-color: #e9edf6;
+}
+.route-matrix-actions .route-matrix-run-button.is-running {
+  background: #1c2635;
+  color: #d9e4f2;
+  border-color: #4d627e;
+}
+.route-matrix-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: #292f39;
+  border: 1px solid #292f39;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.route-matrix-metrics > div {
+  background: #101319;
+  padding: 9px 10px;
+  display: grid;
+  gap: 4px;
+}
+.route-matrix-metrics span,
+.route-matrix-current span {
+  color: #7f8998;
+  font-size: .60rem;
+  letter-spacing: .09em;
+}
+.route-matrix-metrics strong {
+  font-size: .74rem;
+  font-variant-numeric: tabular-nums;
+}
+.route-matrix-current {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+.route-matrix-current strong {
+  font-size: .78rem;
+  letter-spacing: .04em;
+}
+.route-matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.route-matrix-route {
+  min-height: 54px;
+  border: 1px solid #292f39;
+  border-radius: 9px;
+  background: #101319;
+  padding: 8px 9px;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  opacity: .46;
+}
+.route-matrix-route strong {
+  font-size: .64rem;
+  letter-spacing: .06em;
+}
+.route-matrix-route span {
+  color: #818b9a;
+  font-size: .60rem;
+}
+.route-matrix-route.done {
+  opacity: .72;
+  border-color: #40524a;
+}
+.route-matrix-route.active {
+  opacity: 1;
+  border-color: #697789;
+  background: #171d26;
+}
+.route-matrix-route.failed {
+  opacity: 1;
+  border-color: #8e4d4d;
+  background: #2a1719;
+}
+@media (max-width: 760px) {
+  .route-matrix-grid { grid-template-columns: repeat(3, 1fr); }
+  .route-matrix-metrics { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 560px) {
+  .route-matrix-head { flex-direction: column; gap: 8px; }
+  .route-matrix-status { width: 100%; }
+  .route-matrix-actions { grid-template-columns: 1fr; }
+  .route-matrix-grid { grid-template-columns: 1fr 1fr; }
+}
