@@ -3324,6 +3324,204 @@ tools/check_music_pack_hot_swap.mjs
 
 v30でもFacadeの公開メソッド自体は増やしていないため、Facade API versionは `1.5.0` のままです。
 
+### v31 — Equal-Power Hot Swap Crossfade / A-B Comparison
+
+v30のReal Audio Hot Swapは、旧Packと新PackのPack Gainを `exponentialRampToValueAtTime()` で交差させていました。
+
+v31ではProduction既定を **Equal-Power Crossfade** へ変更しています。
+
+```text
+progress = 0 .. 1
+
+old gain = cos(π/2 × progress)
+new gain = sin(π/2 × progress)
+```
+
+したがって曲線上では、
+
+```text
+old² + new² = 1
+```
+
+を維持します。
+
+中央点:
+
+```text
+old = 0.7071
+new = 0.7071
+
+power sum = 1.0000
+```
+
+ここでいうpowerは2つのGain係数の二乗和です。実際の瞬間的な音圧は2 Pack間の相関や各Stem内容にも依存し、最終Peakは既存Master / Limiterで保護します。
+
+### Why v30 changed
+
+v30の旧方式は、
+
+```text
+old  1.0    -> 0.0001
+new  0.0001 -> 1.0
+```
+
+のexponential rampでした。
+
+指数補間の中央点は概算で、
+
+```text
+old ≈ 0.01
+new ≈ 0.01
+
+old² + new² ≈ 0.0002
+```
+
+となります。
+
+つまりHot Swapの途中だけPack Busが大きく痩せる可能性がありました。
+
+v31:
+
+```text
+OLD Pack
+gain = cos(...)
+       \
+        +--> musicRoot --> Master --> Limiter
+       /
+NEW Pack
+gain = sin(...)
+```
+
+に変更することで、異なるReal Audio Pack間をより自然に接続します。
+
+### AudioContext scheduling
+
+Equal-Power CurveはJS timerで細かくGainを書き換えません。
+
+Web Audioの、
+
+```js
+AudioParam.setValueCurveAtTime()
+```
+
+を使い、129 pointのFloat32 curveをAudioContext時刻へ一括予約します。
+
+```text
+decode next 5 stems
+      |
+      v
+resolve next beat / bar
+      |
+      v
+same startTime
+same duration
+      |
+      +-- outgoing Equal-Power curve
+      +-- incoming Equal-Power curve
+      |
+      v
+cleanup old sources
+```
+
+Hot Swapの量子化精度はv30と同じで、Gain Curveだけを改善しています。
+
+### Compatibility fallback
+
+環境が `setValueCurveAtTime()` を提供しない場合は、従来互換のexponential rampへfallbackします。
+
+```text
+supported
+  -> equal-power-v1
+
+unsupported
+  -> exponential-fallback
+```
+
+通常のProduction Hot Swapは自動判定なので、ゲーム側で分岐する必要はありません。
+
+### Runtime metadata
+
+`music.info().hotSwap` にはCrossfade方式も出ます。
+
+```text
+phase        scheduled / crossfading
+curve        equal-power-v1
+curvePoints  129
+scheduledAt
+fadeEnd
+crossfadeBeats
+```
+
+Capability:
+
+```text
+hotSwapPackCrossfade   = true
+equalPowerPackCrossfade = true
+```
+
+Facadeの公開メソッドは増やしていないため、Facade API versionは引き続き `1.5.0` です。
+
+### Resolver Lab A/B
+
+Resolver Labでは実際に耳で比較できます。
+
+```text
+CROSSFADE CURVE
+
+Equal-Power v1
+  Production default
+
+Legacy v30 Exponential
+  Debug A/B only
+```
+
+手順:
+
+1. PLAY
+2. `Equal-Power v1` を選ぶ
+3. 別Packを押して次小節Hot Swapを聴く
+4. 元のPackへ戻る
+5. `Legacy v30 Exponential` を選ぶ
+6. 同じようにHot Swapして比較する
+
+URL: https://kameusagiyahoo.github.io/game_music/debug/resolver/
+
+ProductionゲームではEqual-Powerが既定で、Legacy optionはResolver比較用です。
+
+### Equal-Power CI
+
+専用check:
+
+```text
+tools/check_music_equal_power_crossfade.mjs
+```
+
+検証内容:
+
+- curve point count = 129
+- start = old 1 / new 0
+- midpoint = old/new 約0.7071
+- end = old 0 / new 1
+- 全129点で `old² + new² ≈ 1`
+- old/new AudioParam curveが同じstartTime / duration
+- v30 exponential midpointとのpower比較
+- `setValueCurveAtTime` 非対応fallback
+- Hot Swap integrationで実curve予約
+- Resolver Legacy optionが `exponential-v30` を選択
+- Facade capability `equalPowerPackCrossfade`
+
+現在の理論比較:
+
+```text
+MIDPOINT POWER COEFFICIENT SUM
+
+Equal-Power v1        1.0000
+Linear reference      0.5000
+v30 Exponential       0.0002
+```
+
+これは実音源の最終LUFS/Peak値ではなく、Crossfade Gain Curve自体の比較です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -3398,6 +3596,7 @@ Validation:
 - `tools/check_music_persistent_cache.mjs`
 - `tools/check_music_quantization.mjs`
 - `tools/check_music_pack_hot_swap.mjs`
+- `tools/check_music_equal_power_crossfade.mjs`
 - `tools/check_music_transition_cues.mjs`
 - `tools/check_music_mastering.mjs`
 - `tools/check_music_metering.mjs`
@@ -3504,5 +3703,5 @@ assets/
 ## Next candidates
 
 - Packごとの実機QA Baseline取り込み
-- Hot Swap時のEqual-Power Crossfade比較
+- Hot Swap区間のRealtime Meter / QA Report統合
 - Game 06追加
