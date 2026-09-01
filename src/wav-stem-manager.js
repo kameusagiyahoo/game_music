@@ -395,8 +395,8 @@ export class WavStemMusicManager {
     const decoded = await this.#loadStemBuffersForPack(nextPack);
     const target = this.#resolvePackTarget(
       decoded.pack,
-      options.mode ?? this.mode,
-      options.preset,
+      options.mode ?? this.pendingModeTransition?.mode ?? this.mode,
+      options.preset ?? this.pendingLayerPreset,
     );
 
     if (!this.running) {
@@ -467,6 +467,12 @@ export class WavStemMusicManager {
     nextPackGain.gain.exponentialRampToValueAtTime(1, fadeEnd);
 
     this.#scheduleMasteringTransition(decoded.pack, scheduledAt, fadeEnd);
+
+    this.pendingModeTransition = null;
+    this.pendingLayerMix = null;
+    this.pendingLayerPreset = null;
+    this.pendingLayerQuantize = null;
+    this.pendingLayerScheduledAt = null;
 
     this.pendingPackSwitch = {
       fromPack: this.pack,
@@ -749,6 +755,7 @@ export class WavStemMusicManager {
       pendingMode: this.pendingModeTransition?.mode || null,
       pendingModeQuantize: this.pendingModeTransition?.quantize || null,
       pendingLayerQuantize: this.pendingLayerQuantize,
+      pack: this.getPackInfo(),
       audioFormat: this.selectedAudioFormat,
       stingerAudioFormat: this.stingerAudioFormat,
       transitionCueAudioFormat: this.transitionCueAudioFormat,
@@ -763,6 +770,20 @@ export class WavStemMusicManager {
     this.running = false;
     if (this.timer) window.clearInterval(this.timer);
     this.timer = null;
+
+    const swap = this.pendingPackSwitch;
+    if (swap) {
+      if (swap.committed) {
+        this.#stopSourceMap(swap.oldSources);
+        this.#disconnectNodeMap(swap.oldLayerBuses);
+        try { swap.oldPackGain?.disconnect(); } catch (_) {}
+      } else {
+        this.#stopSourceMap(swap.nextSources);
+        this.#disconnectNodeMap(swap.nextLayerBuses);
+        try { swap.nextPackGain?.disconnect(); } catch (_) {}
+      }
+      this.pendingPackSwitch = null;
+    }
 
     Object.values(this.sources).forEach((source) => {
       try { source.stop(); } catch (_) {}
@@ -1191,6 +1212,10 @@ export class WavStemMusicManager {
 
   #setAudioParamAt(param, value, time) {
     if (!param) return;
+    const now = Number(this.context?.currentTime || 0);
+    if (typeof param.cancelScheduledValues === "function") {
+      param.cancelScheduledValues(now);
+    }
     if (typeof param.setValueAtTime === "function") {
       param.setValueAtTime(value, time);
     } else {
@@ -1555,6 +1580,19 @@ export class WavStemMusicManager {
 
   #clock() {
     if (!this.running || !this.context) return;
+
+    const now = this.context.currentTime;
+    if (
+      this.pendingPackSwitch &&
+      !this.pendingPackSwitch.committed &&
+      now >= this.pendingPackSwitch.scheduledAt - 0.022
+    ) {
+      this.#activatePendingPackSwitch();
+    }
+    if (this.pendingPackSwitch?.committed) {
+      this.#cleanupCompletedPackSwitch();
+    }
+
     const bpm = Number(this.pack?.audioStems?.bpm || 112);
     const stepDuration = (60 / bpm) / 2;
     const elapsed = this.context.currentTime - this.transportStart;
@@ -1614,6 +1652,9 @@ export class WavStemMusicManager {
       pendingLayerPreset: this.pendingLayerPreset,
       pendingLayerQuantize: this.pendingLayerQuantize,
       pendingLayerScheduledAt: this.pendingLayerScheduledAt,
+      pendingPackId: this.getPackInfo().pendingId,
+      pendingPackName: this.getPackInfo().pendingName,
+      hotSwap: this.getPackInfo().hotSwap,
       pendingStinger: this.getStingerInfo(),
       transitionCue: this.getTransitionCueInfo(),
       layerPreset: this.layerPreset,
@@ -1669,21 +1710,7 @@ export class WavStemMusicManager {
   }
 
   #masteringConfig() {
-    const raw = this.pack?.mastering || {};
-    const limiter = raw.limiter || {};
-    const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
-
-    return {
-      profile: String(raw.profile || "game-balanced-default"),
-      headroomDb: Math.max(-24, Math.min(0, finite(raw.headroomDb, -3))),
-      limiter: {
-        thresholdDb: Math.max(-24, Math.min(0, finite(limiter.thresholdDb, -1.5))),
-        kneeDb: Math.max(0, Math.min(40, finite(limiter.kneeDb, 0))),
-        ratio: Math.max(1, Math.min(20, finite(limiter.ratio, 20))),
-        attack: Math.max(0, Math.min(1, finite(limiter.attack, 0.003))),
-        release: Math.max(0.01, Math.min(1, finite(limiter.release, 0.12))),
-      },
-    };
+    return this.#masteringConfigFor(this.pack);
   }
 
   #beatsToSeconds(beats) {
