@@ -11,9 +11,9 @@
   <main class="shell">
     <header class="hero">
       <div>
-        <p class="eyebrow">GAME MUSIC LAB / ENGINE v28</p>
+        <p class="eyebrow">GAME MUSIC LAB / ENGINE v29</p>
         <h1>Audio QA Dashboard</h1>
-        <p class="lead">Pulse / Fantasy / Neonの実Audio Packを切り替え、Master / Limiter / Stem状態をiPhone上で監視します。</p>
+        <p class="lead">Pulse / Fantasy / Neon / Clockworkの4つの実Audio Packを切り替え、Master / Limiter / Stem状態をiPhone上で監視します。</p>
       </div>
       <div class="hero-status">
         <span id="qaBadge" class="qa-badge idle">IDLE</span>
@@ -33,6 +33,7 @@
           <option value="pulse">Pulse WAV v1.4.1</option>
           <option value="fantasy">Fantasy WAV v2.0.0</option>
           <option value="neon">Neon WAV v2.0.0</option>
+          <option value="clockwork">Clockwork WAV v2.0.0</option>
         </select>
       </label>
     </section>
@@ -233,7 +234,7 @@
       <p>このMeterは0音量の監視branchで、ゲーム本来のMastering経路には加算されません。</p>
       <p>Recorderは約10fpsのMeter値を最大60秒記録し、終了後にJSON / CSVをiPhone共有シートまたはダウンロードへ出力します。</p>
       <p>STANDARD 60sは選択中PackでNORMAL 10s → BUILD 10s → OVERDRIVE 20s → RESULT + VICTORY 20sを自動実行し、Recorderも同時に開始します。</p>
-      <p>Packを切り替えるとRuntime / Meter / Scenario IDも切り替わり、PulseとFantasyのレポートを分離します。</p>
+      <p>Packを切り替えるとRuntime / Meter / Scenario IDも切り替わり、4 Packのレポートを個別に分離します。</p>
     </section>
   </main>
   <script type="module" src="./qa.js"></script>
