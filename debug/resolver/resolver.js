@@ -7,6 +7,7 @@ import {
 import {
   createMusicRuntime,
   getRuntimeDescriptor,
+  prepareMusicPackForRuntime,
 } from "../../src/music-asset-resolver.js";
 import { ensureMusicServiceWorker } from "../../src/music-service-worker.js";
 
@@ -114,10 +115,21 @@ function buildRuntime(packId) {
           runtimeSync.textContent = "BAR — / BEAT —";
           return;
         }
-        runtimeSync.textContent = `BAR ${info.bar || 1} / BEAT ${info.beat || 1}`;
+        const swap = info.hotSwap?.phase
+          ? ` · ${String(info.hotSwap.phase).toUpperCase()}`
+          : "";
+        runtimeSync.textContent = `BAR ${info.bar || 1} / BEAT ${info.beat || 1}${swap}`;
       },
       onLayerChange() {},
-      onPackChange() {},
+      onPackChange(info = {}) {
+        renderRuntime();
+        if (info.phase === "crossfading") {
+          statusText.textContent = `${info.name || info.id} · HOT SWAP CROSSFADING`;
+        } else if (info.phase === "complete") {
+          const descriptor = getRuntimeDescriptor(runtime);
+          statusText.textContent = `${info.name || info.id}${masteringLabel(descriptor)} · HOT SWAP COMPLETE`;
+        }
+      },
       onFormatChange() {
         renderRuntime();
       },
@@ -149,6 +161,34 @@ function buildRuntime(packId) {
 function selectPack(id) {
   selectedId = id;
   renderPacks();
+
+  const entry = entries.find((item) => item.id === id);
+  if (
+    playing &&
+    runtime?.engine === "wav-stem" &&
+    entry?.engine === runtime.engine &&
+    typeof runtime.manager?.switchPack === "function"
+  ) {
+    const prepared = prepareMusicPackForRuntime(entry);
+    statusText.textContent = `${entry.name} · DECODING FOR NEXT BAR…`;
+    void runtime.manager.switchPack(prepared.pack, {
+      quantize: "bar",
+      crossfadeBeats: 2,
+      mode: runtime.manager.mode || "normal",
+    }).then((info) => {
+      renderRuntime();
+      const delay = Math.max(
+        0,
+        Number(info?.scheduledAt || 0) - Number(runtime.manager.context?.currentTime || 0),
+      );
+      statusText.textContent = `${entry.name} · HOT SWAP NEXT BAR · +${delay.toFixed(2)}s`;
+    }).catch((error) => {
+      console.error(error);
+      statusText.textContent = `HOT SWAP ERROR · ${error.message}`;
+    });
+    return;
+  }
+
   buildRuntime(id);
 }
 
