@@ -5,6 +5,7 @@ import {
   validateDirectedHotSwapRoutes,
   createHotSwapRouteMatrixScenario,
   hotSwapRouteMatrixExecutionSummary,
+  evaluateHotSwapRouteMatrixReport,
 } from "../src/music-qa-route-matrix.js";
 import {
   validateQaScenario,
@@ -17,6 +18,7 @@ import {
   addQaSample,
   finalizeQaSession,
 } from "../src/music-qa-report.js";
+import { getQaBaselineEligibility } from "../src/music-qa-baseline-registry.js";
 
 const errors = [];
 const expectedRouteCount =
@@ -170,7 +172,7 @@ function meter({
 
 const qaSession = createQaSession({
   startedAtMs: 100_000,
-  targetDurationSeconds: 10,
+  targetDurationSeconds: 6,
   sampleIntervalMs: 100,
   metadata: {
     packId: "pulse",
@@ -226,6 +228,17 @@ scenario.routes.forEach((route, routeIndex) => {
   captureAt += 100;
 });
 
+qaSession.metadata.qaRouteMatrixExecution = {
+  status: "completed",
+  startPackId: "pulse",
+  endPackId: "pulse",
+  routeCount: 12,
+  completedRoutes: 12,
+  routes: scenario.routes.map(({ id, index, fromId, toId }) => ({
+    id, index, fromId, toId, completed: true,
+  })),
+};
+
 const qaReport = finalizeQaSession(qaSession, { endedAtMs: captureAt });
 if (qaReport.summary.hotSwapCount !== 12) {
   errors.push(`QA Report should summarize 12 Hot Swaps, got ${qaReport.summary.hotSwapCount}`);
@@ -242,6 +255,54 @@ const summarizedRoutes = new Set(
 );
 if (summarizedRoutes.size !== 12) {
   errors.push(`QA Report lost directed route identity: ${summarizedRoutes.size}/12`);
+}
+
+const matrixEvaluation = evaluateHotSwapRouteMatrixReport(qaReport);
+if (matrixEvaluation.status !== "pass") {
+  errors.push(
+    `complete safe Route Matrix report should PASS: ${matrixEvaluation.status} / ${matrixEvaluation.failures.join("; ")} / ${matrixEvaluation.warnings.join("; ")}`
+  );
+}
+if (
+  matrixEvaluation.observedRouteCount !== 12 ||
+  matrixEvaluation.uniqueObservedRouteCount !== 12 ||
+  matrixEvaluation.evaluatedRouteCount !== 12
+) {
+  errors.push(`Route Matrix evaluation counts mismatch: ${JSON.stringify(matrixEvaluation)}`);
+}
+
+const deviceBaselineEligibility = getQaBaselineEligibility(qaReport, {
+  packId: "pulse",
+});
+if (deviceBaselineEligibility.eligible) {
+  errors.push("Route Matrix report must not be eligible as a Pack Standard device baseline");
+}
+if (
+  !deviceBaselineEligibility.failures.some((message) =>
+    message.includes("Standard Scenario mismatch")
+  )
+) {
+  errors.push("Route Matrix device-baseline rejection reason is missing");
+}
+
+const incompleteReport = JSON.parse(JSON.stringify(qaReport));
+incompleteReport.summary.hotSwaps.pop();
+incompleteReport.summary.hotSwapCount = 11;
+incompleteReport.summary.hotSwapQa.evaluatedCount = 11;
+const incompleteEvaluation = evaluateHotSwapRouteMatrixReport(incompleteReport);
+if (incompleteEvaluation.status !== "fail") {
+  errors.push(
+    `11/12 observed Route Matrix should FAIL: ${incompleteEvaluation.status}`
+  );
+}
+
+const lowCoverageReport = JSON.parse(JSON.stringify(qaReport));
+lowCoverageReport.summary.samplingCoveragePercent = 82;
+const lowCoverageEvaluation = evaluateHotSwapRouteMatrixReport(lowCoverageReport);
+if (lowCoverageEvaluation.status !== "review") {
+  errors.push(
+    `82% Route Matrix coverage should REVIEW: ${lowCoverageEvaluation.status}`
+  );
 }
 
 for (const fromId of HOT_SWAP_ROUTE_MATRIX_PACKS) {
@@ -267,3 +328,6 @@ console.log("- bar / 2 beat / equal-power pack actions: OK");
 console.log("- 1.1 second timing drift abort: OK");
 console.log("- 12-route QA Report aggregation: OK");
 console.log("- 12-route Hot Swap safety gate: PASS");
+console.log("- incomplete 11/12 report: FAIL");
+console.log("- low sampling coverage: REVIEW");
+console.log("- Pack Standard device baseline reuse: BLOCKED");
