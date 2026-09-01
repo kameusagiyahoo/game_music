@@ -1,7 +1,7 @@
 import { MusicManager } from "../src/music-manager.js";
 import { WavStemMusicManager } from "../src/wav-stem-manager.js";
 import { pulsePack } from "../src/music-packs/pulse.js";
-import { fantasyPack } from "../src/music-packs/fantasy.js";
+import { neonPack } from "../src/music-packs/neon.js";
 
 class FakeAudioParam {
   constructor(value = 1) {
@@ -194,7 +194,7 @@ wav.stop();
 // Procedural engine: beat boundary transition.
 let proceduralMode = "normal";
 const procedural = new MusicManager({
-  pack: fantasyPack,
+  pack: neonPack,
   onModeChange(_label, info = {}) {
     if (info.mode) proceduralMode = info.mode;
   },
