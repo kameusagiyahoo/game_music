@@ -147,6 +147,7 @@ export class MusicFacade {
       name: packInfo.name || this.runtime.entry?.name || null,
       pendingId: packInfo.pendingId || null,
       pendingName: packInfo.pendingName || null,
+      hotSwap: packInfo.hotSwap || null,
       running: this.running,
     };
   }
