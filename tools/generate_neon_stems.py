@@ -7,6 +7,7 @@ from pathlib import Path
 
 from generate_pulse_stems import add_tone, midi, write_wav
 
+DESIGN_VERSION = "neon-drive-v1"
 SAMPLE_RATE = 44_100
 BPM = 132
 BARS = 4
@@ -428,6 +429,7 @@ def main() -> None:
             f"rms={stats['rms_dbfs']:.2f}dBFS peak={stats['peak_dbfs']:.2f}dBFS"
         )
 
+    print(f"neon design: {DESIGN_VERSION}")
     print(f"neon audio profile: {SAMPLE_RATE} Hz / stereo / 16-bit PCM")
     print(
         f"neon stems: {BARS} bars / {BPM} BPM / "
