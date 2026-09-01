@@ -289,9 +289,9 @@ if (compareQaReports(hotBaseline, hotCurveChange).hotSwaps?.status !== "review")
 }
 
 const hotImproved = report({
-  peak: -2.5,
-  reduction: 1,
-  over3: 1,
+  peak: -3.2,
+  reduction: 0,
+  over3: 0,
   hotSwaps: [swap({
     peak: -3.2,
     reduction: 0,
