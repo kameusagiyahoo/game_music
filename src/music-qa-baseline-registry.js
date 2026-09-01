@@ -3,6 +3,7 @@ import { validateQaReport } from "./music-qa-compare.js";
 export const QA_BASELINE_REGISTRY_SCHEMA_VERSION = "1.0.0";
 export const QA_BASELINE_STORAGE_KEY = "game-music-qa-pack-baselines-v1";
 export const QA_BASELINE_MIN_COVERAGE_PERCENT = 90;
+export const QA_BASELINE_COMPATIBILITY_SCHEMA_VERSION = "1.0.0";
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -52,6 +53,40 @@ function writeRegistry(storage, registry) {
   storage.setItem(QA_BASELINE_STORAGE_KEY, JSON.stringify(registry));
 }
 
+function normalizeFormat(value) {
+  const text = String(value || "").trim().toLowerCase();
+  return text || null;
+}
+
+function reportContract(report = {}) {
+  const metadata = report?.metadata || {};
+  return {
+    packId: String(metadata.packId || "") || null,
+    packVersion: String(metadata.packVersion || "") || null,
+    audioFormat: normalizeFormat(metadata.audioFormat),
+    masteringProfile: String(metadata.masteringProfile || "") || null,
+    facadeApi: String(metadata.facadeApi || "") || null,
+    scenarioId: String(metadata.qaScenarioId || metadata.qaScenarioExecution?.id || "") || null,
+    scenarioVersion: String(metadata.qaScenarioVersion || "") || null,
+    sampleRate: Number(metadata.initialSampleRate || 0) || null,
+  };
+}
+
+function baselineContract(baseline) {
+  const report = baseline?.report || baseline || {};
+  const fromReport = reportContract(report);
+  return {
+    packId: baseline?.packId || fromReport.packId,
+    packVersion: baseline?.packVersion || fromReport.packVersion,
+    audioFormat: normalizeFormat(baseline?.audioFormat || fromReport.audioFormat),
+    masteringProfile: baseline?.masteringProfile || fromReport.masteringProfile,
+    facadeApi: baseline?.facadeApi || fromReport.facadeApi,
+    scenarioId: baseline?.scenarioId || fromReport.scenarioId,
+    scenarioVersion: baseline?.scenarioVersion || fromReport.scenarioVersion,
+    sampleRate: Number(baseline?.sampleRate || fromReport.sampleRate || 0) || null,
+  };
+}
+
 export function compactQaBaselineReport(report) {
   return {
     schemaVersion: report.schemaVersion,
@@ -75,9 +110,10 @@ export function getQaBaselineEligibility(report, {
     failures.push(...validation.errors);
   }
 
-  const reportPackId = String(report?.metadata?.packId || "");
+  const contract = reportContract(report);
+  const reportPackId = String(contract.packId || "");
   const expectedPackId = String(packId || reportPackId || "");
-  const scenarioId = String(report?.metadata?.qaScenarioId || "");
+  const scenarioId = String(contract.scenarioId || "");
   const scenarioStatus = String(report?.metadata?.qaScenarioStatus || "");
   const expectedScenarioId = expectedPackId
     ? `${expectedPackId}-standard-v1`
@@ -89,6 +125,12 @@ export function getQaBaselineEligibility(report, {
   if (expectedPackId && reportPackId !== expectedPackId) {
     failures.push(`Pack ID mismatch: expected ${expectedPackId}, got ${reportPackId || "missing"}`);
   }
+  if (!contract.packVersion) failures.push("Pack version is missing");
+  if (!contract.audioFormat) failures.push("Audio format is missing");
+  if (!contract.masteringProfile) failures.push("Mastering profile is missing");
+  if (!contract.scenarioVersion) failures.push("Scenario version is missing");
+  if (!contract.sampleRate) failures.push("AudioContext sample rate is missing");
+
   if (!expectedScenarioId || scenarioId !== expectedScenarioId) {
     failures.push(
       `Standard Scenario mismatch: expected ${expectedScenarioId || "<pack>-standard-v1"}, got ${scenarioId || "missing"}`
@@ -113,6 +155,90 @@ export function getQaBaselineEligibility(report, {
     scenarioId: scenarioId || null,
     coveragePercent: Number.isFinite(coverage) ? coverage : null,
     verdict: verdict || null,
+    contract,
+  };
+}
+
+export function getQaBaselineCompatibility(baseline, currentReport) {
+  const failures = [];
+  const warnings = [];
+  const baselineValidation = validateQaReport(baseline?.report || baseline);
+  const currentValidation = validateQaReport(currentReport);
+
+  if (!baselineValidation.valid) {
+    failures.push(...baselineValidation.errors.map((message) => `Baseline report: ${message}`));
+  }
+  if (!currentValidation.valid) {
+    failures.push(...currentValidation.errors.map((message) => `Current report: ${message}`));
+  }
+
+  const before = baselineContract(baseline);
+  const after = reportContract(currentReport);
+
+  const hardMatch = (field, label, formatter = (value) => value || "missing") => {
+    if (!before[field] || !after[field]) {
+      failures.push(`${label} is required: ${formatter(before[field])} -> ${formatter(after[field])}`);
+      return;
+    }
+    if (before[field] !== after[field]) {
+      failures.push(`${label} mismatch: ${formatter(before[field])} -> ${formatter(after[field])}`);
+    }
+  };
+
+  hardMatch("packId", "Pack ID");
+  hardMatch("audioFormat", "Audio format", (value) => String(value || "missing").toUpperCase());
+  hardMatch("masteringProfile", "Mastering profile");
+  hardMatch("scenarioId", "Scenario ID");
+  hardMatch("scenarioVersion", "Scenario version");
+
+  if (!before.sampleRate || !after.sampleRate) {
+    failures.push(
+      `AudioContext sample rate is required: ${before.sampleRate || "missing"} -> ${after.sampleRate || "missing"}`
+    );
+  } else if (Number(before.sampleRate) !== Number(after.sampleRate)) {
+    failures.push(
+      `AudioContext sample rate mismatch: ${before.sampleRate} -> ${after.sampleRate} Hz`
+    );
+  }
+
+  if (!before.packVersion || !after.packVersion) {
+    warnings.push({
+      code: "pack-version-missing",
+      message: `Pack version is incomplete: ${before.packVersion || "missing"} -> ${after.packVersion || "missing"}`,
+    });
+  } else if (before.packVersion !== after.packVersion) {
+    warnings.push({
+      code: "pack-version",
+      message: `Pack version changed: ${before.packVersion} -> ${after.packVersion}`,
+    });
+  }
+
+  if (
+    before.facadeApi &&
+    after.facadeApi &&
+    before.facadeApi !== after.facadeApi
+  ) {
+    warnings.push({
+      code: "facade-api",
+      message: `Facade API changed: ${before.facadeApi} -> ${after.facadeApi}`,
+    });
+  }
+
+  const comparable = failures.length === 0;
+  const status = !comparable
+    ? "incompatible"
+    : warnings.length
+      ? "review"
+      : "exact";
+
+  return {
+    schemaVersion: QA_BASELINE_COMPATIBILITY_SCHEMA_VERSION,
+    comparable,
+    status,
+    failures,
+    warnings,
+    baseline: before,
+    current: after,
   };
 }
 
@@ -125,14 +251,17 @@ export function createQaBaselineEntry(report, {
   }
 
   const compactReport = compactQaBaselineReport(report);
+  const contract = eligibility.contract;
   return {
     schemaVersion: QA_BASELINE_REGISTRY_SCHEMA_VERSION,
     packId: eligibility.packId,
-    packVersion: report.metadata?.packVersion || null,
-    masteringProfile: report.metadata?.masteringProfile || null,
+    packVersion: contract.packVersion,
+    audioFormat: contract.audioFormat,
+    masteringProfile: contract.masteringProfile,
+    facadeApi: contract.facadeApi,
     scenarioId: eligibility.scenarioId,
-    scenarioVersion: report.metadata?.qaScenarioVersion || null,
-    sampleRate: Number(report.metadata?.initialSampleRate || 0) || null,
+    scenarioVersion: contract.scenarioVersion,
+    sampleRate: contract.sampleRate,
     coveragePercent: eligibility.coveragePercent,
     verdict: eligibility.verdict,
     sourceGeneratedAt: report.generatedAt || null,
