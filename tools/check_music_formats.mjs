@@ -1,9 +1,15 @@
 import { pulsePack } from "../src/music-packs/pulse.js";
+import { fantasyPack } from "../src/music-packs/fantasy.js";
 import {
   getAudioFormatCandidates,
   resolvePackAudioFormat,
   selectAudioFormat,
 } from "../src/music-format-resolver.js";
+
+const packs = [
+  { id: "pulse", pack: pulsePack },
+  { id: "fantasy", pack: fantasyPack },
+];
 
 const cases = [
   {
@@ -27,27 +33,37 @@ const cases = [
 ];
 
 const errors = [];
-for (const test of cases) {
-  const options = { support: test.support, useSession: false };
-  const selection = selectAudioFormat(pulsePack, options);
-  if (selection.format !== test.expected) {
-    errors.push(`${test.name}: expected ${test.expected}, got ${selection.format}`);
-  }
 
-  const chain = getAudioFormatCandidates(pulsePack, options);
-  if (JSON.stringify(chain.candidates) !== JSON.stringify(test.candidates)) {
-    errors.push(
-      `${test.name}: expected candidate chain ${test.candidates.join(" -> ")}, got ${chain.candidates.join(" -> ")}`
-    );
-  }
+for (const { id, pack } of packs) {
+  for (const test of cases) {
+    const options = { support: test.support, useSession: false };
+    const selection = selectAudioFormat(pack, options);
+    if (selection.format !== test.expected) {
+      errors.push(`${id} / ${test.name}: expected ${test.expected}, got ${selection.format}`);
+    }
 
-  const resolved = resolvePackAudioFormat(pulsePack, options);
-  const stemUrl = resolved.pack.audioStems.files.drums || "";
-  const stingerUrl = resolved.pack.stingers.files.victory || "";
-  const transitionUrl = resolved.pack.transitionCues.files.fill || "";
-  if (!stemUrl.endsWith(`.${test.expected}`)) errors.push(`${test.name}: drums URL does not use ${test.expected}`);
-  if (!stingerUrl.endsWith(`.${test.expected}`)) errors.push(`${test.name}: victory URL does not use ${test.expected}`);
-  if (!transitionUrl.endsWith(`.${test.expected}`)) errors.push(`${test.name}: fill URL does not use ${test.expected}`);
+    const chain = getAudioFormatCandidates(pack, options);
+    if (JSON.stringify(chain.candidates) !== JSON.stringify(test.candidates)) {
+      errors.push(
+        `${id} / ${test.name}: expected candidate chain ${test.candidates.join(" -> ")}, got ${chain.candidates.join(" -> ")}`
+      );
+    }
+
+    const resolved = resolvePackAudioFormat(pack, options);
+    const stemUrl = resolved.pack.audioStems.files.drums || "";
+    const stingerUrl = resolved.pack.stingers.files.victory || "";
+    const transitionUrl = resolved.pack.transitionCues.files.fill || "";
+
+    if (!stemUrl.endsWith(`.${test.expected}`)) {
+      errors.push(`${id} / ${test.name}: drums URL does not use ${test.expected}`);
+    }
+    if (!stingerUrl.endsWith(`.${test.expected}`)) {
+      errors.push(`${id} / ${test.name}: victory URL does not use ${test.expected}`);
+    }
+    if (!transitionUrl.endsWith(`.${test.expected}`)) {
+      errors.push(`${id} / ${test.name}: fill URL does not use ${test.expected}`);
+    }
+  }
 }
 
 if (errors.length) {
@@ -57,6 +73,8 @@ if (errors.length) {
 }
 
 console.log("Music Format Resolver Check PASSED");
-cases.forEach((test) => {
-  console.log(`- ${test.name} -> ${test.expected} [${test.candidates.join(" -> ")}]`);
-});
+for (const { id } of packs) {
+  cases.forEach((test) => {
+    console.log(`- ${id}: ${test.name} -> ${test.expected} [${test.candidates.join(" -> ")}]`);
+  });
+}
