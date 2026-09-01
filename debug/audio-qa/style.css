@@ -266,3 +266,36 @@ canvas { display: block; width: 100%; height: 190px; margin-top: 14px; border-ra
   .scenario-actions { grid-template-columns: 1fr; }
   .scenario-metrics { grid-template-columns: 1fr; }
 }
+
+.qa-pack-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding: 13px 15px;
+  margin-bottom: 12px;
+}
+.qa-pack-panel > div { display: grid; gap: 5px; }
+.qa-pack-panel > div > strong { font-size: .86rem; color: #dce2eb; }
+.qa-pack-select { display: grid; gap: 5px; min-width: 220px; }
+.qa-pack-select span {
+  color: #818b9b;
+  font-size: .62rem;
+  letter-spacing: .1em;
+  font-weight: 800;
+}
+.qa-pack-select select {
+  min-height: 44px;
+  border-radius: 11px;
+  border: 1px solid #353b47;
+  background: #11151c;
+  color: #eef1f6;
+  padding: 0 12px;
+  font: inherit;
+  font-weight: 800;
+}
+.qa-pack-select select:disabled { opacity: .4; }
+@media (max-width: 560px) {
+  .qa-pack-panel { align-items: stretch; flex-direction: column; }
+  .qa-pack-select { min-width: 0; width: 100%; }
+}
