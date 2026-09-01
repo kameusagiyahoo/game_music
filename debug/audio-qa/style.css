@@ -328,10 +328,16 @@ canvas { display: block; width: 100%; height: 190px; margin-top: 14px; border-ra
   border-color: #665c3d;
   background: #211e14;
 }
-.hot-swap-status.active {
+.hot-swap-status.active,
+.hot-swap-status.crossfading {
   color: #b9e1ce;
   border-color: #3f6856;
   background: #12231c;
+}
+.hot-swap-status.fail {
+  color: #e5b6b6;
+  border-color: #754545;
+  background: #2a1719;
 }
 .hot-swap-status.hot {
   color: #e5b6b6;
@@ -446,3 +452,11 @@ canvas { display: block; width: 100%; height: 190px; margin-top: 14px; border-ra
     grid-template-columns: 1fr 1fr;
   }
 }
+
+.hot-swap-gate-status {
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+.hot-swap-gate-status.pass { color: #9fc9ad; }
+.hot-swap-gate-status.review { color: #d0b980; }
+.hot-swap-gate-status.fail { color: #dfa0a5; }
