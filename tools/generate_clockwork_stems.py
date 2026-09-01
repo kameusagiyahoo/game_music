@@ -7,7 +7,7 @@ from pathlib import Path
 
 from generate_pulse_stems import add_tone, midi, write_wav
 
-DESIGN_VERSION = "clockwork-grove-v1"
+DESIGN_VERSION = "clockwork-grove-v1.0.1"
 SAMPLE_RATE = 44_100
 BPM = 108
 BARS = 4
