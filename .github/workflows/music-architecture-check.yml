@@ -22,11 +22,13 @@ on:
       - "tools/check_music_qa_scenario.mjs"
       - "tools/music_qa_golden.mjs"
       - "tools/music_qa_golden_fantasy.mjs"
-      - "tools/music_qa_golden_fantasy.mjs"
       - "tools/check_music_qa_golden.mjs"
+      - "tools/check_music_qa_golden_fantasy.mjs"
       - "qa/baselines/**"
       - "tools/check_pulse_mastering.py"
       - "tools/check_pulse_audio_profile.py"
+      - "tools/check_fantasy_audio_profile.py"
+      - "tools/encode_fantasy_audio.sh"
       - "tools/encode_pulse_audio.sh"
       - ".github/workflows/music-architecture-check.yml"
   pull_request:
@@ -50,9 +52,12 @@ on:
       - "tools/check_music_qa_scenario.mjs"
       - "tools/music_qa_golden.mjs"
       - "tools/check_music_qa_golden.mjs"
+      - "tools/check_music_qa_golden_fantasy.mjs"
       - "qa/baselines/**"
       - "tools/check_pulse_mastering.py"
       - "tools/check_pulse_audio_profile.py"
+      - "tools/check_fantasy_audio_profile.py"
+      - "tools/encode_fantasy_audio.sh"
       - "tools/encode_pulse_audio.sh"
       - ".github/workflows/music-architecture-check.yml"
 
@@ -69,8 +74,10 @@ jobs:
           node-version: "22"
       - name: Enforce Music Facade boundary
         run: python tools/check_music_boundary.py
-      - name: Check Pulse encoder shell syntax
-        run: bash -n tools/encode_pulse_audio.sh
+      - name: Check audio encoder shell syntax
+        run: |
+          bash -n tools/encode_pulse_audio.sh
+          bash -n tools/encode_fantasy_audio.sh
       - name: Check JavaScript syntax
         run: |
           node --check src/music-pack-manifest.js
@@ -87,6 +94,7 @@ jobs:
           node --check src/music-qa-scenario.js
           node --check tools/music_qa_golden.mjs
           node --check tools/music_qa_golden_fantasy.mjs
+          node --check tools/check_music_qa_golden_fantasy.mjs
           node --check src/game.js
           node --check games/orbit-rush/game.js
           node --check games/pulse-forge/game.js
@@ -134,9 +142,23 @@ jobs:
           retention-days: 14
       - name: Check Golden QA Gate Semantics
         run: node tools/check_music_qa_golden.mjs
-      - name: Print Fantasy Golden QA Candidate
-        run: node tools/music_qa_golden_fantasy.mjs --print
+      - name: Check Fantasy Golden QA + Publish Summary
+        env:
+          GOLDEN_QA_REPORT_PATH: qa/out/fantasy-standard-v1-golden-report.json
+        run: node tools/music_qa_golden_fantasy.mjs --check
+      - name: Upload Fantasy Golden QA Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fantasy-golden-qa-report
+          path: qa/out/fantasy-standard-v1-golden-report.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Check Fantasy Golden QA Gate Semantics
+        run: node tools/check_music_qa_golden_fantasy.mjs
       - name: Check Pulse Audio Profile
         run: python tools/check_pulse_audio_profile.py
+      - name: Check Fantasy Audio Profile
+        run: python tools/check_fantasy_audio_profile.py
       - name: Check Pulse Mastering
         run: python tools/check_pulse_mastering.py
