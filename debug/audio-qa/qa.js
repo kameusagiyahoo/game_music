@@ -408,6 +408,102 @@ function formatTimeMs(value) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${tenths}`;
 }
 
+function availableHotSwapTargets(currentId) {
+  return [...hotSwapTargetSelect.options]
+    .map((option) => option.value)
+    .filter((id) => id && id !== currentId);
+}
+
+function syncHotSwapTarget(currentId) {
+  const currentTarget = hotSwapTargetSelect.value;
+  if (currentTarget && currentTarget !== currentId) return;
+  const [next] = availableHotSwapTargets(currentId);
+  if (next) hotSwapTargetSelect.value = next;
+}
+
+function renderHotSwapMonitor(meter = music.meter()) {
+  const hot = meter?.hotSwap || null;
+  const currentId = meter?.packId || music.info()?.id || selectedQaPackId;
+  syncHotSwapTarget(currentId);
+
+  if (!hot) {
+    hotSwapStatus.textContent = "IDLE";
+    hotSwapStatus.className = "hot-swap-status idle";
+    hotSwapRoute.textContent = `${String(currentId || "—").toUpperCase()} → —`;
+    hotSwapProgressValue.textContent = "0%";
+    hotSwapProgressBar.style.width = "0%";
+    hotSwapCurveValue.textContent = "—";
+    hotSwapOutgoingValue.textContent = "—";
+    hotSwapIncomingValue.textContent = "—";
+    hotSwapPowerValue.textContent = "—";
+    cancelHotSwapButton.disabled = true;
+    return;
+  }
+
+  const phase = String(hot.phase || "scheduled");
+  const progress = Math.max(0, Math.min(1, Number(hot.progress || 0)));
+  hotSwapStatus.textContent = phase.toUpperCase();
+  hotSwapStatus.className = `hot-swap-status ${phase}`;
+  hotSwapRoute.textContent =
+    `${String(hot.fromId || "—").toUpperCase()} → ${String(hot.toId || "—").toUpperCase()}`;
+  hotSwapProgressValue.textContent = `${Math.round(progress * 100)}%`;
+  hotSwapProgressBar.style.width = `${Math.round(progress * 100)}%`;
+  hotSwapCurveValue.textContent = String(hot.curve || "—").toUpperCase();
+  hotSwapOutgoingValue.textContent = Number.isFinite(Number(hot.outgoingGain))
+    ? Number(hot.outgoingGain).toFixed(3)
+    : "—";
+  hotSwapIncomingValue.textContent = Number.isFinite(Number(hot.incomingGain))
+    ? Number(hot.incomingGain).toFixed(3)
+    : "—";
+  hotSwapPowerValue.textContent = Number.isFinite(Number(hot.powerCoefficientSum))
+    ? Number(hot.powerCoefficientSum).toFixed(4)
+    : "—";
+  cancelHotSwapButton.disabled = phase !== "scheduled";
+}
+
+async function scheduleQaHotSwap() {
+  if (recordingSession && scenarioRun?.status === "running") return;
+
+  if (!music.running) {
+    qaBadge.textContent = "STARTING";
+    await music.start("normal");
+    refreshStaticInfo();
+  }
+
+  const info = music.info();
+  const currentId = info.id || selectedQaPackId;
+  syncHotSwapTarget(currentId);
+  const targetId = hotSwapTargetSelect.value;
+  if (!targetId || targetId === currentId) return;
+
+  scheduleHotSwapButton.disabled = true;
+  hotSwapStatus.textContent = "LOADING";
+  hotSwapStatus.className = "hot-swap-status scheduled";
+
+  try {
+    await music.preload({ stingers: true, transitions: true });
+    await music.pack(targetId, {
+      quantize: "bar",
+      crossfadeBeats: 2,
+      crossfadeCurve: hotSwapCurveSelect.value === "exponential"
+        ? "exponential-v30"
+        : "equal-power-v1",
+      mode: "normal",
+    });
+  } catch (error) {
+    console.error(error);
+    hotSwapStatus.textContent = "ERROR";
+    hotSwapStatus.className = "hot-swap-status fail";
+  } finally {
+    scheduleHotSwapButton.disabled = false;
+  }
+}
+
+function cancelQaHotSwap() {
+  music.cancel("pack");
+  renderHotSwapMonitor();
+}
+
 function renderScenario() {
   const now = performance.now();
   const progress = scenarioRun
@@ -1129,6 +1225,7 @@ document.addEventListener("visibilitychange", () => {
 updateQaPackLabel();
 void preloadCurrentQaPack();
 
+renderHotSwapMonitor();
 renderReportSummary();
 renderComparison();
 renderScenario();
