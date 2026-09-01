@@ -3522,6 +3522,294 @@ v30 Exponential       0.0002
 
 これは実音源の最終LUFS/Peak値ではなく、Crossfade Gain Curve自体の比較です。
 
+### v32 — Hot Swap Realtime Meter / QA Report Integration
+
+v31のEqual-Power Hot Swapを、Realtime MeterとQA Recorderの正式な計測対象へ追加しました。
+
+これまでは、
+
+```text
+music.info().hotSwap
+```
+
+で予約状態やCrossfade方式は確認できましたが、QA Reportの各Meter sampleにはHot Swap区間が残っていませんでした。
+
+v32では `music.meter()` にHot Swap Snapshotを追加しています。
+
+```js
+meter.hotSwap = {
+  phase: "scheduled" | "crossfading" | "complete",
+  fromId: "pulse",
+  toId: "fantasy",
+  curve: "equal-power-v1",
+  quantize: "bar",
+  scheduledAt,
+  fadeEnd,
+  crossfadeBeats,
+  fadeSeconds,
+  progress,
+  outgoingGain,
+  incomingGain,
+  powerCoefficientSum
+}
+```
+
+同時に現在のPackも、
+
+```text
+meter.packId
+meter.packName
+```
+
+として取得できます。
+
+### Realtime crossfade point
+
+Equal-Power v1:
+
+```text
+progress = 0 .. 1
+
+old = cos(π/2 × progress)
+new = sin(π/2 × progress)
+
+powerCoefficientSum
+= old² + new²
+≈ 1
+```
+
+中央点:
+
+```text
+progress      0.5000
+old gain      0.7071
+new gain      0.7071
+power Σ       1.0000
+```
+
+Resolver A/B用のLegacy v30 Exponentialも同じSnapshot APIで計測できます。
+
+その中央点では理論power coefficient sumが大きく低下するため、Realtime Meter / QA Report上でEqual-Powerとの差を確認できます。
+
+計算関数:
+
+```text
+samplePackCrossfadePoint()
+```
+
+### QA sample
+
+Recorderの各sampleへ以下を追加しています。
+
+```json
+{
+  "packId": "fantasy",
+  "hotSwap": {
+    "phase": "crossfading",
+    "fromId": "pulse",
+    "toId": "fantasy",
+    "curve": "equal-power-v1",
+    "progress": 0.52,
+    "outgoingGain": 0.684,
+    "incomingGain": 0.729,
+    "powerCoefficientSum": 1.0
+  }
+}
+```
+
+したがって同じ100 ms sampleに、
+
+```text
+Hot Swap progress
++
+Output Peak
++
+Output RMS
++
+Limiter Reduction
+```
+
+が紐付きます。
+
+### Hot Swap QA Summary
+
+`finalizeQaSession()` はHot SwapごとにCrossfade区間だけを集計します。
+
+```text
+from / to
+curve
+quantize
+crossfade beats
+observed crossfade duration
+sample count
+max output peak
+min output RMS
+max output RMS
+average output RMS
+max limiter reduction
+min / max power coefficient sum
+```
+
+Report全体にも、
+
+```text
+hotSwapCount
+hotSwapCrossfadeSeconds
+hotSwapMaxOutputPeakDbfs
+hotSwapMinOutputRmsDbfs
+hotSwapMaxLimiterReductionMagnitudeDb
+hotSwapMinPowerCoefficientSum
+hotSwaps[]
+```
+
+を追加しています。
+
+特に、
+
+```text
+hotSwapMinOutputRmsDbfs
+```
+
+でCrossfade中だけ音量が痩せるRegressionを確認できます。
+
+```text
+hotSwapMaxOutputPeakDbfs
+hotSwapMaxLimiterReductionMagnitudeDb
+```
+
+では逆にPackの重なりで音圧が跳ねるケースを確認できます。
+
+### Hot Swap events
+
+QA Reportの `events[]` に、
+
+```text
+type: hot-swap
+
+scheduled
+crossfading
+complete
+```
+
+を追加しています。
+
+例:
+
+```text
+PULSE -> FANTASY
+SCHEDULED
+    |
+    v
+CROSSFADING
+    |
+    v
+COMPLETE
+```
+
+Hot Swapが完了した直後にManager側のpending stateがcleanupされても、Recorderは直前のSwap情報からCOMPLETE eventを生成します。
+
+### CSV
+
+CSVへ以下を追加しています。
+
+```text
+pack_id
+hot_swap_phase
+hot_swap_from
+hot_swap_to
+hot_swap_curve
+hot_swap_progress
+hot_swap_outgoing_gain
+hot_swap_incoming_gain
+hot_swap_power_coefficient_sum
+```
+
+そのためJSONを使わなくてもSpreadsheet等でCrossfade部分だけfilterできます。
+
+### Audio QA Dashboard
+
+Audio QA Dashboardに専用Hot Swap Monitorを追加しました。
+
+```text
+TARGET PACK
+CROSSFADE CURVE
+QUEUE NEXT BAR
+CANCEL QUEUE
+```
+
+Realtime表示:
+
+```text
+PULSE -> FANTASY
+CROSSFADING
+54%
+
+CURVE       EQUAL-POWER-V1
+OLD GAIN    0.661
+NEW GAIN    0.750
+POWER Σ     1.0000
+```
+
+手順:
+
+1. START AUDIO
+2. 必要なら RECORD 60s
+3. TARGET PACKを選択
+4. Equal-Power / Legacyを選択
+5. QUEUE NEXT BAR
+6. CrossfadeをRealtime監視
+7. STOP & ANALYZE
+8. JSON / CSVを保存
+
+Standard 60s Scenario中はPack条件を固定するためHot Swap操作を無効化します。
+
+手動Recorder中はHot Swap可能です。
+
+Hot Swap完了後は、Dashboardの現在Pack / Mastering / Scenario IDも新Packへ追従します。
+
+URL: https://kameusagiyahoo.github.io/game_music/debug/audio-qa/
+
+### v32 CI
+
+専用check:
+
+```text
+tools/check_music_hot_swap_qa.mjs
+```
+
+検証内容:
+
+- Equal-Power midpoint old/new ≈ 0.7071
+- Equal-Power power sum ≈ 1.0
+- Legacy midpointのpower dipを検出
+- Manager Realtime MeterにHot Swap metadata
+- progress = 0.5 のSnapshot
+- QA Hot Swap window集計
+- Hot Swap Peak / min RMS / Limiter Reduction
+- scheduled / crossfading / complete event
+- CSV Hot Swap columns
+
+既存の、
+
+```text
+tools/check_music_pack_hot_swap.mjs
+tools/check_music_equal_power_crossfade.mjs
+```
+
+と合わせて、
+
+```text
+Scheduling correctness
+        +
+Gain curve correctness
+        +
+Realtime QA observability
+```
+
+の3層でHot Swapを検証します。
+
+Facadeの公開メソッドは増えていないため、Facade API versionは引き続き `1.5.0` です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -3597,6 +3885,7 @@ Validation:
 - `tools/check_music_quantization.mjs`
 - `tools/check_music_pack_hot_swap.mjs`
 - `tools/check_music_equal_power_crossfade.mjs`
+- `tools/check_music_hot_swap_qa.mjs`
 - `tools/check_music_transition_cues.mjs`
 - `tools/check_music_mastering.mjs`
 - `tools/check_music_metering.mjs`
@@ -3692,7 +3981,9 @@ assets/
 │   └── clockwork/
 ├── stingers/
 │   ├── pulse/
-│   └── fantasy/
+│   ├── fantasy/
+│   ├── neon/
+│   └── clockwork/
 └── transitions/
     ├── pulse/
     ├── fantasy/
@@ -3702,6 +3993,6 @@ assets/
 
 ## Next candidates
 
+- Hot Swap QA ReportのBaseline / Regression Compare統合
 - Packごとの実機QA Baseline取り込み
-- Hot Swap区間のRealtime Meter / QA Report統合
 - Game 06追加
