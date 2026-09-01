@@ -47,11 +47,12 @@ function readAnalyserStats(analyser, buffer) {
 }
 
 export class WavStemMusicManager {
-  constructor({ pack, onModeChange, onSync, onLayerChange, onFormatChange } = {}) {
+  constructor({ pack, onModeChange, onSync, onLayerChange, onPackChange, onFormatChange } = {}) {
     this.pack = pack;
     this.onModeChange = onModeChange || (() => {});
     this.onSync = onSync || (() => {});
     this.onLayerChange = onLayerChange || (() => {});
+    this.onPackChange = onPackChange || (() => {});
     this.onFormatChange = onFormatChange || (() => {});
 
     this.context = null;
@@ -64,6 +65,7 @@ export class WavStemMusicManager {
     this.preMeterBuffer = null;
     this.outputMeterBuffer = null;
     this.musicRoot = null;
+    this.packGain = null;
     this.stingerBus = null;
     this.transitionBus = null;
     this.sfxBus = null;
@@ -90,6 +92,7 @@ export class WavStemMusicManager {
     this.pendingStinger = null;
     this.pendingTransitionCue = null;
     this.pendingLayerScheduledAt = null;
+    this.pendingPackSwitch = null;
     this.layerPreset = pack?.defaultLayerPreset || null;
     this.layerMix = this.#initialMix();
 
@@ -125,6 +128,7 @@ export class WavStemMusicManager {
       this.masterTrim = this.context.createGain();
       this.limiter = this.context.createDynamicsCompressor();
       this.musicRoot = this.context.createGain();
+      this.packGain = this.context.createGain();
       this.stingerBus = this.context.createGain();
       this.transitionBus = this.context.createGain();
       this.sfxBus = this.context.createGain();
@@ -148,6 +152,7 @@ export class WavStemMusicManager {
       this.master.gain.value = 1;
       this.masterTrim.gain.value = dbToGain(mastering.headroomDb);
       this.musicRoot.gain.value = this.musicEnabled ? this.musicVolume : 0.0001;
+      this.packGain.gain.value = 1;
       this.stingerBus.gain.value = this.musicEnabled ? this.musicVolume : 0.0001;
       this.transitionBus.gain.value = this.musicEnabled ? this.musicVolume : 0.0001;
       this.sfxBus.gain.value = this.sfxEnabled ? this.sfxVolume : 0.0001;
@@ -158,6 +163,7 @@ export class WavStemMusicManager {
       this.limiter.attack.value = mastering.limiter.attack;
       this.limiter.release.value = mastering.limiter.release;
 
+      this.packGain.connect(this.musicRoot);
       this.musicRoot.connect(this.master);
       this.stingerBus.connect(this.master);
       this.transitionBus.connect(this.master);
@@ -177,7 +183,7 @@ export class WavStemMusicManager {
       STEMS.forEach((name) => {
         const bus = this.context.createGain();
         bus.gain.value = Math.max(0.0001, this.layerMix[name] ?? 1);
-        bus.connect(this.musicRoot);
+        bus.connect(this.packGain);
         this.layerBuses[name] = bus;
       });
     }
@@ -207,9 +213,11 @@ export class WavStemMusicManager {
     this.pendingStinger = null;
     this.pendingTransitionCue = null;
     this.pendingLayerScheduledAt = null;
+    this.pendingPackSwitch = null;
     this.layerPreset = this.pack?.defaultLayerPreset || null;
     this.layerMix = this.#initialMix();
     this.duckAmount = 1;
+    this.#ramp(this.packGain.gain, 1, 0.01);
     this.#applyMusicRootGain(0.01);
     this.#applyLayerMix(this.layerMix, 0.01, this.layerPreset);
 
