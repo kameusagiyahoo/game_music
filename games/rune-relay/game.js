@@ -1,10 +1,11 @@
-import { createMusicFacade } from "../../src/music-facade.js";
+import { createMusicFacade, preloadMusicAssets } from "../../src/music-facade.js";
 import {
   GAME_IDS,
-  MUSIC_ENGINES,
+  GAME_DEFAULT_PACKS,
   getMusicSettings,
   saveMusicSettings,
   listMusicPacks,
+  getMusicPackEntry,
   applyMusicSettingsToControls,
 } from "../../src/music-registry.js";
 
@@ -13,8 +14,9 @@ const TENSION_AT = 10;
 const $ = (selector) => document.querySelector(selector);
 const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
-const proceduralEntries = listMusicPacks({ engine: MUSIC_ENGINES.PROCEDURAL });
-const PACKS = Object.fromEntries(proceduralEntries.map((entry) => [entry.id, entry]));
+const STORAGE_KEY = "rune-relay-pack";
+const packEntries = listMusicPacks();
+const PACKS = Object.fromEntries(packEntries.map((entry) => [entry.id, entry]));
 
 const startButton = $("#startButton");
 const retryButton = $("#retryButton");
@@ -58,11 +60,15 @@ let acceptingInput = false;
 let playbackToken = 0;
 let tensionRequested = false;
 let masterSoundEnabled = true;
+let pendingRuntimePackId = null;
+let runtimeSwapInProgress = false;
 
 function renderPackRegistry() {
-  packButtonsContainer.innerHTML = proceduralEntries.map((entry) => `
+  packButtonsContainer.innerHTML = packEntries.map((entry) => `
     <button type="button" class="pack-button" data-pack="${entry.id}">
-      <strong>${entry.shortName}</strong><span>${entry.description}</span>
+      <strong>${entry.shortName}</strong>
+      <span>${entry.description}</span>
+      <small>${entry.engine}</small>
     </button>
   `).join("");
 }
@@ -70,21 +76,24 @@ function renderPackRegistry() {
 function renderPackButtons(info = {}) {
   const activeInfo = info.id ? info : music.info();
   currentPack.textContent = activeInfo.name || music.info().name;
-  pendingPack.textContent = activeInfo.pendingName || "—";
+  pendingPack.textContent = pendingRuntimePackId
+    ? PACKS[pendingRuntimePackId]?.name || pendingRuntimePackId
+    : activeInfo.pendingName || "—";
   document.querySelectorAll(".pack-button").forEach((button) => {
     const id = button.dataset.pack;
     button.classList.toggle("is-active", id === (activeInfo.id || music.info().id));
-    button.classList.toggle("is-pending", id === activeInfo.pendingId);
+    button.classList.toggle("is-pending", id === (pendingRuntimePackId || activeInfo.pendingId));
   });
 }
 
 renderPackRegistry();
 const sharedSettings = getMusicSettings();
+const storedPackId = localStorage.getItem(STORAGE_KEY);
+let selectedPackId = getMusicPackEntry(storedPackId)?.id || GAME_DEFAULT_PACKS[GAME_IDS.RUNE_RELAY];
 let music;
-const facade = createMusicFacade({
-  gameId: GAME_IDS.RUNE_RELAY,
-  engine: MUSIC_ENGINES.PROCEDURAL,
-  callbacks: {
+
+function runtimeCallbacks() {
+  return {
     onModeChange(label) {
       musicState.textContent = label;
     },
@@ -93,13 +102,73 @@ const facade = createMusicFacade({
     },
     onSync(info) {
       syncState.textContent = info.mode === "ready" ? "BAR — / BEAT —" : `BAR ${info.bar} / BEAT ${info.beat}`;
-      pendingPack.textContent = info.pendingPackName || "—";
+      pendingPack.textContent = pendingRuntimePackId
+        ? PACKS[pendingRuntimePackId]?.name || pendingRuntimePackId
+        : info.pendingPackName || "—";
     },
-  },
-  settings: sharedSettings,
-});
-music = facade;
+  };
+}
+
+function createRuntime(packId = selectedPackId) {
+  return createMusicFacade({
+    packId,
+    callbacks: runtimeCallbacks(),
+    settings: getMusicSettings(),
+  });
+}
+
+music = createRuntime();
+selectedPackId = music.entry.id;
 applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
+
+function warmPack(packId) {
+  const entry = PACKS[packId];
+  if (!entry || entry.engine !== "wav-stem") return;
+  void preloadMusicAssets({
+    packId,
+    settings: getMusicSettings(),
+    preloadOptions: { stingers: true, transitions: true },
+  }).catch((error) => console.warn("Rune Relay pack preload failed", error));
+}
+
+async function activateRuntime(packId, { play = false, mode = "normal" } = {}) {
+  const entry = PACKS[packId];
+  if (!entry) return null;
+
+  music?.stop();
+  music = createRuntime(packId);
+  selectedPackId = packId;
+  localStorage.setItem(STORAGE_KEY, packId);
+  pendingRuntimePackId = null;
+  pendingPack.textContent = "—";
+  renderPackButtons(music.info());
+
+  if (play) await music.start(mode);
+  return music;
+}
+
+async function applyPendingRuntimeAtSequenceBoundary() {
+  if (!pendingRuntimePackId || runtimeSwapInProgress) return;
+  const nextId = pendingRuntimePackId;
+  const entry = PACKS[nextId];
+  if (!entry) {
+    pendingRuntimePackId = null;
+    return;
+  }
+
+  runtimeSwapInProgress = true;
+  setMessage(
+    "Music Runtimeを交換",
+    `${entry.name} / ${entry.engine.toUpperCase()} をシーケンス境界で適用します。`,
+    "CROSS-ENGINE SWITCH"
+  );
+  try {
+    const mode = remaining <= TENSION_AT ? "tension" : "normal";
+    await activateRuntime(nextId, { play: true, mode });
+  } finally {
+    runtimeSwapInProgress = false;
+  }
+}
 
 function setMessage(title, body, kicker = "MEMORY / PACK SWITCH") {
   gameMessage.innerHTML = `<span class="message-kicker">${kicker}</span><strong>${title}</strong><span>${body}</span>`;
@@ -138,6 +207,7 @@ function makeInitialSequence() {
 }
 
 async function playSequence() {
+  await applyPendingRuntimeAtSequenceBoundary();
   const token = ++playbackToken;
   acceptingInput = false;
   inputIndex = 0;
@@ -211,7 +281,7 @@ function requestTension() {
   if (tensionRequested) return;
   tensionRequested = true;
   const packInfo = music.info();
-  if (packInfo.pendingId && PACKS[packInfo.pendingId]) {
+  if (!pendingRuntimePackId && packInfo.pendingId && PACKS[packInfo.pendingId]) {
     void music.pack(packInfo.pendingId, {
       quantize: "bar",
       crossfadeBeats: 1.5,
@@ -236,6 +306,8 @@ function resetGame() {
   streak = 0;
   inputIndex = 0;
   tensionRequested = false;
+  pendingRuntimePackId = null;
+  runtimeSwapInProgress = false;
   makeInitialSequence();
   clearPadEffects();
   resultOverlay.hidden = true;
@@ -297,21 +369,51 @@ function endGame() {
 async function choosePack(id) {
   const entry = PACKS[id];
   if (!entry) return;
-  saveMusicSettings({ proceduralPackId: id });
-  const info = music.info();
 
+  selectedPackId = id;
+  localStorage.setItem(STORAGE_KEY, id);
+  warmPack(id);
+
+  if (entry.engine === "wav-stem") {
+    saveMusicSettings({ wavStemPackId: id });
+  } else {
+    saveMusicSettings({ proceduralPackId: id });
+  }
+
+  const info = music.info();
   if (state === "playing") {
     if (id === info.id) {
+      pendingRuntimePackId = null;
       if (info.pendingId) music.cancel("pack");
+      renderPackButtons(music.info());
       return;
     }
+
     const mode = remaining <= TENSION_AT ? "tension" : "normal";
-    await music.pack(id, { quantize: "bar", crossfadeBeats: 2, mode });
-    setMessage(`${entry.name} を予約`, "現在の小節が終わるとMusic Packを切り替えます。", "PACK SWITCH QUEUED");
-  } else {
-    await music.pack(id, { immediate: true });
+    if (entry.engine === music.engine) {
+      pendingRuntimePackId = null;
+      await music.pack(id, { quantize: "bar", crossfadeBeats: 2, mode });
+      setMessage(
+        `${entry.name} を予約`,
+        "同じEngineなので現在の小節が終わると切り替えます。",
+        "PACK SWITCH QUEUED"
+      );
+    } else {
+      music.cancel("pack");
+      pendingRuntimePackId = id;
+      pendingPack.textContent = entry.name;
+      setMessage(
+        `${entry.name} を予約`,
+        "Engineが変わるため次のシーケンス境界でRuntimeを交換します。",
+        "CROSS-ENGINE QUEUED"
+      );
+    }
     renderPackButtons(music.info());
+    return;
   }
+
+  await activateRuntime(id, { play: false });
+  renderPackButtons(music.info());
 }
 
 async function applyAudioState() {
@@ -359,3 +461,4 @@ retryButton.addEventListener("click", startGame);
 makeInitialSequence();
 updateStatus();
 renderPackButtons(music.info());
+warmPack(selectedPackId);
