@@ -137,7 +137,7 @@ function warmPack(packId, announce = false) {
   void preloadMusicAssets({
     packId,
     settings: getMusicSettings(),
-    preloadOptions: { stingers: true },
+    preloadOptions: { stingers: true, transitions: true },
   }).then((info) => {
     if (announce && state === "ready" && selectedPackId === packId && info?.state === "ready") {
       musicState.textContent = `PRELOADED · ${String(info.format || "audio").toUpperCase()}`;
@@ -177,7 +177,7 @@ async function activateRuntime(packId, play = true) {
   refreshPackButtons();
 
   if (play) {
-    musicState.textContent = music.engine === "wav-stem" ? "LOADING · WAV STEMS" : "STARTING · PROCEDURAL";
+    musicState.textContent = music.engine === "wav-stem" ? "LOADING · REAL AUDIO STEMS" : "STARTING · PROCEDURAL";
     await music.start("normal");
   }
   return music;
