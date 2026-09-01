@@ -26,6 +26,7 @@ const playButton = $("#playButton");
 const stopButton = $("#stopButton");
 const modeButtons = $("#modeButtons");
 const specialButtons = $("#specialButtons");
+const crossfadeCurve = $("#crossfadeCurve");
 const bgmToggle = $("#bgmToggle");
 const sfxToggle = $("#sfxToggle");
 const bgmVolume = $("#bgmVolume");
@@ -175,6 +176,7 @@ function selectPack(id) {
     void runtime.manager.switchPack(prepared.pack, {
       quantize: "bar",
       crossfadeBeats: 2,
+      crossfadeCurve: crossfadeCurve?.value || "equal-power",
       mode: runtime.manager.mode || "normal",
     }).then((info) => {
       renderRuntime();
