@@ -135,6 +135,15 @@ if (!exactCompatibility.comparable || exactCompatibility.status !== "exact") {
   errors.push("same device contract should be EXACT");
 }
 
+const legacyEntry = JSON.parse(JSON.stringify(compatibilityBaseline));
+delete legacyEntry.audioFormat;
+delete legacyEntry.sampleRate;
+delete legacyEntry.facadeApi;
+const legacyCompatibility = getQaBaselineCompatibility(legacyEntry, report());
+if (!legacyCompatibility.comparable || legacyCompatibility.status !== "exact") {
+  errors.push("legacy saved baseline metadata fallback should remain EXACT");
+}
+
 const versionCompatibility = getQaBaselineCompatibility(
   compatibilityBaseline,
   report({ packVersion: "1.5.0" }),
@@ -245,6 +254,7 @@ console.log("- completed Standard 60s report with device contract: eligible");
 console.log("- missing format/rate/version/mastering: blocked");
 console.log("- wrong/aborted/low-coverage/FAIL reports: blocked");
 console.log("- EXACT same-contract comparison: OK");
+console.log("- legacy saved-entry metadata fallback: OK");
 console.log("- pack version only: REVIEW + comparable");
 console.log("- format/sample-rate/mastering/scenario mismatch: INCOMPATIBLE");
 console.log("- per-pack save/load/replace/delete: OK");
