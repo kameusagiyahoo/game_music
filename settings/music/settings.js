@@ -18,6 +18,7 @@ const sfxVolumeValue = $("#sfxVolumeValue");
 const proceduralPacks = $("#proceduralPacks");
 const wavPacks = $("#wavPacks");
 const proceduralSummary = $("#proceduralSummary");
+const wavSummary = $("#wavSummary");
 const saveState = $("#saveState");
 const resetButton = $("#resetButton");
 const packCount = $("#packCount");
@@ -76,10 +77,20 @@ function render() {
   procedural.forEach((entry) => proceduralPacks.appendChild(packButton(entry, settings.proceduralPackId === entry.id)));
 
   wavPacks.innerHTML = "";
-  wav.forEach((entry) => wavPacks.appendChild(packButton(entry, settings.wavStemPackId === entry.id, wav.length === 1)));
+  const wavAuto = document.createElement("label");
+  wavAuto.className = `registry-pack registry-auto${settings.wavStemPackId === "auto" ? " is-selected" : ""}`;
+  wavAuto.innerHTML = `
+    <input type="radio" name="${MUSIC_ENGINES.WAV_STEM}" value="auto" ${settings.wavStemPackId === "auto" ? "checked" : ""} />
+    <span class="registry-pack-main"><strong>ゲーム推奨</strong><small>Fantasy対応ゲームはFantasy WAV / Pulse ForgeはPulse WAV</small></span>
+    <span class="registry-engine">AUTO</span>
+  `;
+  wavPacks.appendChild(wavAuto);
+  wav.forEach((entry) => wavPacks.appendChild(packButton(entry, settings.wavStemPackId === entry.id)));
 
   const selected = procedural.find((entry) => entry.id === settings.proceduralPackId);
+  const selectedWav = wav.find((entry) => entry.id === settings.wavStemPackId);
   proceduralSummary.textContent = settings.proceduralPackId === "auto" ? "GAME DEFAULT" : selected?.name || "AUTO";
+  wavSummary.textContent = settings.wavStemPackId === "auto" ? "GAME DEFAULT" : selectedWav?.name || "AUTO";
   packCount.textContent = String(snapshot.packCount);
   proceduralCount.textContent = String(procedural.length);
   wavCount.textContent = String(wav.length);
@@ -114,7 +125,7 @@ proceduralPacks.addEventListener("change", (event) => {
 
 wavPacks.addEventListener("change", (event) => {
   const input = event.target.closest('input[type="radio"]');
-  if (!input || input.disabled) return;
+  if (!input) return;
   saveMusicSettings({ wavStemPackId: input.value });
   render();
   flashSaved();
