@@ -571,6 +571,11 @@ canvas { display: block; width: 100%; height: 190px; margin-top: 14px; border-ra
   border-color: #3f6856;
   background: #12231c;
 }
+.route-matrix-status.review {
+  color: #d4c59a;
+  border-color: #665c3d;
+  background: #211e14;
+}
 .route-matrix-status.aborted,
 .route-matrix-status.fail {
   color: #e5b6b6;
