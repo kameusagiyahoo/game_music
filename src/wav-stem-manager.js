@@ -370,10 +370,16 @@ export class WavStemMusicManager {
       !this.pendingPackSwitch.committed &&
       this.pendingPackSwitch.nextPack?.id === nextPack.id
     ) {
+      const targetMode = options.mode ?? this.pendingPackSwitch.targetMode;
+      const targetPreset = options.preset !== undefined
+        ? options.preset
+        : options.mode !== undefined
+          ? null
+          : this.pendingPackSwitch.targetPreset;
       const target = this.#resolvePackTarget(
         this.pendingPackSwitch.nextPack,
-        options.mode ?? this.pendingPackSwitch.targetMode,
-        options.preset ?? this.pendingPackSwitch.targetPreset,
+        targetMode,
+        targetPreset,
       );
       this.pendingPackSwitch.targetMode = target.mode;
       this.pendingPackSwitch.targetPreset = target.preset;
