@@ -15,6 +15,7 @@ on:
       - "tools/check_music_preload_cache.mjs"
       - "tools/check_music_persistent_cache.mjs"
       - "tools/check_music_quantization.mjs"
+      - "tools/check_music_pack_hot_swap.mjs"
       - "tools/check_music_transition_cues.mjs"
       - "tools/check_music_mastering.mjs"
       - "tools/check_music_fantasy_mastering.mjs"
@@ -57,6 +58,7 @@ on:
       - "tools/check_music_preload_cache.mjs"
       - "tools/check_music_persistent_cache.mjs"
       - "tools/check_music_quantization.mjs"
+      - "tools/check_music_pack_hot_swap.mjs"
       - "tools/check_music_transition_cues.mjs"
       - "tools/check_music_mastering.mjs"
       - "tools/check_music_fantasy_mastering.mjs"
@@ -128,6 +130,7 @@ jobs:
           node --check tools/check_music_qa_golden_clockwork.mjs
           node --check tools/check_music_clockwork_mastering.mjs
           node --check tools/check_music_multi_wav_packs.mjs
+          node --check tools/check_music_pack_hot_swap.mjs
           node --check tools/check_music_fantasy_mastering.mjs
           node --check src/game.js
           node --check games/orbit-rush/game.js
@@ -152,6 +155,8 @@ jobs:
         run: node tools/check_music_persistent_cache.mjs
       - name: Check Beat and Bar Quantization
         run: node tools/check_music_quantization.mjs
+      - name: Check Real Audio Pack Hot Swap
+        run: node tools/check_music_pack_hot_swap.mjs
       - name: Check Transition Cue Engine
         run: node tools/check_music_transition_cues.mjs
       - name: Check Runtime Mastering Graph
