@@ -13,7 +13,7 @@ import {
   qaComparisonFilename,
 } from "../../src/music-qa-compare.js";
 import {
-  STANDARD_QA_SCENARIO,
+  STANDARD_QA_SCENARIO as BASE_QA_SCENARIO,
   createQaScenarioRun,
   advanceQaScenarioRun,
   cancelQaScenarioRun,
@@ -24,6 +24,8 @@ import {
 
 const $ = (selector) => document.querySelector(selector);
 const qaBadge = $("#qaBadge");
+const qaPackSelect = $("#qaPackSelect");
+const qaPackDescription = $("#qaPackDescription");
 const transport = $("#transport");
 const formatLine = $("#formatLine");
 const prePeakValue = $("#prePeakValue");
@@ -110,21 +112,78 @@ let lastScenarioSummary = null;
 let scenarioAdvancing = false;
 let lastRecordSampleAt = 0;
 
-const music = createMusicFacade({
-  packId: "pulse",
-  callbacks: {
-    onSync(info = {}) {
-      bar = Number(info.bar || 0);
-      beat = Number(info.beat || 0);
-    },
-  },
-});
+let selectedQaPackId = qaPackSelect?.value || "pulse";
 
+function createPackScenario(packId) {
+  const label = packId === "fantasy" ? "Fantasy" : "Pulse";
+  return Object.freeze({
+    ...BASE_QA_SCENARIO,
+    id: `${packId}-standard-v1`,
+    name: `${label} Standard 60s`,
+  });
+}
+
+function createQaMusic(packId) {
+  return createMusicFacade({
+    packId,
+    callbacks: {
+      onSync(info = {}) {
+        bar = Number(info.bar || 0);
+        beat = Number(info.beat || 0);
+      },
+    },
+  });
+}
+
+let qaScenario = createPackScenario(selectedQaPackId);
+let music = createQaMusic(selectedQaPackId);
 let staticInfo = music.info();
 
 function refreshStaticInfo() {
   staticInfo = music.info();
   return staticInfo;
+}
+
+function updateQaPackLabel() {
+  const info = refreshStaticInfo();
+  qaPackDescription.textContent =
+    `${info.name || selectedQaPackId} · ${info.mastering?.profile || info.masteringProfile || "no mastering"}`;
+}
+
+function preloadCurrentQaPack() {
+  return music.preload({ stingers: true, transitions: true }).catch((error) => {
+    console.warn("QA preload failed; START will retry", error);
+  });
+}
+
+async function switchQaPack(packId) {
+  if (!["pulse", "fantasy"].includes(packId)) return;
+  if (recordingSession || scenarioRun?.status === "running") {
+    qaPackSelect.value = selectedQaPackId;
+    return;
+  }
+
+  music.stop();
+  selectedQaPackId = packId;
+  qaScenario = createPackScenario(packId);
+  music = createQaMusic(packId);
+  staticInfo = music.info();
+  bar = 0;
+  beat = 0;
+
+  peakHistory.length = 0;
+  reductionHistory.length = 0;
+  lastReport = null;
+  baselineReport = null;
+  comparisonReport = null;
+  lastScenarioSummary = null;
+
+  updateQaPackLabel();
+  renderReportSummary();
+  renderComparison();
+  renderScenario();
+  render();
+  await preloadCurrentQaPack();
 }
 
 function formatDb(value) {
@@ -240,11 +299,12 @@ function renderScenario() {
     ? qaScenarioExecutionSummary(scenarioRun)
     : lastScenarioSummary;
 
-  scenarioIdValue.textContent = STANDARD_QA_SCENARIO.id;
+  scenarioIdValue.textContent = qaScenario.id;
   scenarioProgressBar.style.width = `${Math.round((progress?.progress || (summary?.status === "completed" ? 1 : 0)) * 100)}%`;
-  scenarioTimer.textContent = `${formatTimeMs(progress?.elapsedMs || (summary?.status === "completed" ? STANDARD_QA_SCENARIO.durationMs : 0))} / ${formatTimeMs(STANDARD_QA_SCENARIO.durationMs)}`;
+  scenarioTimer.textContent = `${formatTimeMs(progress?.elapsedMs || (summary?.status === "completed" ? qaScenario.durationMs : 0))} / ${formatTimeMs(qaScenario.durationMs)}`;
 
   const running = scenarioRun?.status === "running";
+  qaPackSelect.disabled = running || Boolean(recordingSession);
   runScenarioButton.disabled = running || Boolean(recordingSession && !scenarioRun);
   runScenarioButton.classList.toggle("is-running", running);
   runScenarioButton.textContent = running ? "RUNNING STANDARD 60s…" : "RUN STANDARD 60s";
@@ -269,16 +329,16 @@ function renderScenario() {
     scenarioStatus.textContent = "READY · SAME TIMELINE EVERY RUN";
   }
 
-  const elapsed = progress?.elapsedMs || (summary?.status === "completed" ? STANDARD_QA_SCENARIO.durationMs : -1);
+  const elapsed = progress?.elapsedMs || (summary?.status === "completed" ? qaScenario.durationMs : -1);
   const executions = new Map(
     (scenarioRun?.executions || summary?.executions || []).map((item) => [item.stepId, item])
   );
 
   scenarioTimeline.querySelectorAll("[data-scenario-step]").forEach((element) => {
     const id = element.dataset.scenarioStep;
-    const step = STANDARD_QA_SCENARIO.steps.find((item) => item.id === id);
-    const nextStep = STANDARD_QA_SCENARIO.steps[
-      STANDARD_QA_SCENARIO.steps.findIndex((item) => item.id === id) + 1
+    const step = qaScenario.steps.find((item) => item.id === id);
+    const nextStep = qaScenario.steps[
+      qaScenario.steps.findIndex((item) => item.id === id) + 1
     ];
     const execution = executions.get(id);
     const active = elapsed >= step.atMs && (!nextStep || elapsed < nextStep.atMs) && running;
@@ -343,16 +403,16 @@ async function startStandardScenario() {
   refreshStaticInfo();
 
   const startedAt = performance.now();
-  scenarioRun = createQaScenarioRun(STANDARD_QA_SCENARIO, {
+  scenarioRun = createQaScenarioRun(qaScenario, {
     startedAtMs: startedAt,
   });
 
   await startRecording({
-    targetDurationSeconds: STANDARD_QA_SCENARIO.durationMs / 1000,
+    targetDurationSeconds: qaScenario.durationMs / 1000,
     metadata: {
-      qaScenarioId: STANDARD_QA_SCENARIO.id,
-      qaScenarioVersion: STANDARD_QA_SCENARIO.version,
-      qaScenarioSchemaVersion: STANDARD_QA_SCENARIO.schemaVersion,
+      qaScenarioId: qaScenario.id,
+      qaScenarioVersion: qaScenario.version,
+      qaScenarioSchemaVersion: qaScenario.schemaVersion,
       qaScenarioStatus: "running",
     },
   });
@@ -636,8 +696,8 @@ async function startRecording({
     targetDurationSeconds,
     sampleIntervalMs: RECORD_SAMPLE_INTERVAL_MS,
     metadata: {
-      packId: info.packId || info.id || "pulse",
-      packName: info.packName || info.name || "Pulse",
+      packId: info.packId || info.id || selectedQaPackId,
+      packName: info.packName || info.name || selectedQaPackId,
       packVersion: info.version || null,
       engine: info.engine || null,
       audioFormat: info.audioFormat || null,
@@ -757,7 +817,7 @@ function render() {
   const mastering = info.mastering;
 
   transport.textContent = music.running ? `BAR ${bar || 1} · BEAT ${beat || 1}` : "BAR — · BEAT —";
-  formatLine.textContent = `${info.name || "Pulse"} · ${String(info.audioFormat || "audio").toUpperCase()}`;
+  formatLine.textContent = `${info.name || selectedQaPackId} · ${String(info.audioFormat || "audio").toUpperCase()}`;
 
   const [label, className] = qaState(meter);
   qaBadge.textContent = label;
@@ -802,6 +862,10 @@ function animationFrame(time) {
   }
   requestAnimationFrame(animationFrame);
 }
+
+qaPackSelect.addEventListener("change", () => {
+  void switchQaPack(qaPackSelect.value);
+});
 
 $("#startButton").addEventListener("click", async () => {
   qaBadge.textContent = "STARTING";
@@ -878,9 +942,8 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-void music.preload({ stingers: true, transitions: true }).catch((error) => {
-  console.warn("QA preload failed; START will retry", error);
-});
+updateQaPackLabel();
+void preloadCurrentQaPack();
 
 renderReportSummary();
 renderComparison();
