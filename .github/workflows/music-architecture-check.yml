@@ -10,6 +10,7 @@ on:
       - "tools/check_music_boundary.py"
       - "tools/check_music_manifests.mjs"
       - "tools/check_music_formats.mjs"
+      - "tools/check_music_multi_wav_packs.mjs"
       - "tools/check_music_runtime_fallback.mjs"
       - "tools/check_music_preload_cache.mjs"
       - "tools/check_music_persistent_cache.mjs"
@@ -40,6 +41,7 @@ on:
       - "tools/check_music_boundary.py"
       - "tools/check_music_manifests.mjs"
       - "tools/check_music_formats.mjs"
+      - "tools/check_music_multi_wav_packs.mjs"
       - "tools/check_music_runtime_fallback.mjs"
       - "tools/check_music_preload_cache.mjs"
       - "tools/check_music_persistent_cache.mjs"
@@ -95,6 +97,7 @@ jobs:
           node --check tools/music_qa_golden.mjs
           node --check tools/music_qa_golden_fantasy.mjs
           node --check tools/check_music_qa_golden_fantasy.mjs
+          node --check tools/check_music_multi_wav_packs.mjs
           node --check src/game.js
           node --check games/orbit-rush/game.js
           node --check games/pulse-forge/game.js
@@ -108,6 +111,8 @@ jobs:
         run: node tools/check_music_manifests.mjs
       - name: Check Music Format Resolver
         run: node tools/check_music_formats.mjs
+      - name: Check Multi WAV Pack Registry
+        run: node tools/check_music_multi_wav_packs.mjs
       - name: Check Runtime Decode Fallback
         run: node tools/check_music_runtime_fallback.mjs
       - name: Check Audio Preload Cache
