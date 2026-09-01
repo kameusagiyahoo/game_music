@@ -6,10 +6,6 @@ on:
     paths:
       - "tools/generate_fantasy_stems.py"
       - "tools/encode_fantasy_audio.sh"
-      - "tools/check_fantasy_audio_profile.py"
-      - "tools/check_fantasy_format_parity.py"
-      - "tools/check_fantasy_format_parity_semantics.py"
-      - ".github/workflows/generate-fantasy-stems.yml"
 
 permissions:
   contents: write
