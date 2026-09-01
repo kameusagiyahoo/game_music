@@ -29,3 +29,39 @@
   .pack-grid { grid-template-columns:1fr; }
   .capability-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
+
+.crossfade-control {
+  display:grid;
+  grid-template-columns:auto minmax(210px,1fr);
+  align-items:center;
+  gap:6px 12px;
+  margin:8px 0 2px;
+  padding:10px 12px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:12px;
+  background:rgba(0,0,0,.12);
+}
+.crossfade-control > span {
+  font-size:.66rem;
+  letter-spacing:.12em;
+  opacity:.62;
+}
+.crossfade-control select {
+  min-height:40px;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:10px;
+  background:#101317;
+  color:inherit;
+  padding:0 .7rem;
+  font:inherit;
+  font-size:.78rem;
+}
+.crossfade-control small {
+  grid-column:2;
+  opacity:.58;
+  line-height:1.45;
+}
+@media (max-width:700px) {
+  .crossfade-control { grid-template-columns:1fr; }
+  .crossfade-control small { grid-column:1; }
+}
