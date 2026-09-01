@@ -11,16 +11,30 @@
   <main class="shell">
     <header class="hero">
       <div>
-        <p class="eyebrow">GAME MUSIC LAB / ENGINE v23</p>
+        <p class="eyebrow">GAME MUSIC LAB / ENGINE v27</p>
         <h1>Audio QA Dashboard</h1>
-        <p class="lead">Pulse Pack v1.4.0のMaster / Limiter / Stem状態を実機で監視します。</p>
+        <p class="lead">Pulse / Fantasyの実Audio Packを切り替え、Master / Limiter / Stem状態をiPhone上で監視します。</p>
       </div>
       <div class="hero-status">
         <span id="qaBadge" class="qa-badge idle">IDLE</span>
         <strong id="transport">BAR — · BEAT —</strong>
-        <small id="formatLine">Pulse · waiting</small>
+        <small id="formatLine">Audio Pack · waiting</small>
       </div>
     </header>
+
+    <section class="panel qa-pack-panel">
+      <div>
+        <p class="eyebrow">REAL AUDIO PACK</p>
+        <strong id="qaPackDescription">Pulse · loading</strong>
+      </div>
+      <label class="qa-pack-select">
+        <span>QA PACK</span>
+        <select id="qaPackSelect" aria-label="QA対象Music Pack">
+          <option value="pulse">Pulse WAV v1.4.1</option>
+          <option value="fantasy">Fantasy WAV v2.0.0</option>
+        </select>
+      </label>
+    </section>
 
     <section class="controls panel">
       <button id="startButton" class="primary" type="button">START AUDIO</button>
@@ -217,7 +231,8 @@
       <p><strong>QA目安:</strong> Limiter Reductionが一瞬だけ動くのは正常です。長時間 -6 dB以下が続く場合はMixが強すぎる可能性があります。</p>
       <p>このMeterは0音量の監視branchで、ゲーム本来のMastering経路には加算されません。</p>
       <p>Recorderは約10fpsのMeter値を最大60秒記録し、終了後にJSON / CSVをiPhone共有シートまたはダウンロードへ出力します。</p>
-      <p>STANDARD 60sはNORMAL 10s → BUILD 10s → OVERDRIVE 20s → RESULT + VICTORY 20sを自動実行し、Recorderも同時に開始します。</p>
+      <p>STANDARD 60sは選択中PackでNORMAL 10s → BUILD 10s → OVERDRIVE 20s → RESULT + VICTORY 20sを自動実行し、Recorderも同時に開始します。</p>
+      <p>Packを切り替えるとRuntime / Meter / Scenario IDも切り替わり、PulseとFantasyのレポートを分離します。</p>
     </section>
   </main>
   <script type="module" src="./qa.js"></script>
