@@ -34,6 +34,16 @@ import {
   hotSwapRouteMatrixExecutionSummary,
   evaluateHotSwapRouteMatrixReport,
 } from "../../src/music-qa-route-matrix.js";
+import {
+  getQaRouteMatrixBaselineEligibility,
+  getQaRouteMatrixBaselineCompatibility,
+  saveQaRouteMatrixBaseline,
+  listQaRouteMatrixBaselines,
+  loadQaRouteMatrixBaseline,
+  loadLatestQaRouteMatrixBaseline,
+  clearQaRouteMatrixBaselines,
+} from "../../src/music-qa-route-baseline-registry.js";
+import { getMusicPackEntry } from "../../src/music-registry.js";
 
 const $ = (selector) => document.querySelector(selector);
 const qaBadge = $("#qaBadge");
@@ -117,6 +127,11 @@ const routeMatrixCurrentRoute = $("#routeMatrixCurrentRoute");
 const routeMatrixGrid = $("#routeMatrixGrid");
 const runRouteMatrixButton = $("#runRouteMatrixButton");
 const cancelRouteMatrixButton = $("#cancelRouteMatrixButton");
+const routeMatrixBaselineStatus = $("#routeMatrixBaselineStatus");
+const routeMatrixBaselineHistory = $("#routeMatrixBaselineHistory");
+const saveRouteMatrixBaselineButton = $("#saveRouteMatrixBaselineButton");
+const shareRouteMatrixBaselineButton = $("#shareRouteMatrixBaselineButton");
+const clearRouteMatrixBaselineButton = $("#clearRouteMatrixBaselineButton");
 const baselineFile = $("#baselineFile");
 const baselineStatus = $("#baselineStatus");
 const baselineRegistryStatus = $("#baselineRegistryStatus");
@@ -156,7 +171,9 @@ let lastReport = null;
 let baselineReport = null;
 let baselineOrigin = null;
 let savedBaselineEntry = null;
+let savedRouteMatrixEntry = null;
 let baselineCompatibility = null;
+let routeMatrixBaselineCompatibility = null;
 let comparisonReport = null;
 let scenarioRun = null;
 let lastScenarioSummary = null;
@@ -231,17 +248,26 @@ function preloadCurrentQaPack() {
 }
 
 async function preloadRouteMatrixPacks() {
-  await Promise.all(
-    HOT_SWAP_ROUTE_MATRIX_PACKS.map((packId) =>
-      preloadMusicAssets({
+  return Promise.all(
+    HOT_SWAP_ROUTE_MATRIX_PACKS.map(async (packId) => {
+      const preload = await preloadMusicAssets({
         packId,
         preloadOptions: { stingers: true, transitions: true },
-      })
-    )
+      });
+      const entry = getMusicPackEntry(packId);
+      return {
+        id: packId,
+        version: entry?.version || null,
+        masteringProfile: entry?.masteringProfile || null,
+        facadeApi: entry?.facadeApi || null,
+        audioFormat: preload?.format || null,
+      };
+    })
   );
 }
 
 function baselineOriginLabel() {
+  if (baselineOrigin === "route-saved") return "ROUTE DEVICE";
   if (baselineOrigin === "saved") return "SAVED DEVICE";
   if (baselineOrigin === "file") return "FILE";
   if (baselineOrigin === "current") return "CURRENT SESSION";
