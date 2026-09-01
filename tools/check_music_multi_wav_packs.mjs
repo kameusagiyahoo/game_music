@@ -24,12 +24,20 @@ resetMusicSettings();
 
 const wavPacks = listMusicPacks({ engine: MUSIC_ENGINES.WAV_STEM });
 const wavIds = wavPacks.map((entry) => entry.id).sort();
+const proceduralPacks = listMusicPacks({ engine: MUSIC_ENGINES.PROCEDURAL });
 
-if (JSON.stringify(wavIds) !== JSON.stringify(["fantasy", "neon", "pulse"])) {
-  errors.push(`expected Fantasy/Neon/Pulse wav packs, got ${wavIds.join(",")}`);
+if (JSON.stringify(wavIds) !== JSON.stringify(["clockwork", "fantasy", "neon", "pulse"])) {
+  errors.push(`expected Clockwork/Fantasy/Neon/Pulse wav packs, got ${wavIds.join(",")}`);
+}
+if (proceduralPacks.length !== 0) {
+  errors.push(`expected zero registered procedural packs, got ${proceduralPacks.map((entry) => entry.id).join(",")}`);
 }
 
-for (const [id, version] of [["fantasy", "2.0.0"], ["neon", "2.0.0"]]) {
+for (const [id, version] of [
+  ["fantasy", "2.0.0"],
+  ["neon", "2.0.0"],
+  ["clockwork", "2.0.0"],
+]) {
   const entry = getMusicPackEntry(id);
   if (entry?.engine !== MUSIC_ENGINES.WAV_STEM) {
     errors.push(`${id} engine should be wav-stem, got ${entry?.engine}`);
@@ -50,6 +58,7 @@ const autoCases = [
   [GAME_IDS.ORBIT_RUSH, "neon"],
   [GAME_IDS.PULSE_FORGE, "pulse"],
   [GAME_IDS.RUNE_RELAY, "fantasy"],
+  [GAME_IDS.AETHER_SHIFT, "clockwork"],
 ];
 
 for (const [gameId, expected] of autoCases) {
@@ -60,20 +69,19 @@ for (const [gameId, expected] of autoCases) {
   }
 }
 
-// Explicit v28 WAV selection remains an override.
+// Explicit v29 WAV selection remains an override.
 resetMusicSettings();
-saveMusicSettings({ wavStemPackId: "pulse" });
-const settingsAfterPulse = getMusicSettings();
-if (settingsAfterPulse.wavStemPackId !== "pulse" || settingsAfterPulse.wavStemSelectionVersion !== 3) {
-  errors.push("explicit Pulse WAV selection was not persisted as v3");
+saveMusicSettings({ wavStemPackId: "clockwork" });
+const explicitClockwork = getMusicSettings();
+if (explicitClockwork.wavStemPackId !== "clockwork" || explicitClockwork.wavStemSelectionVersion !== 4) {
+  errors.push("explicit Clockwork WAV selection was not persisted as v4");
 }
-const orbitPulseOverride = resolveMusicAsset({ gameId: GAME_IDS.ORBIT_RUSH });
-if (orbitPulseOverride.id !== "pulse") {
-  errors.push(`explicit Pulse override should apply to Orbit, got ${orbitPulseOverride.id}`);
+const orbitClockworkOverride = resolveMusicAsset({ gameId: GAME_IDS.ORBIT_RUSH });
+if (orbitClockworkOverride.id !== "clockwork") {
+  errors.push(`explicit Clockwork override should apply to Orbit, got ${orbitClockworkOverride.id}`);
 }
 
 // v26 and earlier: Pulse was the only WAV option and behaved like a default.
-// Migrate the legacy value to AUTO.
 store.set(STORAGE_KEY, JSON.stringify({
   proceduralPackId: "auto",
   wavStemPackId: "pulse",
@@ -83,12 +91,11 @@ store.set(STORAGE_KEY, JSON.stringify({
   sfxVolume: 0.74,
 }));
 const pulseLegacy = getMusicSettings();
-if (pulseLegacy.wavStemPackId !== "auto" || pulseLegacy.wavStemSelectionVersion !== 3) {
+if (pulseLegacy.wavStemPackId !== "auto" || pulseLegacy.wavStemSelectionVersion !== 4) {
   errors.push(`legacy Pulse-only setting did not migrate to AUTO: ${JSON.stringify(pulseLegacy)}`);
 }
 
-// v27: Neon was a procedural option. Preserve an explicit Neon choice by
-// moving it to WAV when the WAV side was still AUTO.
+// v27: Neon was procedural. Preserve an explicit Neon choice when WAV was AUTO.
 store.set(STORAGE_KEY, JSON.stringify({
   proceduralPackId: "neon",
   wavStemPackId: "auto",
@@ -102,61 +109,62 @@ const neonLegacy = getMusicSettings();
 if (
   neonLegacy.proceduralPackId !== "auto" ||
   neonLegacy.wavStemPackId !== "neon" ||
-  neonLegacy.wavStemSelectionVersion !== 3
+  neonLegacy.wavStemSelectionVersion !== 4
 ) {
   errors.push(`legacy Neon procedural selection did not migrate to Neon WAV: ${JSON.stringify(neonLegacy)}`);
 }
-const orbitMigrated = resolveMusicAsset({ gameId: GAME_IDS.ORBIT_RUSH });
-if (orbitMigrated.id !== "neon") {
-  errors.push(`migrated Orbit should resolve Neon WAV, got ${orbitMigrated.id}`);
-}
 
-// Do not overwrite a v27 explicit WAV choice when migrating Neon procedural.
+// v28: Clockwork was the final procedural pack. Preserve it when WAV was AUTO.
 store.set(STORAGE_KEY, JSON.stringify({
-  proceduralPackId: "neon",
-  wavStemPackId: "fantasy",
-  wavStemSelectionVersion: 2,
+  proceduralPackId: "clockwork",
+  wavStemPackId: "auto",
+  wavStemSelectionVersion: 3,
   bgmEnabled: true,
   sfxEnabled: true,
   bgmVolume: 0.8,
   sfxVolume: 0.74,
 }));
-const explicitFantasy = getMusicSettings();
+const clockworkLegacy = getMusicSettings();
 if (
-  explicitFantasy.proceduralPackId !== "auto" ||
-  explicitFantasy.wavStemPackId !== "fantasy" ||
-  explicitFantasy.wavStemSelectionVersion !== 3
+  clockworkLegacy.proceduralPackId !== "auto" ||
+  clockworkLegacy.wavStemPackId !== "clockwork" ||
+  clockworkLegacy.wavStemSelectionVersion !== 4
 ) {
-  errors.push(`explicit Fantasy WAV selection was overwritten during Neon migration: ${JSON.stringify(explicitFantasy)}`);
+  errors.push(`legacy Clockwork procedural selection did not migrate to Clockwork WAV: ${JSON.stringify(clockworkLegacy)}`);
+}
+const aetherMigrated = resolveMusicAsset({ gameId: GAME_IDS.AETHER_SHIFT });
+if (aetherMigrated.id !== "clockwork") {
+  errors.push(`migrated Aether should resolve Clockwork WAV, got ${aetherMigrated.id}`);
 }
 
-// v27 explicit Pulse must also remain explicit when upgrading selection schema.
-store.set(STORAGE_KEY, JSON.stringify({
-  proceduralPackId: "auto",
-  wavStemPackId: "pulse",
-  wavStemSelectionVersion: 2,
-  bgmEnabled: true,
-  sfxEnabled: true,
-  bgmVolume: 0.8,
-  sfxVolume: 0.74,
-}));
-const explicitPulseV27 = getMusicSettings();
-if (explicitPulseV27.wavStemPackId !== "pulse" || explicitPulseV27.wavStemSelectionVersion !== 3) {
-  errors.push(`v27 explicit Pulse WAV was not preserved: ${JSON.stringify(explicitPulseV27)}`);
+// Existing explicit WAV selections must win over procedural migrations.
+for (const explicitId of ["fantasy", "neon", "pulse"]) {
+  store.set(STORAGE_KEY, JSON.stringify({
+    proceduralPackId: "clockwork",
+    wavStemPackId: explicitId,
+    wavStemSelectionVersion: 3,
+    bgmEnabled: true,
+    sfxEnabled: true,
+    bgmVolume: 0.8,
+    sfxVolume: 0.74,
+  }));
+  const preserved = getMusicSettings();
+  if (preserved.wavStemPackId !== explicitId || preserved.wavStemSelectionVersion !== 4) {
+    errors.push(`explicit ${explicitId} WAV selection was overwritten by Clockwork migration: ${JSON.stringify(preserved)}`);
+  }
 }
 
 if (errors.length) {
-  console.error("Multi WAV Pack Registry Check FAILED");
+  console.error("All Real-Audio Registry Check FAILED");
   errors.forEach((error) => console.error(`- ${error}`));
   process.exit(1);
 }
 
-console.log("Multi WAV Pack Registry Check PASSED");
-console.log("- wav-stem packs: Fantasy + Neon + Pulse");
-console.log("- Mystic AUTO -> Fantasy WAV");
-console.log("- Orbit AUTO -> Neon WAV");
-console.log("- Pulse Forge AUTO -> Pulse WAV");
-console.log("- Rune Relay AUTO -> Fantasy WAV");
-console.log("- legacy Pulse-only setting -> AUTO migration");
+console.log("All Real-Audio Registry Check PASSED");
+console.log("- wav-stem packs: Fantasy + Neon + Pulse + Clockwork");
+console.log("- registered procedural packs: 0");
+console.log("- game AUTO defaults resolve to real-audio packs");
+console.log("- legacy Pulse-only -> AUTO migration");
 console.log("- legacy Neon procedural -> Neon WAV migration");
-console.log("- explicit v27 WAV choices -> preserved");
+console.log("- legacy Clockwork procedural -> Clockwork WAV migration");
+console.log("- explicit WAV choices -> preserved");
