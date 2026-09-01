@@ -143,7 +143,8 @@ export function validateQaScenario(scenario) {
       if (
         action?.type === "state" ||
         action?.type === "layer" ||
-        action?.type === "transitionCue"
+        action?.type === "transitionCue" ||
+        action?.type === "pack"
       ) {
         if (!action.name || typeof action.name !== "string") {
           errors.push(`${actionPrefix}.name is required for ${action.type} action`);
@@ -246,6 +247,8 @@ export async function executeQaScenarioStep(music, step) {
       results.push(result);
     } else if (action.type === "outcome") {
       results.push(await music.outcome(Boolean(action.success), options));
+    } else if (action.type === "pack") {
+      results.push(await music.pack(action.name, options));
     } else {
       throw new Error(`Unsupported QA scenario action: ${action.type}`);
     }
