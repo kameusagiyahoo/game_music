@@ -3810,6 +3810,226 @@ Realtime QA observability
 
 Facadeの公開メソッドは増えていないため、Facade API versionは引き続き `1.5.0` です。
 
+### v32 — Hot Swap QA Regression Gate
+
+v30でReal Audio Pack Hot Swap、v31でEqual-Power Crossfadeを導入し、v32ではそのCrossfade区間をRealtime Meter / QA Reportから自動判定するGateへ昇格しました。
+
+```text
+Hot Swap
+  |
+  v
+Realtime Meter @ ~10 fps
+  |
+  +-- Output Peak
+  +-- Output RMS
+  +-- Limiter Reduction
+  +-- outgoing gain
+  +-- incoming gain
+  +-- power coefficient sum
+  +-- crossfade progress
+  |
+  v
+QA Report
+  |
+  v
+Hot Swap QA Gate
+```
+
+### Hot Swap Report Window
+
+Crossfade中のsampleだけを同じ `fromId -> toId + scheduledAt` 単位へまとめます。
+
+各Hot Swapについて保存する値:
+
+```text
+from / to
+curve
+quantize
+scheduledAt / fadeEnd
+crossfadeBeats / fadeSeconds
+
+max Output Peak
+min / max / average Output RMS
+max Limiter Reduction
+min / max Power Σ
+
+edge average RMS
+midpoint average RMS
+midpoint RMS delta
+```
+
+RMS dipはPackごとの絶対音量ではなく、同一Crossfadeの両端と中央を比較します。
+
+```text
+edge RMS
+   \
+    +--> reference RMS
+   /
+edge RMS
+
+midpoint RMS - reference RMS
+        |
+        v
+midpointRmsDeltaDb
+```
+
+これによりFantasy / NeonのようにMastering Profileが異なるPack間でも、Crossfade途中だけ不自然に痩せていないかを見られます。
+
+### Gate Policy
+
+初期v32 policy:
+
+```text
+POWER Σ
+< 0.80          FAIL
+< 0.95          REVIEW
+
+OUTPUT PEAK
+> -0.15 dBFS    FAIL
+> -0.50 dBFS    REVIEW
+
+LIMITER REDUCTION
+> 6.0 dB        FAIL
+> 3.0 dB        REVIEW
+
+MIDPOINT RMS DELTA
+< -9.0 dB       FAIL
+< -5.0 dB       REVIEW
+
+CROSSFADE SAMPLES
+< 3             REVIEW
+```
+
+Production既定のEqual-Power v1では理論上、
+
+```text
+old² + new² ≈ 1.0
+```
+
+なので `Power Σ` が大きく落ちればCrossfade scheduling / gain curveのRegressionとして即検出できます。
+
+旧v30 exponential A/Bでは中央付近のPower Σが約 `0.0002` まで落ちるため、Gate上はFAILになります。これはResolverでLegacy挙動を比較するための意図した結果です。
+
+### Overall QA Verdict
+
+Hot Swap Gateは独立表示だけではなく、Session全体のVerdictにも伝播します。
+
+```text
+Hot Swap PASS
+  -> 通常QA判定を維持
+
+Hot Swap REVIEW
+  -> overall REVIEW以上
+
+Hot Swap FAIL
+  -> overall FAIL
+```
+
+Hot Swapが存在しないReportでは、
+
+```text
+hotSwapQa.status = not-applicable
+```
+
+となり、通常のPeak / RMS / Limiter QAへ影響しません。
+
+### Audio QA Dashboard
+
+Audio QA DashboardのHot Swapパネルを実際に操作可能にしました。
+
+```text
+START AUDIO
+   |
+   v
+TARGET PACK
+   |
+   +-- Fantasy
+   +-- Neon
+   +-- Pulse
+   +-- Clockwork
+   |
+   v
+CROSSFADE CURVE
+   |
+   +-- Equal-Power v1
+   +-- Legacy v30 Exponential
+   |
+   v
+QUEUE NEXT BAR
+```
+
+Target PackはHot Swap前に11 Assetをpreloadします。
+
+Realtime表示:
+
+```text
+SCHEDULED
+CROSSFADING
+IDLE
+
+route
+progress
+curve
+old gain
+new gain
+Power Σ
+```
+
+Recorder終了後はSession Summaryに、
+
+```text
+HOT SWAPS
+XFADE TIME
+XFADE MAX PEAK
+XFADE MIN RMS
+XFADE MAX GR
+MIN POWER Σ
+HOT SWAP QA
+```
+
+を表示します。
+
+さらにSwap単位で、
+
+```text
+PULSE -> FANTASY
+PASS
+ΔRMS -0.6 dB
+PK -2.0
+Σ 1.000
+GR 1.2
+```
+
+のように判定行を表示します。
+
+URL:
+
+https://kameusagiyahoo.github.io/game_music/debug/audio-qa/
+
+### Hot Swap QA CI
+
+既存Integration Check:
+
+```text
+tools/check_music_hot_swap_qa.mjs
+```
+
+をv32 Gate semanticsまで拡張しました。
+
+検証:
+
+- Equal-Power safe swap -> PASS
+- Legacy v30 Power collapse -> FAIL
+- midpoint RMS -10 dB級dip -> FAIL
+- Limiter Reduction 7 dB -> FAIL
+- Output Peak -0.05 dBFS -> FAIL
+- crossfade sample不足 -> REVIEW
+- Hot Swapなし -> N/A
+- Hot Swap FAILがoverall QA Verdictへ伝播
+- Realtime metadata / Report summary / CSV event列も従来どおり検証
+
+v32はFacade公開メソッドを増やしていないため、Facade API versionは引き続き `1.5.0` です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
