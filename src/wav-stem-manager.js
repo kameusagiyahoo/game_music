@@ -1029,6 +1029,340 @@ export class WavStemMusicManager {
     }
   }
 
+  #filesForPackFormat(pack, section, format) {
+    const data = pack?.[section];
+    if (!data) return null;
+    const formatted = data.formats?.[format]?.files;
+    if (formatted) return formatted;
+    if (!data.formats || format === data.selectedFormat || format === pack?.selectedAudioFormat) {
+      return data.files || null;
+    }
+    return null;
+  }
+
+  #packWithFormat(pack, format) {
+    const audioStems = pack?.audioStems;
+    const stingers = pack?.stingers;
+    const transitionCues = pack?.transitionCues;
+    const stemFormat = audioStems?.formats?.[format];
+    const stingerFormat = stingers?.formats?.[format];
+    const transitionFormat = transitionCues?.formats?.[format];
+
+    return {
+      ...pack,
+      selectedAudioFormat: format,
+      audioStems: audioStems ? {
+        ...audioStems,
+        files: stemFormat?.files || audioStems.files,
+        selectedFormat: format,
+        selectedMime: stemFormat?.mime || audioStems.selectedMime || null,
+      } : audioStems,
+      stingers: stingers ? {
+        ...stingers,
+        files: stingerFormat?.files || stingers.files,
+        selectedFormat: format,
+        selectedMime: stingerFormat?.mime || stingers.selectedMime || null,
+      } : stingers,
+      transitionCues: transitionCues ? {
+        ...transitionCues,
+        files: transitionFormat?.files || transitionCues.files,
+        selectedFormat: format,
+        selectedMime: transitionFormat?.mime || transitionCues.selectedMime || null,
+      } : transitionCues,
+    };
+  }
+
+  async #loadStemBuffersForPack(pack) {
+    const candidates = [...new Set([
+      pack?.selectedAudioFormat,
+      ...(pack?.audioFormatCandidates || []),
+      ...this.audioFormatCandidates,
+      "wav",
+    ].filter(Boolean))];
+
+    let lastError = null;
+    for (const format of candidates) {
+      try {
+        const files = this.#filesForPackFormat(pack, "audioStems", format);
+        if (!files) throw new Error(`No stem file set for ${format}`);
+
+        const decoded = await Promise.all(STEMS.map(async (name) => {
+          const url = files[name];
+          if (!url) throw new Error(`${format} missing stem ${name}`);
+          const data = await getAudioBytes(url);
+          const buffer = await this.context.decodeAudioData(data);
+          return [name, buffer];
+        }));
+
+        const formattedPack = this.#packWithFormat(pack, format);
+        rememberAudioFormat(formattedPack, format);
+        return {
+          pack: formattedPack,
+          buffers: Object.fromEntries(decoded),
+          format,
+          candidates,
+        };
+      } catch (error) {
+        lastError = error;
+        this.audioFormatAttempts.push({
+          stage: "pack-swap",
+          packId: pack?.id || null,
+          format,
+          message: error?.message || String(error),
+        });
+        console.warn(`[Music] ${pack?.id || "pack"} ${format} hot-swap decode failed; trying fallback`, error);
+      }
+    }
+
+    throw new Error(
+      `Failed to decode hot-swap pack ${pack?.id || "unknown"} after ${candidates.join(" → ")}: ${lastError?.message || "unknown error"}`
+    );
+  }
+
+  #resolvePackTarget(pack, requestedMode, requestedPreset = null) {
+    const aliases = {
+      tension: "overdrive",
+      build: "build",
+      normal: "normal",
+      result: "result",
+      overdrive: "overdrive",
+    };
+    const requested = aliases[String(requestedMode || "").toLowerCase()] || requestedMode;
+    const mode = pack?.modes?.[requested]
+      ? requested
+      : pack?.modes?.[this.mode]
+        ? this.mode
+        : pack?.modes?.normal
+          ? "normal"
+          : Object.keys(pack?.modes || {})[0] || "normal";
+
+    const presetByMode = {
+      normal: "focus",
+      build: "build",
+      overdrive: "overdrive",
+      result: "result",
+    };
+    const candidatePreset = requestedPreset || presetByMode[mode];
+    const preset = pack?.layerPresets?.[candidatePreset]
+      ? candidatePreset
+      : pack?.layerPresets?.[pack?.defaultLayerPreset]
+        ? pack.defaultLayerPreset
+        : Object.keys(pack?.layerPresets || {})[0] || null;
+
+    const sourceMix = preset ? pack.layerPresets[preset] : {};
+    const mix = Object.fromEntries(
+      STEMS.map((name) => [name, clamp01(sourceMix?.[name] ?? 1)])
+    );
+
+    return { mode, preset, mix };
+  }
+
+  #stopSourceMap(sources = {}) {
+    Object.values(sources || {}).forEach((source) => {
+      try { source.onended = null; } catch (_) {}
+      try { source.stop(); } catch (_) {}
+      try { source.disconnect(); } catch (_) {}
+    });
+  }
+
+  #disconnectNodeMap(nodes = {}) {
+    Object.values(nodes || {}).forEach((node) => {
+      try { node.disconnect(); } catch (_) {}
+    });
+  }
+
+  #masteringConfigFor(pack) {
+    const raw = pack?.mastering || {};
+    const limiter = raw.limiter || {};
+    const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+
+    return {
+      profile: String(raw.profile || "game-balanced-default"),
+      headroomDb: Math.max(-24, Math.min(0, finite(raw.headroomDb, -3))),
+      limiter: {
+        thresholdDb: Math.max(-24, Math.min(0, finite(limiter.thresholdDb, -1.5))),
+        kneeDb: Math.max(0, Math.min(40, finite(limiter.kneeDb, 0))),
+        ratio: Math.max(1, Math.min(20, finite(limiter.ratio, 20))),
+        attack: Math.max(0, Math.min(1, finite(limiter.attack, 0.003))),
+        release: Math.max(0.01, Math.min(1, finite(limiter.release, 0.12))),
+      },
+    };
+  }
+
+  #setAudioParamAt(param, value, time) {
+    if (!param) return;
+    if (typeof param.setValueAtTime === "function") {
+      param.setValueAtTime(value, time);
+    } else {
+      param.value = value;
+    }
+  }
+
+  #scheduleMasteringTransition(nextPack, scheduledAt, fadeEnd) {
+    if (!this.context || !this.masterTrim || !this.limiter) return;
+    const next = this.#masteringConfigFor(nextPack);
+    const now = this.context.currentTime;
+
+    const trim = this.masterTrim.gain;
+    trim.cancelScheduledValues(now);
+    trim.setValueAtTime(Math.max(Number(trim.value || 0.0001), 0.0001), now);
+    if (scheduledAt > now) {
+      trim.setValueAtTime(Math.max(Number(trim.value || 0.0001), 0.0001), scheduledAt);
+    }
+    trim.exponentialRampToValueAtTime(
+      Math.max(0.0001, dbToGain(next.headroomDb)),
+      fadeEnd,
+    );
+
+    this.#setAudioParamAt(this.limiter.threshold, next.limiter.thresholdDb, scheduledAt);
+    this.#setAudioParamAt(this.limiter.knee, next.limiter.kneeDb, scheduledAt);
+    this.#setAudioParamAt(this.limiter.ratio, next.limiter.ratio, scheduledAt);
+    this.#setAudioParamAt(this.limiter.attack, next.limiter.attack, scheduledAt);
+    this.#setAudioParamAt(this.limiter.release, next.limiter.release, scheduledAt);
+  }
+
+  #applyMasteringConfig(pack, seconds = 0.03) {
+    if (!this.context || !this.masterTrim || !this.limiter) return;
+    const config = this.#masteringConfigFor(pack);
+    const now = this.context.currentTime;
+    this.masterTrim.gain.cancelScheduledValues(now);
+    this.masterTrim.gain.setValueAtTime(
+      Math.max(Number(this.masterTrim.gain.value || 0.0001), 0.0001),
+      now,
+    );
+    this.masterTrim.gain.exponentialRampToValueAtTime(
+      Math.max(0.0001, dbToGain(config.headroomDb)),
+      now + Math.max(0.01, seconds),
+    );
+
+    for (const [key, value] of Object.entries({
+      threshold: config.limiter.thresholdDb,
+      knee: config.limiter.kneeDb,
+      ratio: config.limiter.ratio,
+      attack: config.limiter.attack,
+      release: config.limiter.release,
+    })) {
+      const param = this.limiter[key];
+      if (typeof param?.cancelScheduledValues === "function") param.cancelScheduledValues(now);
+      if (typeof param?.setValueAtTime === "function") param.setValueAtTime(value, now);
+      else if (param) param.value = value;
+    }
+  }
+
+  #adoptStoppedPack(pack, buffers, format, target) {
+    this.pack = pack;
+    this.buffers = buffers;
+    this.stingerBuffers = {};
+    this.transitionCueBuffers = {};
+    this.selectedAudioFormat = format;
+    this.stingerAudioFormat = format;
+    this.transitionCueAudioFormat = format;
+    this.audioFormatCandidates = [...new Set([
+      format,
+      ...(pack?.audioFormatCandidates || []),
+      "wav",
+    ].filter(Boolean))];
+    this.mode = target.mode;
+    this.layerPreset = target.preset;
+    this.layerMix = { ...target.mix };
+    STEMS.forEach((name) => {
+      const bus = this.layerBuses[name];
+      if (bus) bus.gain.value = Math.max(0.0001, target.mix[name]);
+    });
+    this.#applyMasteringConfig(pack, 0.02);
+    this.onFormatChange({
+      ...this.getAudioFormatInfo(),
+      stage: "pack-swap",
+    });
+    this.onPackChange({
+      id: pack.id,
+      name: pack.name,
+      format,
+      candidates: [...this.audioFormatCandidates],
+      phase: "complete",
+      scheduledAt: null,
+      fadeEnd: null,
+    });
+    this.#announce();
+    this.#announceLayers();
+  }
+
+  #activatePendingPackSwitch() {
+    const swap = this.pendingPackSwitch;
+    if (!swap || swap.committed) return false;
+
+    swap.committed = true;
+    this.pack = swap.nextPack;
+    this.buffers = swap.nextBuffers;
+    this.sources = swap.nextSources;
+    this.layerBuses = swap.nextLayerBuses;
+    this.packGain = swap.nextPackGain;
+    this.stingerBuffers = {};
+    this.transitionCueBuffers = {};
+    this.selectedAudioFormat = swap.format;
+    this.stingerAudioFormat = swap.format;
+    this.transitionCueAudioFormat = swap.format;
+    this.audioFormatCandidates = [...new Set([
+      swap.format,
+      ...(swap.candidates || []),
+      "wav",
+    ].filter(Boolean))];
+    this.mode = swap.targetMode;
+    this.layerPreset = swap.targetPreset;
+    this.layerMix = { ...swap.targetMix };
+    this.transportStart = swap.scheduledAt;
+    this.lastStep = -1;
+
+    Object.values(swap.oldSources || {}).forEach((source) => {
+      try { source.stop(swap.fadeEnd + 0.025); } catch (_) {}
+    });
+
+    rememberAudioFormat(this.pack, swap.format);
+    this.onFormatChange({
+      ...this.getAudioFormatInfo(),
+      stage: "pack-swap",
+    });
+    this.onPackChange({
+      id: this.pack.id,
+      name: this.pack.name,
+      format: swap.format,
+      candidates: [...this.audioFormatCandidates],
+      phase: "crossfading",
+      scheduledAt: swap.scheduledAt,
+      fadeEnd: swap.fadeEnd,
+      crossfadeBeats: swap.crossfadeBeats,
+      fromId: swap.fromPack?.id || null,
+    });
+    this.#announce();
+    this.#announceLayers();
+    return true;
+  }
+
+  #cleanupCompletedPackSwitch() {
+    const swap = this.pendingPackSwitch;
+    if (!swap?.committed) return false;
+    if (this.context.currentTime < swap.fadeEnd) return false;
+
+    this.#stopSourceMap(swap.oldSources);
+    this.#disconnectNodeMap(swap.oldLayerBuses);
+    try { swap.oldPackGain?.disconnect(); } catch (_) {}
+
+    const info = {
+      id: this.pack?.id || null,
+      name: this.pack?.name || null,
+      format: this.selectedAudioFormat,
+      candidates: [...this.audioFormatCandidates],
+      phase: "complete",
+      scheduledAt: swap.scheduledAt,
+      fadeEnd: swap.fadeEnd,
+      crossfadeBeats: swap.crossfadeBeats,
+      fromId: swap.fromPack?.id || null,
+    };
+    this.pendingPackSwitch = null;
+    this.onPackChange(info);
+    return true;
+  }
+
   async #loadBuffers() {
     if (STEMS.every((name) => Boolean(this.buffers[name]))) return;
 
