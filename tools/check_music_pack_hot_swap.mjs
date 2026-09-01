@@ -15,6 +15,11 @@ class FakeAudioParam {
     this.value = value;
     this.events.push(["set", value, time]);
   }
+  setValueCurveAtTime(values, time, duration) {
+    const curve = Array.from(values);
+    this.value = curve.at(-1);
+    this.events.push(["curve", curve, time, duration]);
+  }
   exponentialRampToValueAtTime(value, time) {
     this.value = value;
     this.events.push(["exp", value, time]);
@@ -177,6 +182,35 @@ if (manager.getPackInfo().id !== "pulse") {
 }
 if (manager.getPackInfo().pendingId !== "fantasy") {
   errors.push("Fantasy was not exposed as pending pack");
+}
+if (manager.getPackInfo().hotSwap?.curve !== "equal-power-v1") {
+  errors.push(`hot swap curve mismatch: ${manager.getPackInfo().hotSwap?.curve}`);
+}
+if (manager.getPackInfo().hotSwap?.curvePoints !== 129) {
+  errors.push(`hot swap curve point count mismatch: ${manager.getPackInfo().hotSwap?.curvePoints}`);
+}
+
+const scheduledSwap = manager.pendingPackSwitch;
+const outgoingCurveEvent = scheduledSwap?.oldPackGain?.gain?.events
+  ?.find((event) => event[0] === "curve");
+const incomingCurveEvent = scheduledSwap?.nextPackGain?.gain?.events
+  ?.find((event) => event[0] === "curve");
+if (!outgoingCurveEvent || !incomingCurveEvent) {
+  errors.push("hot swap did not schedule equal-power AudioParam curves");
+} else {
+  if (!near(outgoingCurveEvent[2], expectedBoundary) || !near(incomingCurveEvent[2], expectedBoundary)) {
+    errors.push("equal-power curves did not start at the pack boundary");
+  }
+  if (!near(outgoingCurveEvent[3], pulseBeat * 2) || !near(incomingCurveEvent[3], pulseBeat * 2)) {
+    errors.push("equal-power curve duration does not match two beats");
+  }
+  const mid = Math.floor((outgoingCurveEvent[1].length - 1) / 2);
+  if (!near(outgoingCurveEvent[1][mid], Math.SQRT1_2, 0.0003)) {
+    errors.push("outgoing hot-swap midpoint is not equal-power");
+  }
+  if (!near(incomingCurveEvent[1][mid], Math.SQRT1_2, 0.0003)) {
+    errors.push("incoming hot-swap midpoint is not equal-power");
+  }
 }
 
 const fantasyStarts = sourceEvents.filter(
@@ -341,6 +375,7 @@ console.log("Real Audio Pack Hot Swap Check PASSED");
 console.log("- same AudioContext across pack switch: OK");
 console.log("- 5 replacement stems start at exact next-bar boundary: OK");
 console.log("- old/new packs crossfade for configured beats: OK");
+console.log("- equal-power pack crossfade curve: OK");
 console.log("- BPM transport restarts at new pack boundary: OK");
 console.log("- pending pack cancellation: OK");
 console.log("- pending state update without duplicate decode: OK");
