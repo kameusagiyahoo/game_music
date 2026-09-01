@@ -4,6 +4,7 @@ import {
   playMusicOutcome,
   stopMusicRuntime,
   getRuntimeDescriptor,
+  prepareMusicPackForRuntime,
 } from "./music-asset-resolver.js";
 import { getMusicPackEntry, getMusicSettings } from "./music-registry.js";
 import { ensureMusicServiceWorker } from "./music-service-worker.js";
@@ -88,15 +89,30 @@ export class MusicFacade {
     if (!entry) throw new Error(`Unknown Music Pack: ${packId}`);
     if (entry.engine !== this.runtime.engine) throw new Error(`Cross-engine pack switch requires a new facade: ${this.runtime.engine} -> ${entry.engine}`);
 
+    const prepared = prepareMusicPackForRuntime(
+      entry,
+      this.runtime.formatOptions || {},
+    );
+
     if (options.immediate && typeof manager.setPack === "function") {
-      manager.setPack(entry.pack);
+      manager.setPack(prepared.pack);
       this.runtime.entry = entry;
+      this.runtime.audioFormat = prepared.selection?.format || this.runtime.audioFormat;
+      this.runtime.audioFormatSelection = prepared.selection || null;
+      this.runtime.audioFormatCandidates = [...prepared.candidates];
       return this.info();
     }
-    if (typeof manager.switchPack !== "function") throw new Error(`Pack switching is not supported by engine: ${this.runtime.engine}`);
+    if (typeof manager.switchPack !== "function") {
+      throw new Error(`Pack switching is not supported by engine: ${this.runtime.engine}`);
+    }
 
-    await manager.switchPack(entry.pack, options);
-    if (options.quantize === "immediate" || options.immediate || !manager.running) this.runtime.entry = entry;
+    await manager.switchPack(prepared.pack, options);
+    if (!manager.running) {
+      this.runtime.entry = entry;
+      this.runtime.audioFormat = prepared.selection?.format || this.runtime.audioFormat;
+      this.runtime.audioFormatSelection = prepared.selection || null;
+      this.runtime.audioFormatCandidates = [...prepared.candidates];
+    }
     return this.info();
   }
 
