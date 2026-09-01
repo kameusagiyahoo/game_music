@@ -266,10 +266,16 @@ context.currentTime = manager.transportStart + 0.15;
 await manager.switchPack(neonPack, {
   quantize: "bar",
   crossfadeBeats: 1.5,
+  crossfadeCurve: "exponential",
   mode: "normal",
 });
 if (manager.getPackInfo().pendingId !== "neon") {
   errors.push("Neon cancellation fixture was not pending");
+}
+if (manager.getPackInfo().hotSwap?.curve !== "exponential-v30") {
+  errors.push(
+    `Legacy v30 debug crossfade option did not select exponential curve: ${manager.getPackInfo().hotSwap?.curve}`
+  );
 }
 if (!manager.cancelPendingPackSwitch()) {
   errors.push("pending Neon hot swap could not be cancelled");
@@ -350,6 +356,9 @@ if (facade.info().pendingId !== "fantasy") {
 if (facade.capabilities.hotSwapPackCrossfade !== true) {
   errors.push("Facade capability hotSwapPackCrossfade is not enabled");
 }
+if (facade.capabilities.equalPowerPackCrossfade !== true) {
+  errors.push("Facade capability equalPowerPackCrossfade is not enabled");
+}
 
 facadeContext.currentTime = facadeSwap.hotSwap?.scheduledAt
   ? facadeSwap.hotSwap.scheduledAt + 0.001
@@ -376,6 +385,7 @@ console.log("- same AudioContext across pack switch: OK");
 console.log("- 5 replacement stems start at exact next-bar boundary: OK");
 console.log("- old/new packs crossfade for configured beats: OK");
 console.log("- equal-power pack crossfade curve: OK");
+console.log("- legacy v30 exponential debug option: OK");
 console.log("- BPM transport restarts at new pack boundary: OK");
 console.log("- pending pack cancellation: OK");
 console.log("- pending state update without duplicate decode: OK");
