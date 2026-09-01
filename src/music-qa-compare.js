@@ -1,4 +1,6 @@
-const COMPARE_SCHEMA_VERSION = "1.0.0";
+import { compareHotSwapSummaries } from "./music-qa-hot-swap-compare.js";
+
+const COMPARE_SCHEMA_VERSION = "1.1.0";
 
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const round = (value, digits = 3) => {
@@ -347,6 +349,7 @@ export function compareQaReports(baseline, current) {
     ])
   );
 
+  const hotSwaps = compareHotSwapSummaries(b, c);
   const warnings = compatibilityWarnings(baseline, current);
 
   let status = "pass";
@@ -378,6 +381,8 @@ export function compareQaReports(baseline, current) {
     if (stage.status === "fail") status = "fail";
     else if (stage.status === "review") status = worseStatus(status, "review");
   }
+  if (hotSwaps.status === "fail") status = "fail";
+  else if (hotSwaps.status === "review") status = worseStatus(status, "review");
 
   const regressionCount = Object.values(modes)
     .filter((mode) => mode.status === "review" || mode.status === "fail").length;
@@ -390,7 +395,9 @@ export function compareQaReports(baseline, current) {
 
   if (
     status === "pass" &&
-    (improvementCount > 0 || improvedStageCount > 0) &&
+    (improvementCount > 0 || improvedStageCount > 0 || hotSwaps.improvementCount > 0) &&
+    hotSwaps.status !== "review" &&
+    hotSwaps.status !== "fail" &&
     metrics.maxOutputPeakDb.delta <= 0 &&
     metrics.maxLimiterReductionMagnitudeDb.delta <= 0 &&
     metrics.limiterOver3.deltaRate <= 0
@@ -422,6 +429,7 @@ export function compareQaReports(baseline, current) {
     metrics,
     modes,
     scenarioStages,
+    hotSwaps,
     warnings,
     summary: {
       regressionModeCount: regressionCount,
@@ -430,6 +438,10 @@ export function compareQaReports(baseline, current) {
       regressionStageCount,
       improvedStageCount,
       changedStageCount: Object.values(scenarioStages).filter((stage) => stage.status === "changed").length,
+      hotSwapStatus: hotSwaps.status,
+      hotSwapRegressionCount: hotSwaps.regressionCount,
+      hotSwapImprovementCount: hotSwaps.improvementCount,
+      hotSwapRouteChangeCount: hotSwaps.routeChangeCount,
       peakDirection: metrics.maxOutputPeakDb.delta > 0.25
         ? "hotter"
         : metrics.maxOutputPeakDb.delta < -0.25 ? "safer" : "stable",
@@ -528,6 +540,45 @@ export function qaComparisonToCsv(comparison) {
       stage.current?.maxLimiterReductionMagnitudeDb ?? "",
       stage.delta?.maxLimiterReductionMagnitudeDb ?? "",
       stage.status,
+    ]);
+  }
+
+  for (const item of comparison.hotSwaps?.items || []) {
+    const prefix = "hot-swap:" + item.route + "#" + item.occurrence;
+    rows.push([
+      prefix + ":peak_db",
+      item.baseline?.maxOutputPeakDbfs ?? "",
+      item.current?.maxOutputPeakDbfs ?? "",
+      item.delta?.maxOutputPeakDb ?? "",
+      item.status,
+    ]);
+    rows.push([
+      prefix + ":midpoint_rms_delta_db",
+      item.baseline?.midpointRmsDeltaDb ?? "",
+      item.current?.midpointRmsDeltaDb ?? "",
+      item.delta?.midpointRmsDeltaDb ?? "",
+      item.status,
+    ]);
+    rows.push([
+      prefix + ":limiter_reduction_db",
+      item.baseline?.maxLimiterReductionMagnitudeDb ?? "",
+      item.current?.maxLimiterReductionMagnitudeDb ?? "",
+      item.delta?.maxLimiterReductionMagnitudeDb ?? "",
+      item.status,
+    ]);
+    rows.push([
+      prefix + ":min_power_sum",
+      item.baseline?.minPowerCoefficientSum ?? "",
+      item.current?.minPowerCoefficientSum ?? "",
+      item.delta?.minPowerCoefficientSum ?? "",
+      item.status,
+    ]);
+    rows.push([
+      prefix + ":duration_relative",
+      item.baseline?.durationSeconds ?? "",
+      item.current?.durationSeconds ?? "",
+      item.delta?.durationRelative ?? "",
+      item.status,
     ]);
   }
 
