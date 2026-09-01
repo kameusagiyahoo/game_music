@@ -124,7 +124,8 @@ function buildRuntime(packId) {
       onPackChange(info = {}) {
         renderRuntime();
         if (info.phase === "crossfading") {
-          statusText.textContent = `${info.name || info.id} · HOT SWAP CROSSFADING`;
+          const curve = info.curve ? ` · ${String(info.curve).toUpperCase()}` : "";
+          statusText.textContent = `${info.name || info.id} · HOT SWAP CROSSFADING${curve}`;
         } else if (info.phase === "complete") {
           const descriptor = getRuntimeDescriptor(runtime);
           statusText.textContent = `${info.name || info.id}${masteringLabel(descriptor)} · HOT SWAP COMPLETE`;
@@ -181,7 +182,8 @@ function selectPack(id) {
         0,
         Number(info?.scheduledAt || 0) - Number(runtime.manager.context?.currentTime || 0),
       );
-      statusText.textContent = `${entry.name} · HOT SWAP NEXT BAR · +${delay.toFixed(2)}s`;
+      const curve = info?.hotSwap?.curve ? ` · ${String(info.hotSwap.curve).toUpperCase()}` : "";
+      statusText.textContent = `${entry.name} · HOT SWAP NEXT BAR · +${delay.toFixed(2)}s${curve}`;
     }).catch((error) => {
       console.error(error);
       statusText.textContent = `HOT SWAP ERROR · ${error.message}`;
