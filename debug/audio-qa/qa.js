@@ -162,6 +162,7 @@ let routeMatrixRun = null;
 let lastRouteMatrixSummary = null;
 let routeMatrixAdvancing = false;
 let routeMatrixPreparing = false;
+let routeMatrixToken = 0;
 let lastRecordSampleAt = 0;
 
 let selectedQaPackId = qaPackSelect?.value || "pulse";
@@ -246,6 +247,15 @@ function baselineOriginLabel() {
 
 function renderBaselineRegistry() {
   const saved = savedBaselineEntry;
+
+  if (routeMatrixBusy()) {
+    savePackBaselineButton.disabled = true;
+    deletePackBaselineButton.disabled = true;
+    sharePackBaselineButton.disabled = true;
+    baselineRegistryStatus.textContent = "MATRIX MODE · PACK BASELINE DISABLED";
+    baselineRegistryStatus.className = "record-status";
+    return;
+  }
   const eligibility = baselineReport
     ? getQaBaselineEligibility(baselineReport, { packId: selectedQaPackId })
     : { eligible: false, failures: ["No baseline report selected"] };
@@ -818,6 +828,337 @@ function abortScenario(reason = "cancelled") {
     reason,
   });
   closeScenarioRun();
+}
+
+function routeMatrixScenarioPreview() {
+  const startId = HOT_SWAP_ROUTE_MATRIX_PACKS.includes(selectedQaPackId)
+    ? selectedQaPackId
+    : "pulse";
+  return createHotSwapRouteMatrixScenario({ startId });
+}
+
+function routeMatrixExecutionState() {
+  if (routeMatrixRun) {
+    const generic = qaScenarioExecutionSummary(routeMatrixRun);
+    return {
+      scenario: routeMatrixRun.scenario,
+      generic,
+      matrix: hotSwapRouteMatrixExecutionSummary(routeMatrixRun),
+    };
+  }
+
+  if (lastRouteMatrixSummary) {
+    return {
+      scenario: lastRouteMatrixSummary.scenario,
+      generic: lastRouteMatrixSummary.generic,
+      matrix: lastRouteMatrixSummary.matrix,
+    };
+  }
+
+  return {
+    scenario: routeMatrixScenarioPreview(),
+    generic: null,
+    matrix: null,
+  };
+}
+
+function renderRouteMatrix() {
+  const { scenario, generic, matrix } = routeMatrixExecutionState();
+  const running = routeMatrixIsRunning();
+  const busy = routeMatrixBusy();
+  const progress = routeMatrixRun
+    ? getQaScenarioProgress(routeMatrixRun, performance.now())
+    : null;
+  const reportSummary = lastRouteMatrixSummary?.reportSummary || null;
+  const completedRoutes = matrix?.completedRoutes || 0;
+  const elapsedMs = progress?.elapsedMs
+    ?? (matrix?.status === "completed" ? scenario.durationMs : 0);
+  const progressRatio = progress?.progress
+    ?? (matrix?.status === "completed" ? 1 : 0);
+
+  routeMatrixProgressBar.style.width =
+    `${Math.round(Math.max(0, Math.min(1, progressRatio)) * 100)}%`;
+  routeMatrixTimer.textContent =
+    `${formatTimeMs(elapsedMs)} / ${formatTimeMs(scenario.durationMs)}`;
+  routeMatrixCompleted.textContent = `${completedRoutes} / ${scenario.routeCount}`;
+  routeMatrixStartPack.textContent =
+    String(scenario.startPackId || selectedQaPackId || "—").toUpperCase();
+  routeMatrixDrift.textContent = generic?.executions?.length
+    ? `${Number(generic.maxDriftMs || 0)} ms`
+    : "—";
+
+  const hot = music.meter()?.hotSwap || null;
+  const nextStep = progress?.nextStep || null;
+  const currentRouteLabel = hot?.fromId && hot?.toId
+    ? `${String(hot.fromId).toUpperCase()} → ${String(hot.toId).toUpperCase()}`
+    : running && nextStep
+      ? `NEXT · ${String(nextStep.fromId).toUpperCase()} → ${String(nextStep.toId).toUpperCase()}`
+      : running
+        ? "FINAL HOLD"
+        : matrix?.status === "completed"
+          ? "COMPLETE · RETURNED TO START"
+          : "—";
+  routeMatrixCurrentRoute.textContent = currentRouteLabel;
+
+  const executions = new Map(
+    (routeMatrixRun?.executions || generic?.executions || [])
+      .map((execution) => [execution.stepId, execution])
+  );
+  const activeKey = hot?.fromId && hot?.toId
+    ? `${hot.fromId}->${hot.toId}`
+    : null;
+
+  routeMatrixGrid.innerHTML = scenario.routes.map((route) => {
+    const execution = executions.get(route.id);
+    const key = `${route.fromId}->${route.toId}`;
+    const active = key === activeKey;
+    const failed = execution?.status === "failed";
+    const done = execution?.status === "completed" && !active;
+    const className = [
+      "route-matrix-route",
+      active ? "active" : "",
+      done ? "done" : "",
+      failed ? "failed" : "",
+    ].filter(Boolean).join(" ");
+
+    return `
+      <div class="${className}">
+        <strong>${String(route.fromId).toUpperCase()} → ${String(route.toId).toUpperCase()}</strong>
+        <span>#${String(route.index + 1).padStart(2, "0")} · ${formatTimeMs(scenario.steps[route.index]?.atMs || 0)}</span>
+      </div>
+    `;
+  }).join("");
+
+  let status = "IDLE";
+  let statusClass = "idle";
+  let statusText = "READY · 4 PACKS × 3 TARGETS · 64 SEC";
+
+  if (routeMatrixPreparing) {
+    status = "PREPARING";
+    statusClass = "preparing";
+    statusText = "PRELOADING ALL 4 REAL AUDIO PACKS";
+  } else if (running) {
+    status = "RUNNING";
+    statusClass = "running";
+    statusText = `RUNNING · ${completedRoutes}/${scenario.routeCount} ROUTES SCHEDULED`;
+  } else if (matrix?.status === "aborted") {
+    status = "ABORTED";
+    statusClass = "aborted";
+    statusText = `ABORTED · ${matrix.abortReason || "unknown"}`;
+  } else if (matrix?.status === "completed") {
+    const observed = Number(reportSummary?.hotSwapCount || 0);
+    const gate = String(reportSummary?.hotSwapQa?.status || "not-applicable");
+    if (observed !== scenario.routeCount || gate === "fail") {
+      status = "FAIL";
+      statusClass = "fail";
+    } else if (gate === "review") {
+      status = "REVIEW";
+      statusClass = "review";
+    } else {
+      status = "PASS";
+      statusClass = "pass";
+    }
+    statusText =
+      `COMPLETE · OBSERVED ${observed}/${scenario.routeCount} · HOT SWAP QA ${gate.toUpperCase()}`;
+  }
+
+  routeMatrixStatus.textContent = status;
+  routeMatrixStatus.className = `route-matrix-status ${statusClass}`;
+  routeMatrixStatusText.textContent = statusText;
+
+  runRouteMatrixButton.disabled =
+    busy ||
+    scenarioRun?.status === "running" ||
+    Boolean(recordingSession && !routeMatrixRun);
+  runRouteMatrixButton.classList.toggle("is-running", running);
+  runRouteMatrixButton.textContent = running
+    ? "RUNNING ALL 12 ROUTES…"
+    : routeMatrixPreparing
+      ? "PREPARING AUDIO…"
+      : "RUN ALL 12 ROUTES";
+  cancelRouteMatrixButton.disabled = !busy;
+
+  for (const id of ["startButton", "normalButton", "overdriveButton", "stressButton"]) {
+    const button = $(`#${id}`);
+    if (button) button.disabled = busy;
+  }
+}
+
+function attachRouteMatrixMetadata(generic, matrix) {
+  if (!recordingSession || !generic || !matrix) return;
+  recordingSession.metadata.qaScenarioId = generic.id;
+  recordingSession.metadata.qaScenarioVersion = generic.version;
+  recordingSession.metadata.qaScenarioStatus = generic.status;
+  recordingSession.metadata.qaScenarioExecution = generic;
+  recordingSession.metadata.qaRouteMatrixExecution = matrix;
+}
+
+function closeRouteMatrix() {
+  if (!routeMatrixRun) return;
+
+  const scenario = routeMatrixRun.scenario;
+  const generic = qaScenarioExecutionSummary(routeMatrixRun);
+  const matrix = hotSwapRouteMatrixExecutionSummary(routeMatrixRun);
+  attachRouteMatrixMetadata(generic, matrix);
+
+  const shouldFinishRecording = Boolean(recordingSession);
+  routeMatrixRun = null;
+  routeMatrixAdvancing = false;
+  routeMatrixPreparing = false;
+
+  const report = shouldFinishRecording ? finishRecording(Date.now()) : lastReport;
+  lastRouteMatrixSummary = {
+    scenario,
+    generic,
+    matrix,
+    reportSummary: report?.summary || null,
+  };
+
+  renderRouteMatrix();
+  renderScenario();
+  renderBaselineRegistry();
+}
+
+async function advanceRouteMatrix(now = performance.now()) {
+  if (!routeMatrixRun || routeMatrixRun.status !== "running" || routeMatrixAdvancing) return;
+
+  routeMatrixAdvancing = true;
+  try {
+    await advanceQaScenarioRun(routeMatrixRun, {
+      nowMs: now,
+      executeStep: async (step) => {
+        const info = music.info();
+        if (info.hotSwap) {
+          throw new Error(
+            `previous-hot-swap-still-active:${info.hotSwap.fromId}->${info.hotSwap.toId}`
+          );
+        }
+        if (step.fromId && info.id !== step.fromId) {
+          throw new Error(
+            `route-pack-mismatch:expected-${step.fromId}:actual-${info.id}`
+          );
+        }
+        return executeQaScenarioStep(music, step);
+      },
+    });
+  } finally {
+    routeMatrixAdvancing = false;
+  }
+
+  if (
+    routeMatrixRun?.status === "completed" ||
+    routeMatrixRun?.status === "aborted"
+  ) {
+    closeRouteMatrix();
+  }
+}
+
+async function startHotSwapRouteMatrix() {
+  if (
+    routeMatrixBusy() ||
+    scenarioRun?.status === "running" ||
+    recordingSession
+  ) return;
+
+  const startId = HOT_SWAP_ROUTE_MATRIX_PACKS.includes(selectedQaPackId)
+    ? selectedQaPackId
+    : "pulse";
+  const token = ++routeMatrixToken;
+  routeMatrixPreparing = true;
+  lastRouteMatrixSummary = null;
+  lastReport = null;
+  baselineReport = null;
+  baselineOrigin = null;
+  comparisonReport = null;
+  music.cancel("all");
+
+  renderComparison();
+  renderBaselineRegistry();
+  renderRouteMatrix();
+  renderReportSummary();
+
+  // Resume AudioContext directly from the user gesture before waiting on
+  // multi-pack network/cache preloading. This preserves iOS autoplay behavior.
+  if (music.running) music.stop();
+  qaBadge.textContent = "STARTING";
+  await music.start("normal");
+  refreshStaticInfo();
+
+  await preloadRouteMatrixPacks();
+  if (token !== routeMatrixToken || !routeMatrixPreparing) return;
+
+  const scenario = createHotSwapRouteMatrixScenario({ startId });
+  const startedAt = performance.now();
+  routeMatrixRun = createQaScenarioRun(scenario, { startedAtMs });
+  routeMatrixPreparing = false;
+
+  await startRecording({
+    targetDurationSeconds: scenario.durationMs / 1000,
+    metadata: {
+      qaScenarioId: scenario.id,
+      qaScenarioVersion: scenario.version,
+      qaScenarioSchemaVersion: scenario.schemaVersion,
+      qaScenarioStatus: "running",
+      qaScenarioKind: "hot-swap-route-matrix",
+      qaRouteMatrix: {
+        schemaVersion: scenario.routeMatrixSchemaVersion,
+        startPackId: scenario.startPackId,
+        routeCount: scenario.routeCount,
+        routeIntervalMs: scenario.routeIntervalMs,
+        crossfadeBeats: scenario.steps[0]?.actions?.[0]?.options?.crossfadeBeats || 2,
+        quantize: scenario.steps[0]?.actions?.[0]?.options?.quantize || "bar",
+        crossfadeCurve:
+          scenario.steps[0]?.actions?.[0]?.options?.crossfadeCurve || "equal-power-v1",
+        routes: scenario.routes.map(({ index, id, fromId, toId }) => ({
+          index, id, fromId, toId,
+        })),
+      },
+    },
+  });
+
+  renderRouteMatrix();
+  renderScenario();
+  await advanceRouteMatrix(startedAt);
+}
+
+function abortRouteMatrix(reason = "cancelled") {
+  ++routeMatrixToken;
+
+  if (routeMatrixPreparing && !routeMatrixRun) {
+    routeMatrixPreparing = false;
+    music.cancel("pack");
+    lastRouteMatrixSummary = {
+      scenario: routeMatrixScenarioPreview(),
+      generic: {
+        id: "hot-swap-route-matrix-v1",
+        version: "1.0.0",
+        status: "aborted",
+        abortReason: reason,
+        maxDriftMs: 0,
+        executions: [],
+      },
+      matrix: {
+        status: "aborted",
+        abortReason: reason,
+        startPackId: selectedQaPackId,
+        routeCount: 12,
+        completedRoutes: 0,
+        routes: [],
+      },
+      reportSummary: null,
+    };
+    renderRouteMatrix();
+    renderBaselineRegistry();
+    return;
+  }
+
+  if (!routeMatrixRun || routeMatrixRun.status !== "running") return;
+  music.cancel("pack");
+  cancelQaScenarioRun(routeMatrixRun, {
+    nowMs: performance.now(),
+    reason,
+  });
+  closeRouteMatrix();
 }
 
 function renderReportSummary() {
