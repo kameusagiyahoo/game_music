@@ -11,7 +11,7 @@
   <main class="shell">
     <header class="hero">
       <div>
-        <p class="eyebrow">GAME MUSIC LAB / ENGINE v37</p>
+        <p class="eyebrow">GAME MUSIC LAB / ENGINE v38</p>
         <h1>Audio QA Dashboard</h1>
         <p class="lead">Pulse / Fantasy / Neon / Clockworkの4つの実Audio Packを切り替え、Master / Limiter / Stem状態をiPhone上で監視します。</p>
       </div>
@@ -220,8 +220,9 @@
         <input id="baselineFile" type="file" accept="application/json,.json" hidden />
         <button id="useCurrentBaselineButton" type="button" disabled>USE CURRENT AS BASELINE</button>
         <button id="savePackBaselineButton" type="button" disabled>SAVE PACK BASELINE</button>
-        <button id="deletePackBaselineButton" type="button" disabled>DELETE SAVED</button>
-        <button id="sharePackBaselineButton" type="button" disabled>SHARE SAVED</button>
+        <button id="deletePackBaselineButton" type="button" disabled>DELETE SELECTED</button>
+        <button id="sharePackBaselineButton" type="button" disabled>SHARE SELECTED</button>
+        <button id="clearPackBaselineHistoryButton" type="button" disabled>CLEAR PACK HISTORY</button>
         <button id="exportCompareJsonButton" type="button" disabled>SHARE DIFF JSON</button>
         <button id="exportCompareCsvButton" type="button" disabled>SHARE DIFF CSV</button>
       </div>
@@ -229,6 +230,7 @@
         <span>PACK DEVICE BASELINE</span>
         <strong id="baselineRegistryStatus" class="record-status">NONE · RUN STANDARD 60s</strong>
       </div>
+      <div id="packBaselineHistory" class="pack-baseline-history"></div>
       <div class="compare-summary">
         <div><span>PEAK Δ</span><strong id="comparePeak">—</strong></div>
         <div><span>RMS Δ</span><strong id="compareRms">—</strong></div>
@@ -347,6 +349,7 @@
       <p><strong>v34 Pack Device Baseline:</strong> Standard 60sを完走しCoverage 90%以上・FAILでない実機ReportだけをPack別Baselineとして保存できます。Pack切替時は対応Baselineを自動ロードします。</p>
       <p><strong>v36 Device Contract Gate:</strong> Saved BaselineはPack / Audio Format / AudioContext Sample Rate / Mastering / Scenario条件を照合します。Pack versionだけの変更はREVIEWとして比較可能、Format・Sample Rate・Mastering・Scenario差はINCOMPATIBLEとして自動比較をブロックします。</p>
       <p><strong>v37 Route Matrix Baseline:</strong> 完走した12 Route Reportを最大6件まで端末内履歴として保存できます。同じstart Packの最新履歴を次回Matrix実行時に自動ロードし、12 route-by-route Regressionを行います。</p>
+      <p><strong>v38 Pack Device Baseline History:</strong> Standard 60sの実機BaselineもPackごとに最大6件保存し、履歴からversion / contractを選んでRegression比較できます。旧1件保存形式は自動移行します。</p>
       <p>このMeterは0音量の監視branchで、ゲーム本来のMastering経路には加算されません。</p>
       <p>Recorderは約10fpsのMeter値を最大60秒記録し、終了後にJSON / CSVをiPhone共有シートまたはダウンロードへ出力します。</p>
       <p>STANDARD 60sは選択中PackでNORMAL 10s → BUILD 10s → OVERDRIVE 20s → RESULT + VICTORY 20sを自動実行し、Recorderも同時に開始します。</p>
