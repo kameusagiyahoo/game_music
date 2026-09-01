@@ -1,7 +1,37 @@
 import { MusicManager } from "../src/music-manager.js";
 import { WavStemMusicManager } from "../src/wav-stem-manager.js";
 import { pulsePack } from "../src/music-packs/pulse.js";
-import { clockworkPack } from "../src/music-packs/clockwork.js";
+
+
+const proceduralTestPack = {
+  id: "procedural-test",
+  name: "Procedural Test",
+  modes: {
+    normal: {
+      label: "NORMAL · Procedural Test",
+      bpm: 108,
+      melody: [67, null, 71, null],
+      bass: [43, 40, 45, 38],
+      chords: [[55, 59, 62], [52, 55, 59], [57, 60, 64], [50, 54, 57]],
+      drumPattern: ["kick", "hat", null, "hat"],
+    },
+    tension: {
+      label: "TENSION · Procedural Test",
+      bpm: 108,
+      melody: [67, 71, 74, 79],
+      bass: [43, 45, 40, 42],
+      chords: [[55, 59, 62], [57, 60, 64], [52, 55, 59], [54, 57, 61]],
+      drumPattern: ["both", "hat", "kick", "hat"],
+    },
+  },
+  voices: {
+    melody: { type: "triangle", gain: 0.02, duration: 0.12 },
+    sparkle: { type: "sine", gain: 0.01, duration: 0.06, octave: 12 },
+    bass: { type: "triangle", gain: 0.02, duration: 0.30 },
+    chord: { type: "sine", gain: 0.01, duration: 0.40, octave: 12 },
+    pulse: { type: "square", gain: 0.008, duration: 0.018 },
+  },
+};
 
 class FakeAudioParam {
   constructor(value = 1) {
@@ -194,7 +224,7 @@ wav.stop();
 // Procedural engine: beat boundary transition.
 let proceduralMode = "normal";
 const procedural = new MusicManager({
-  pack: clockworkPack,
+  pack: proceduralTestPack,
   onModeChange(_label, info = {}) {
     if (info.mode) proceduralMode = info.mode;
   },
