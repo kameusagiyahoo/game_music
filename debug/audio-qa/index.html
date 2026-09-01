@@ -11,7 +11,7 @@
   <main class="shell">
     <header class="hero">
       <div>
-        <p class="eyebrow">GAME MUSIC LAB / ENGINE v31</p>
+        <p class="eyebrow">GAME MUSIC LAB / ENGINE v32</p>
         <h1>Audio QA Dashboard</h1>
         <p class="lead">Pulse / Fantasy / Neon / Clockworkの4つの実Audio Packを切り替え、Master / Limiter / Stem状態をiPhone上で監視します。</p>
       </div>
@@ -44,6 +44,51 @@
       <button id="overdriveButton" type="button">OVERDRIVE</button>
       <button id="stressButton" class="danger" type="button">RESULT + VICTORY</button>
       <button id="stopButton" type="button">STOP</button>
+    </section>
+
+    <section class="panel hot-swap-panel">
+      <div class="hot-swap-head">
+        <div>
+          <p class="eyebrow">REALTIME QA / PACK HOT SWAP</p>
+          <h2>Equal-Power Crossfade Monitor</h2>
+          <p class="record-status">録画中でも次小節Hot Swapを実行し、Crossfade区間だけのPeak / RMS / LimiterをReportへ保存します。</p>
+        </div>
+        <strong id="hotSwapStatus" class="hot-swap-status idle">IDLE</strong>
+      </div>
+
+      <div class="hot-swap-controls">
+        <label>
+          <span>TARGET PACK</span>
+          <select id="hotSwapTargetSelect" aria-label="Hot Swap対象Pack">
+            <option value="fantasy">Fantasy WAV v2.0.0</option>
+            <option value="neon">Neon WAV v2.0.0</option>
+            <option value="pulse">Pulse WAV v1.4.1</option>
+            <option value="clockwork">Clockwork WAV v2.0.0</option>
+          </select>
+        </label>
+        <label>
+          <span>CROSSFADE CURVE</span>
+          <select id="hotSwapCurveSelect" aria-label="Hot Swap Crossfade Curve">
+            <option value="equal-power">Equal-Power v1</option>
+            <option value="exponential">Legacy v30 Exponential</option>
+          </select>
+        </label>
+        <button id="scheduleHotSwapButton" type="button">QUEUE NEXT BAR</button>
+        <button id="cancelHotSwapButton" type="button" disabled>CANCEL QUEUE</button>
+      </div>
+
+      <div class="hot-swap-route">
+        <span id="hotSwapRoute">— → —</span>
+        <strong id="hotSwapProgressValue">0%</strong>
+      </div>
+      <div class="hot-swap-progress"><div id="hotSwapProgressBar"></div></div>
+
+      <div class="hot-swap-metrics">
+        <div><span>CURVE</span><strong id="hotSwapCurveValue">—</strong></div>
+        <div><span>OLD GAIN</span><strong id="hotSwapOutgoingValue">—</strong></div>
+        <div><span>NEW GAIN</span><strong id="hotSwapIncomingValue">—</strong></div>
+        <div><span>POWER Σ</span><strong id="hotSwapPowerValue">—</strong></div>
+      </div>
     </section>
 
     <section class="panel scenario-panel">
@@ -99,9 +144,16 @@
         <div><span>MAX REDUCTION</span><strong id="reportReduction">—</strong></div>
         <div><span>REDUCTION ≥3dB</span><strong id="reportOver3">—</strong></div>
         <div><span>REDUCTION ≥6dB</span><strong id="reportOver6">—</strong></div>
+        <div><span>HOT SWAPS</span><strong id="reportHotSwapCount">—</strong></div>
+        <div><span>XFADE TIME</span><strong id="reportHotSwapTime">—</strong></div>
+        <div><span>XFADE MAX PEAK</span><strong id="reportHotSwapPeak">—</strong></div>
+        <div><span>XFADE MIN RMS</span><strong id="reportHotSwapRms">—</strong></div>
+        <div><span>XFADE MAX GR</span><strong id="reportHotSwapReduction">—</strong></div>
+        <div><span>MIN POWER Σ</span><strong id="reportHotSwapPower">—</strong></div>
       </div>
       <div id="modeSummary" class="mode-summary"></div>
       <div id="scenarioStageSummary" class="mode-summary"></div>
+      <div id="hotSwapSummary" class="mode-summary"></div>
     </section>
 
     <section class="panel compare-panel">
