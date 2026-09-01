@@ -1686,8 +1686,11 @@ function render() {
 function animationFrame(time) {
   if (time - lastRenderAt >= 100) {
     lastRenderAt = time;
-    void advanceScenario(performance.now());
+    const now = performance.now();
+    void advanceScenario(now);
+    void advanceRouteMatrix(now);
     renderScenario();
+    renderRouteMatrix();
     render();
   }
   requestAnimationFrame(animationFrame);
@@ -1732,7 +1735,8 @@ $("#stressButton").addEventListener("click", async () => {
 });
 
 $("#stopButton").addEventListener("click", () => {
-  if (scenarioRun?.status === "running") abortScenario("audio-stop");
+  if (routeMatrixBusy()) abortRouteMatrix("audio-stop");
+  else if (scenarioRun?.status === "running") abortScenario("audio-stop");
   else if (recordingSession) finishRecording();
   music.stop();
   refreshStaticInfo();
@@ -1746,6 +1750,25 @@ recordButton.addEventListener("click", () => {
   });
 });
 
+runRouteMatrixButton.addEventListener("click", () => {
+  void startHotSwapRouteMatrix().catch((error) => {
+    console.error(error);
+    routeMatrixPreparing = false;
+    routeMatrixStatus.textContent = "ERROR";
+    routeMatrixStatus.className = "route-matrix-status fail";
+    routeMatrixStatusText.textContent = `MATRIX ERROR · ${error.message}`;
+    if (routeMatrixRun?.status === "running") abortRouteMatrix("start-error");
+    else {
+      ++routeMatrixToken;
+      renderRouteMatrix();
+      renderBaselineRegistry();
+    }
+  });
+});
+cancelRouteMatrixButton.addEventListener("click", () => {
+  abortRouteMatrix("user-cancelled");
+});
+
 runScenarioButton.addEventListener("click", () => {
   void startStandardScenario().catch((error) => {
     console.error(error);
@@ -1755,7 +1778,8 @@ runScenarioButton.addEventListener("click", () => {
 });
 cancelScenarioButton.addEventListener("click", () => abortScenario("user-cancelled"));
 recordStopButton.addEventListener("click", () => {
-  if (scenarioRun?.status === "running") abortScenario("manual-stop");
+  if (routeMatrixIsRunning()) abortRouteMatrix("manual-stop");
+  else if (scenarioRun?.status === "running") abortScenario("manual-stop");
   else finishRecording();
 });
 exportJsonButton.addEventListener("click", () => void exportReport("json"));
@@ -1782,7 +1806,10 @@ deletePackBaselineButton.addEventListener("click", deleteSelectedPackBaseline);
 sharePackBaselineButton.addEventListener("click", () => void shareSavedPackBaseline());
 
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden && scenarioRun?.status === "running") {
+  if (!document.hidden) return;
+  if (routeMatrixBusy()) {
+    abortRouteMatrix("page-hidden");
+  } else if (scenarioRun?.status === "running") {
     abortScenario("page-hidden");
   }
 });
@@ -1796,5 +1823,6 @@ renderReportSummary();
 renderComparison();
 renderBaselineRegistry();
 renderScenario();
+renderRouteMatrix();
 render();
 requestAnimationFrame(animationFrame);
