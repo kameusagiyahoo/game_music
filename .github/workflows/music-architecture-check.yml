@@ -17,6 +17,7 @@ on:
       - "tools/check_music_quantization.mjs"
       - "tools/check_music_pack_hot_swap.mjs"
       - "tools/check_music_equal_power_crossfade.mjs"
+      - "tools/check_music_hot_swap_qa.mjs"
       - "tools/check_music_transition_cues.mjs"
       - "tools/check_music_mastering.mjs"
       - "tools/check_music_fantasy_mastering.mjs"
@@ -61,6 +62,7 @@ on:
       - "tools/check_music_quantization.mjs"
       - "tools/check_music_pack_hot_swap.mjs"
       - "tools/check_music_equal_power_crossfade.mjs"
+      - "tools/check_music_hot_swap_qa.mjs"
       - "tools/check_music_transition_cues.mjs"
       - "tools/check_music_mastering.mjs"
       - "tools/check_music_fantasy_mastering.mjs"
@@ -134,6 +136,7 @@ jobs:
           node --check tools/check_music_multi_wav_packs.mjs
           node --check tools/check_music_pack_hot_swap.mjs
           node --check tools/check_music_equal_power_crossfade.mjs
+          node --check tools/check_music_hot_swap_qa.mjs
           node --check tools/check_music_fantasy_mastering.mjs
           node --check src/game.js
           node --check games/orbit-rush/game.js
@@ -162,6 +165,8 @@ jobs:
         run: node tools/check_music_pack_hot_swap.mjs
       - name: Check Equal-Power Pack Crossfade
         run: node tools/check_music_equal_power_crossfade.mjs
+      - name: Check Hot Swap Realtime QA Integration
+        run: node tools/check_music_hot_swap_qa.mjs
       - name: Check Transition Cue Engine
         run: node tools/check_music_transition_cues.mjs
       - name: Check Runtime Mastering Graph
