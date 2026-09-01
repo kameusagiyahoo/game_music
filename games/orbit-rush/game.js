@@ -57,6 +57,10 @@ const music = createMusicFacade({
 const packEntry = music.entry;
 applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
 
+void music.preload({ stingers: true, transitions: true }).catch((error) => {
+  console.warn("Orbit Rush preload failed; START will retry", error);
+});
+
 const best = Number(localStorage.getItem("orbit-rush-best") || 0);
 bestValue.textContent = best ? best.toLocaleString("ja-JP") : "—";
 
@@ -133,8 +137,8 @@ async function startGame() {
     if (remaining <= TENSION_TIME && state === "playing") {
       state = "tension";
       document.body.classList.add("is-tension");
-      setMessage("OVERDRIVE", "残り8秒。BGMも高速モードへ。", "TENSION");
-      void music.state("tension", { quantize: "immediate", seconds: 0.5 });
+      setMessage("OVERDRIVE", "残り8秒。次の小節頭からStem Mixを加速します。", "TENSION");
+      void music.state("tension", { quantize: "bar", fadeBeats: 1 });
     }
 
     if (remaining <= 0) {
@@ -176,7 +180,7 @@ function endGame() {
   activePad = -1;
   document.body.classList.remove("is-tension");
   document.querySelectorAll(".orbit-pad").forEach((pad) => pad.classList.remove("is-active"));
-  void music.state("result", { quantize: "immediate", seconds: 0.7 });
+  void music.state("result", { quantize: "bar", fadeBeats: 1 });
 
   const previousBest = Number(localStorage.getItem("orbit-rush-best") || 0);
   if (score > previousBest) {
@@ -192,7 +196,7 @@ function endGame() {
   resultOverlay.hidden = false;
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
-  void music.outcome(score >= 250);
+  void music.outcome(score >= 250, { quantize: "bar" });
 }
 
 async function applyAudioState() {
