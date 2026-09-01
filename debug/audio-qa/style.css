@@ -773,3 +773,57 @@ canvas { display: block; width: 100%; height: 190px; margin-top: 14px; border-ra
     grid-template-columns: 1fr;
   }
 }
+
+.pack-baseline-history {
+  display: grid;
+  gap: 7px;
+  margin-top: 9px;
+}
+.pack-baseline-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 46px;
+  padding: 9px 11px;
+  border: 1px solid #303640;
+  border-radius: 10px;
+  background: #11151b;
+  color: #e9edf3;
+  text-align: left;
+}
+.pack-baseline-entry:hover {
+  border-color: #566172;
+}
+.pack-baseline-entry.is-selected {
+  border-color: #747f90;
+  background: #171c24;
+}
+.pack-baseline-entry:disabled {
+  opacity: .42;
+}
+.pack-baseline-entry strong {
+  display: block;
+  font-size: .75rem;
+}
+.pack-baseline-entry small {
+  display: block;
+  margin-top: 3px;
+  color: #8c96a6;
+  font-size: .65rem;
+}
+.pack-baseline-contract {
+  color: #a9b3c1;
+  font-size: .62rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .pack-baseline-entry {
+    grid-template-columns: 1fr;
+  }
+  .pack-baseline-contract {
+    white-space: normal;
+  }
+}
