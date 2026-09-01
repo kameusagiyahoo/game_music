@@ -35,7 +35,7 @@ function versionFormatMap(formats, version) {
   );
 }
 
-function versionPackAudioAssets(pack, version) {
+export function versionPackAudioAssets(pack, version) {
   if (!pack || !version) return pack;
   return {
     ...pack,
@@ -78,7 +78,8 @@ export const MUSIC_CAPABILITIES = Object.freeze({
   }),
   [MUSIC_ENGINES.WAV_STEM]: Object.freeze({
     quantizedModeTransition: true,
-    quantizedPackSwitch: false,
+    quantizedPackSwitch: true,
+    hotSwapPackCrossfade: true,
     layerMix: true,
     wavStems: true,
     stingers: true,
@@ -94,6 +95,21 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     realtimeMeter: true,
   }),
 });
+
+export function prepareMusicPackForRuntime(entry, formatOptions = {}) {
+  if (!entry) throw new Error("Music Pack entry is required");
+  const versionedPack = versionPackAudioAssets(entry.pack, entry.version);
+  const formatResolution = entry.engine === MUSIC_ENGINES.WAV_STEM
+    ? resolvePackAudioFormat(versionedPack, formatOptions)
+    : { pack: versionedPack, selection: null, candidates: [] };
+
+  return {
+    entry,
+    pack: formatResolution.pack,
+    selection: formatResolution.selection || null,
+    candidates: [...(formatResolution.candidates || [])],
+  };
+}
 
 export function resolveMusicAsset({ gameId, packId, engine } = {}) {
   if (packId) {
@@ -127,17 +143,25 @@ export function createMusicRuntime({
   formatOptions = {},
 } = {}) {
   const entry = resolveMusicAsset({ gameId, packId, engine });
-  const versionedPack = versionPackAudioAssets(entry.pack, entry.version);
-  const formatResolution = entry.engine === MUSIC_ENGINES.WAV_STEM
-    ? resolvePackAudioFormat(versionedPack, formatOptions)
-    : { pack: versionedPack, selection: null, candidates: [] };
+  const prepared = prepareMusicPackForRuntime(entry, formatOptions);
+  let runtime = null;
 
   const options = {
-    pack: formatResolution.pack,
+    pack: prepared.pack,
     onModeChange: callbacks.onModeChange,
     onSync: callbacks.onSync,
     onLayerChange: callbacks.onLayerChange,
-    onPackChange: callbacks.onPackChange,
+    onPackChange(info = {}) {
+      const nextEntry = getMusicPackEntry(info.id);
+      if (runtime && nextEntry) {
+        runtime.entry = nextEntry;
+        runtime.audioFormat = info.format || runtime.audioFormat;
+        runtime.audioFormatCandidates = [
+          ...(info.candidates || runtime.audioFormatCandidates || []),
+        ];
+      }
+      callbacks.onPackChange?.(info);
+    },
     onFormatChange: callbacks.onFormatChange,
   };
 
@@ -152,16 +176,18 @@ export function createMusicRuntime({
 
   configureMusicManager(manager, settings);
 
-  return {
+  runtime = {
     entry,
     engine: entry.engine,
     manager,
     settings,
-    audioFormat: formatResolution.selection?.format || null,
-    audioFormatSelection: formatResolution.selection || null,
-    audioFormatCandidates: [...(formatResolution.candidates || [])],
+    formatOptions: { ...formatOptions },
+    audioFormat: prepared.selection?.format || null,
+    audioFormatSelection: prepared.selection || null,
+    audioFormatCandidates: [...prepared.candidates],
     capabilities: { ...(MUSIC_CAPABILITIES[entry.engine] || {}) },
   };
+  return runtime;
 }
 
 const STATE_MAP = Object.freeze({
