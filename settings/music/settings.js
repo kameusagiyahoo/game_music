@@ -70,7 +70,7 @@ function render() {
   auto.className = `registry-pack registry-auto${settings.proceduralPackId === "auto" ? " is-selected" : ""}`;
   auto.innerHTML = `
     <input type="radio" name="${MUSIC_ENGINES.PROCEDURAL}" value="auto" ${settings.proceduralPackId === "auto" ? "checked" : ""} />
-    <span class="registry-pack-main"><strong>ゲーム推奨</strong><small>01 Fantasy / 02 Neon / 03 Pulse / 04 Fantasy / 05 Clockwork</small></span>
+    <span class="registry-pack-main"><strong>ゲーム推奨</strong><small>procedural既定ゲームではClockworkを使用</small></span>
     <span class="registry-engine">AUTO</span>
   `;
   proceduralPacks.appendChild(auto);
@@ -81,7 +81,7 @@ function render() {
   wavAuto.className = `registry-pack registry-auto${settings.wavStemPackId === "auto" ? " is-selected" : ""}`;
   wavAuto.innerHTML = `
     <input type="radio" name="${MUSIC_ENGINES.WAV_STEM}" value="auto" ${settings.wavStemPackId === "auto" ? "checked" : ""} />
-    <span class="registry-pack-main"><strong>ゲーム推奨</strong><small>Fantasy対応ゲームはFantasy WAV / Pulse ForgeはPulse WAV</small></span>
+    <span class="registry-pack-main"><strong>ゲーム推奨</strong><small>Mystic/Rune=Fantasy · Orbit=Neon · Pulse Forge=Pulse</small></span>
     <span class="registry-engine">AUTO</span>
   `;
   wavPacks.appendChild(wavAuto);
