@@ -2118,6 +2118,18 @@ savePackBaselineButton.addEventListener("click", saveSelectedPackBaseline);
 deletePackBaselineButton.addEventListener("click", deleteSelectedPackBaseline);
 sharePackBaselineButton.addEventListener("click", () => void shareSavedPackBaseline());
 
+saveRouteMatrixBaselineButton.addEventListener("click", saveCurrentRouteMatrixBaseline);
+shareRouteMatrixBaselineButton.addEventListener("click", () => {
+  void shareSelectedRouteMatrixBaseline();
+});
+clearRouteMatrixBaselineButton.addEventListener("click", clearRouteMatrixBaselineHistory);
+routeMatrixBaselineHistory.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-route-baseline-id]");
+  if (!button) return;
+  const entry = loadQaRouteMatrixBaseline(button.dataset.routeBaselineId);
+  if (entry) selectRouteMatrixBaseline(entry);
+});
+
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) return;
   if (routeMatrixBusy()) {
@@ -2135,6 +2147,7 @@ renderHotSwapMonitor();
 renderReportSummary();
 renderComparison();
 renderBaselineRegistry();
+renderRouteMatrixBaselineRegistry();
 renderScenario();
 renderRouteMatrix();
 render();
