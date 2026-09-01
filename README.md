@@ -11,7 +11,8 @@ GitHub Pagesだけでゲーム制作とゲーム音楽基盤を練習するプ�
 - Normal / Tension / Result
 - 残り10秒でTensionへクロスフェード
 - `createMusicFacade()` で共通Facadeを生成
-- Music Registryからprocedural Packを解決
+- Music RegistryからFantasy WAV v2.0.0を解決
+- ページ表示後に11 Audio Assetをpreload
 - 共通BGM / SE設定を利用
 
 URL: https://kameusagiyahoo.github.io/game_music/
@@ -49,8 +50,10 @@ URL: https://kameusagiyahoo.github.io/game_music/games/pulse-forge/
 
 - `createMusicFacade()` で共通Facadeを生成
 - Music PackボタンをRegistryから自動生成
-- Fantasy / Neon / Clockworkを選択可能
-- プレイ中のPack変更は次の小節頭へ予約
+- Fantasy WAV / Neon / Clockwork / Pulse WAVを選択可能
+- 同一Engine内のPack変更は次小節頭へ予約
+- procedural ↔ WAV Stemは次のシーケンス境界でRuntime交換
+- WAV Packは選択時にpreload
 - Pack変更を共通Settingsへ保存
 - 残り10秒で現在または予約中PackのTensionへ移行
 
@@ -79,9 +82,9 @@ URL: https://kameusagiyahoo.github.io/game_music/games/aether-shift/
 - SE ON / OFF
 - BGM音量
 - SE音量
-- procedural engineの共通Music Pack
-- `ゲーム推奨 / Fantasy / Neon / Clockwork`
-- WAV Stem engineの登録Pack表示
+- procedural engine: `ゲーム推奨 / Neon / Clockwork`
+- WAV Stem engine: `ゲーム推奨 / Fantasy WAV / Pulse WAV`
+- 旧Pulse-only設定はv27で一度だけAUTOへmigration
 - Pack version / states / stems / stingers / formats表示
 - Manifest schema / Facade API version表示
 - 設定初期化
@@ -98,11 +101,12 @@ URL: https://kameusagiyahoo.github.io/game_music/settings/music/
 Music Registry
 │
 ├─ procedural
-│  ├─ Fantasy Table
 │  ├─ Neon Orbit
 │  └─ Clockwork Grove
 │
 └─ wav-stem
+   ├─ Fantasy Table WAV v2.0.0
+   │  └─ M4A / OGG / WAV
    └─ Pulse Forge WAV v1.4.1
       └─ M4A / OGG / WAV
 ```
@@ -133,11 +137,10 @@ Music Asset Resolver
 
 Packの再生方式を意識せず、4つの登録Packを同じ画面から試せる検証ページです。
 
-- Fantasy -> proceduralを自動選択
-- Neon -> proceduralを自動選択
-- Clockwork -> proceduralを自動選択
+- Fantasy -> wav-stemを自動選択
 - Pulse -> wav-stemを自動選択
-- PulseではM4A / OGG / WAVの選択結果をFORMAT欄に表示
+- Neon / Clockwork -> proceduralを自動選択
+- Fantasy / PulseではM4A / OGG / WAVの選択結果をFORMAT欄に表示
 - Engine capabilitiesを表示
 - PackごとのModeを自動生成
 - WAV Stem PackではStem Mix preset / Stingerも自動表示
@@ -380,9 +383,11 @@ Facade API versionはv14で `1.1.0`、v16で `1.2.0`、v17で `1.3.0`、v20で `
 
 利用箇所:
 
-- Pulse Forge: ページ表示直後に5 Stem + 2 Stinger + 4 Transition Cueをpreload
+- Mystic Match: Fantasy WAVの11 Assetをページ表示後にpreload
+- Pulse Forge: Pulse WAVの11 Assetをページ表示後にpreload
+- Rune Relay: WAV Pack選択時にpreload
 - Aether Shift: wav-stem Packを選択 / 次Waveへ予約した時点でpreload
-- Resolver Lab: Pack選択時にpreloadし、START前にPRELOADED状態を表示
+- Resolver Lab / Audio QA: WAV Pack選択時にpreload
 
 START後に選択形式のdecodeが失敗した場合はv13のRuntime Decode Fallbackがそのまま動作し、次形式のbytesを取得して再試行します。
 
@@ -2164,6 +2169,306 @@ Commit generated audio
 
 v26は音声Engine / Facade APIを変更しないため、Facade API versionは引き続き `1.5.0` です。OGG再生成のcache invalidationのためPulse Packのみ `1.4.1` へpatch bumpしています。
 
+### v27 — Multi-Pack Real Audio / Fantasy WAV v2
+
+Pulseで確立したReal Audio基盤をFantasyへ展開し、`fantasy` Packをproceduralから正式な `wav-stem` Engineへ昇格しました。
+
+```text
+Fantasy Table
+procedural
+    |
+    v
+Fantasy Table WAV v2.0.0
+    |
+    +-- 5 synchronized Stems
+    +-- 2 Stingers
+    +-- 4 Transition Cues
+    +-- M4A / OGG / WAV
+    +-- Mastering
+    +-- Golden QA
+    +-- Cross-Format Parity
+```
+
+Pack IDは従来どおり `fantasy` のため、ゲーム側は新しい専用IDを知る必要がありません。
+
+### Fantasy sound design
+
+FantasyはPulseの電子的なMixをコピーせず、よりアコースティック寄りの構成にしています。
+
+```text
+drums    frame drum / shaker
+bass     warm drone
+chords   harp-like broken chords
+melody   airy flute-like lead
+sparkle  bells / chimes
+```
+
+Audio profile:
+
+```text
+108 BPM
+4 bars
+44,100 Hz
+stereo
+16-bit PCM source WAV
+392,000 frames per synchronized Stem
+```
+
+Asset数:
+
+```text
+5 Stems
+2 Stingers
+4 Transition Cues
+-----------------
+11 musical assets
+
+× WAV / M4A / OGG
+-----------------
+33 files
+```
+
+Transition Cues:
+
+- Fill
+- Whoosh
+- Riser
+- Impact
+
+Stingers:
+
+- Victory
+- Game Over
+
+### Fantasy Mastering
+
+Fantasy専用profile:
+
+```text
+fantasy-gentle-v1
+```
+
+Runtime:
+
+```text
+Stem / Stinger / Cue buses
+        |
+        v
+Master
+        |
+        v
+-4.0 dB Headroom
+        |
+        v
+Limiter
+threshold -2.0 dB
+ratio     20:1
+attack     4 ms
+release  160 ms
+```
+
+Pulseの `game-balanced-v1` より意図的に静かで、Memory / Table Game向けの余裕を持たせています。
+
+CIの `tools/check_music_fantasy_mastering.mjs` でMastering metadataとAudio Graphを固定しています。
+
+### Fantasy Golden QA
+
+FantasyはPulseとは別のGolden契約を持ちます。
+
+```text
+qa/baselines/fantasy-standard-v1.json
+```
+
+Canonical 60 sec:
+
+```text
+OVERALL
+Peak  -6.84 dBFS
+RMS  -24.66 dBFS
+
+NORMAL
+Peak -12.52
+RMS  -27.26
+
+BUILD
+Peak -10.62
+RMS  -24.80
+
+OVERDRIVE
+Peak  -8.04
+RMS  -23.20
+
+RESULT
+Peak  -6.84
+RMS  -25.40
+```
+
+Source fingerprint:
+
+```text
+c081835d8df9da9e...
+```
+
+`tools/music_qa_golden_fantasy.mjs` がRepository内の実WAVから再計算し、GitHub Actions SummaryとJSON Artifactを生成します。
+
+Gate policyはPulseと同じです。
+
+- Overall / Stage Peak +0.75 dB超でFAIL
+- Overall / Stage RMS +1.5 dB超でFAIL
+- Scenario / Sample Rate / Mastering Profile差をFAIL
+- source changeでも安全方向ならPASS + warning
+
+### Fantasy Cross-Format Parity
+
+FantasyでもWAVをreferenceとしてM4A / OGGをdecode比較します。
+
+```text
+11 assets × 2 compressed formats
+= 22 comparisons
+```
+
+初回生成結果は22/22 PASSです。
+
+専用Workflow:
+
+```text
+.github/workflows/fantasy-format-parity.yml
+```
+
+検証:
+
+- Duration
+- RMS
+- Peak
+- active-content RMS Envelope
+- Envelope correlation / MAE
+- wrong Stem / Stinger substitution rejection
+
+Generation Workflow:
+
+```text
+.github/workflows/generate-fantasy-stems.yml
+```
+
+自動再生成triggerは、
+
+- `tools/generate_fantasy_stems.py`
+- `tools/encode_fantasy_audio.sh`
+
+だけに限定しています。Checkerやmetadataだけの変更でlossy audioを不要再encodeしません。
+
+### Multi-WAV AUTO selection
+
+WAV Stem Packが2つになったため、WAV設定にも `ゲーム推奨 / AUTO` を追加しました。
+
+```text
+Mystic Match
+AUTO -> Fantasy WAV
+
+Rune Relay
+AUTO -> Fantasy WAV
+
+Pulse Forge
+AUTO -> Pulse WAV
+```
+
+v26以前のlocalStorageには、WAV PackがPulseしかなかったため `wavStemPackId:"pulse"` が既定値として保存されている場合があります。
+
+v27ではその旧値を一度だけAUTOへmigrationします。
+
+v27以降にユーザーが明示的にPulseを選択した場合はselection version 2として保持されます。
+
+CI:
+
+```text
+tools/check_music_multi_wav_packs.mjs
+```
+
+でAUTO resolution / explicit override / legacy migrationを検証します。
+
+### Rune Relay cross-engine switch
+
+Rune Relayは以前procedural Packだけを対象にしていました。
+
+v27では全Registry Packを表示します。
+
+```text
+Fantasy WAV
+Neon procedural
+Clockwork procedural
+Pulse WAV
+```
+
+同一Engine:
+
+```text
+current bar
+    |
+    v
+next bar
+    |
+    v
+Pack switch
+```
+
+Engineを跨ぐ場合:
+
+```text
+current sequence
+    |
+    v
+sequence boundary
+    |
+    v
+old Facade stop
+    |
+    v
+new Facade / Runtime
+    |
+    v
+normal or tension state restore
+```
+
+WAV Packは選択時点でpreloadします。
+
+### Audio QA Multi-Pack
+
+Audio QA DashboardもPulse固定を解除しました。
+
+```text
+QA PACK
+├─ Pulse WAV v1.4.1
+└─ Fantasy WAV v2.0.0
+```
+
+Packを変更するとRuntime / Meter / Mastering表示 / Scenario ID / Recorderをまとめて切り替えます。
+
+```text
+Pulse
+  pulse-standard-v1
+
+Fantasy
+  fantasy-standard-v1
+```
+
+Scenario / Recording中はPack selectorをlockするため、1つのReportへ2種類のPackが混ざりません。
+
+URL:
+
+https://kameusagiyahoo.github.io/game_music/debug/audio-qa/
+
+### Format Resolver
+
+`tools/check_music_formats.mjs` は現在PulseとFantasyの両方について、
+
+```text
+M4A -> OGG -> WAV
+```
+
+の選択 / fallback URLを検証します。
+
+v27は既存Facade操作を増やしていないため、Facade API versionは引き続き `1.5.0` です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -2174,9 +2479,10 @@ URL: https://kameusagiyahoo.github.io/game_music/debug/mixer/
 
 ```text
 tools/generate_pulse_stems.py
+tools/generate_fantasy_stems.py
         |
         v
-WAV source
+WAV sources
         |
         v
 GitHub Actions + ffmpeg
@@ -2215,7 +2521,9 @@ assets/
     └── impact.{m4a,ogg,wav}
 ```
 
-Workflow: `.github/workflows/generate-pulse-stems.yml`
+Workflows:
+- `.github/workflows/generate-pulse-stems.yml`
+- `.github/workflows/generate-fantasy-stems.yml`
 
 Validation:
 - `tools/check_music_boundary.py`
@@ -2233,13 +2541,23 @@ Validation:
 - `tools/check_music_qa_scenario.mjs`
 - `tools/music_qa_golden.mjs`
 - `tools/check_music_qa_golden.mjs`
+- `tools/music_qa_golden_fantasy.mjs`
+- `tools/check_music_qa_golden_fantasy.mjs`
+- `tools/check_music_multi_wav_packs.mjs`
+- `tools/check_music_fantasy_mastering.mjs`
 - `qa/baselines/pulse-standard-v1.json`
+- `qa/baselines/fantasy-standard-v1.json`
 - `tools/check_pulse_audio_profile.py`
 - `tools/check_pulse_mastering.py`
 - `tools/check_pulse_format_parity.py`
 - `tools/check_pulse_format_parity_semantics.py`
 - `tools/encode_pulse_audio.sh`
 - `.github/workflows/pulse-format-parity.yml`
+- `tools/check_fantasy_audio_profile.py`
+- `tools/check_fantasy_format_parity.py`
+- `tools/check_fantasy_format_parity_semantics.py`
+- `tools/encode_fantasy_audio.sh`
+- `.github/workflows/fantasy-format-parity.yml`
 - `.github/workflows/music-architecture-check.yml`
 
 ## Structure
@@ -2275,19 +2593,27 @@ debug/
 └── audio-qa/
 qa/
 └── baselines/
-    └── pulse-standard-v1.json
+    ├── pulse-standard-v1.json
+    └── fantasy-standard-v1.json
 games/
 ├── orbit-rush/
 ├── pulse-forge/
 ├── rune-relay/
 └── aether-shift/
 assets/
-├── stems/pulse/
-├── stingers/pulse/
-└── transitions/pulse/
+├── stems/
+│   ├── pulse/
+│   └── fantasy/
+├── stingers/
+│   ├── pulse/
+│   └── fantasy/
+└── transitions/
+    ├── pulse/
+    └── fantasy/
 ```
 
 ## Next candidates
 
+- Neon Packの実Audio Stem版生成
+- Clockwork Packの実Audio Stem版生成
 - Game 06追加
-- procedural Packの実Audio Stem版生成
