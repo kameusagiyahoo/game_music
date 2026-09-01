@@ -49,7 +49,9 @@ on:
       - "tools/check_clockwork_audio_profile.py"
       - "tools/encode_clockwork_audio.sh"
       - "src/music-qa-route-matrix.js"
+      - "src/music-qa-route-baseline-registry.js"
       - "tools/check_music_qa_route_matrix.mjs"
+      - "tools/check_music_qa_route_baseline_registry.mjs"
       - ".github/workflows/music-architecture-check.yml"
   pull_request:
     paths:
@@ -96,7 +98,9 @@ on:
       - "tools/check_clockwork_audio_profile.py"
       - "tools/encode_clockwork_audio.sh"
       - "src/music-qa-route-matrix.js"
+      - "src/music-qa-route-baseline-registry.js"
       - "tools/check_music_qa_route_matrix.mjs"
+      - "tools/check_music_qa_route_baseline_registry.mjs"
       - ".github/workflows/music-architecture-check.yml"
 
 jobs:
@@ -135,6 +139,7 @@ jobs:
           node --check src/music-qa-baseline-registry.js
           node --check src/music-qa-scenario.js
           node --check src/music-qa-route-matrix.js
+          node --check src/music-qa-route-baseline-registry.js
           node --check tools/music_qa_golden.mjs
           node --check tools/music_qa_golden_fantasy.mjs
           node --check tools/check_music_qa_golden_fantasy.mjs
@@ -146,6 +151,7 @@ jobs:
           node --check tools/check_music_clockwork_mastering.mjs
           node --check tools/check_music_multi_wav_packs.mjs
           node --check tools/check_music_qa_route_matrix.mjs
+          node --check tools/check_music_qa_route_baseline_registry.mjs
           node --check tools/check_music_pack_hot_swap.mjs
           node --check tools/check_music_equal_power_crossfade.mjs
           node --check tools/check_music_hot_swap_qa.mjs
@@ -202,6 +208,8 @@ jobs:
         run: node tools/check_music_qa_route_matrix.mjs
       - name: Check Device QA Baseline Registry
         run: node tools/check_music_qa_baseline_registry.mjs
+      - name: Check Route Matrix Device Baseline Registry
+        run: node tools/check_music_qa_route_baseline_registry.mjs
       - name: Check Golden QA + Publish Summary
         env:
           GOLDEN_QA_REPORT_PATH: qa/out/pulse-standard-v1-golden-report.json
