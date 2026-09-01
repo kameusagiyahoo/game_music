@@ -66,22 +66,35 @@ function render() {
   const wav = listMusicPacks({ engine: MUSIC_ENGINES.WAV_STEM });
 
   proceduralPacks.innerHTML = "";
-  const auto = document.createElement("label");
-  auto.className = `registry-pack registry-auto${settings.proceduralPackId === "auto" ? " is-selected" : ""}`;
-  auto.innerHTML = `
-    <input type="radio" name="${MUSIC_ENGINES.PROCEDURAL}" value="auto" ${settings.proceduralPackId === "auto" ? "checked" : ""} />
-    <span class="registry-pack-main"><strong>ゲーム推奨</strong><small>procedural既定ゲームではClockworkを使用</small></span>
-    <span class="registry-engine">AUTO</span>
-  `;
-  proceduralPacks.appendChild(auto);
-  procedural.forEach((entry) => proceduralPacks.appendChild(packButton(entry, settings.proceduralPackId === entry.id)));
+  if (procedural.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "registry-pack is-disabled";
+    empty.innerHTML = `
+      <span class="registry-pack-main">
+        <strong>登録Packなし</strong>
+        <small>v29で全Music PackをReal Audio / WAV Stemへ移行しました。Engine実装は互換テスト用に残しています。</small>
+      </span>
+      <span class="registry-engine">0 PACKS</span>
+    `;
+    proceduralPacks.appendChild(empty);
+  } else {
+    const auto = document.createElement("label");
+    auto.className = `registry-pack registry-auto${settings.proceduralPackId === "auto" ? " is-selected" : ""}`;
+    auto.innerHTML = `
+      <input type="radio" name="${MUSIC_ENGINES.PROCEDURAL}" value="auto" ${settings.proceduralPackId === "auto" ? "checked" : ""} />
+      <span class="registry-pack-main"><strong>ゲーム推奨</strong><small>procedural対応ゲームの既定Packを使用</small></span>
+      <span class="registry-engine">AUTO</span>
+    `;
+    proceduralPacks.appendChild(auto);
+    procedural.forEach((entry) => proceduralPacks.appendChild(packButton(entry, settings.proceduralPackId === entry.id)));
+  }
 
   wavPacks.innerHTML = "";
   const wavAuto = document.createElement("label");
   wavAuto.className = `registry-pack registry-auto${settings.wavStemPackId === "auto" ? " is-selected" : ""}`;
   wavAuto.innerHTML = `
     <input type="radio" name="${MUSIC_ENGINES.WAV_STEM}" value="auto" ${settings.wavStemPackId === "auto" ? "checked" : ""} />
-    <span class="registry-pack-main"><strong>ゲーム推奨</strong><small>Mystic/Rune=Fantasy · Orbit=Neon · Pulse Forge=Pulse</small></span>
+    <span class="registry-pack-main"><strong>ゲーム推奨</strong><small>Mystic/Rune=Fantasy · Orbit=Neon · Pulse=Pulse · Aether=Clockwork</small></span>
     <span class="registry-engine">AUTO</span>
   `;
   wavPacks.appendChild(wavAuto);
@@ -89,7 +102,9 @@ function render() {
 
   const selected = procedural.find((entry) => entry.id === settings.proceduralPackId);
   const selectedWav = wav.find((entry) => entry.id === settings.wavStemPackId);
-  proceduralSummary.textContent = settings.proceduralPackId === "auto" ? "GAME DEFAULT" : selected?.name || "AUTO";
+  proceduralSummary.textContent = procedural.length === 0
+    ? "NO REGISTERED PACKS"
+    : settings.proceduralPackId === "auto" ? "GAME DEFAULT" : selected?.name || "AUTO";
   wavSummary.textContent = settings.wavStemPackId === "auto" ? "GAME DEFAULT" : selectedWav?.name || "AUTO";
   packCount.textContent = String(snapshot.packCount);
   proceduralCount.textContent = String(procedural.length);
