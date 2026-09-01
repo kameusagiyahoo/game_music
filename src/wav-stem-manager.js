@@ -1445,6 +1445,8 @@ export class WavStemMusicManager {
       scheduledAt: swap.scheduledAt,
       fadeEnd: swap.fadeEnd,
       crossfadeBeats: swap.crossfadeBeats,
+      curve: swap.crossfadeCurve || null,
+      curvePoints: swap.crossfadePoints || 0,
       fromId: swap.fromPack?.id || null,
     });
     this.#announce();
@@ -1470,6 +1472,8 @@ export class WavStemMusicManager {
       scheduledAt: swap.scheduledAt,
       fadeEnd: swap.fadeEnd,
       crossfadeBeats: swap.crossfadeBeats,
+      curve: swap.crossfadeCurve || null,
+      curvePoints: swap.crossfadePoints || 0,
       fromId: swap.fromPack?.id || null,
     };
     this.pendingPackSwitch = null;
