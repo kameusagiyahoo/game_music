@@ -80,6 +80,7 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     quantizedModeTransition: true,
     quantizedPackSwitch: true,
     hotSwapPackCrossfade: true,
+    equalPowerPackCrossfade: true,
     layerMix: true,
     wavStems: true,
     stingers: true,
