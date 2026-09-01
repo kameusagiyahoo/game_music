@@ -119,7 +119,9 @@ function createPackScenario(packId) {
     ? "Fantasy"
     : packId === "neon"
       ? "Neon"
-      : "Pulse";
+      : packId === "clockwork"
+        ? "Clockwork"
+        : "Pulse";
   return Object.freeze({
     ...BASE_QA_SCENARIO,
     id: `${packId}-standard-v1`,
@@ -161,7 +163,7 @@ function preloadCurrentQaPack() {
 }
 
 async function switchQaPack(packId) {
-  if (!["pulse", "fantasy", "neon"].includes(packId)) return;
+  if (!["pulse", "fantasy", "neon", "clockwork"].includes(packId)) return;
   if (recordingSession || scenarioRun?.status === "running") {
     qaPackSelect.value = selectedQaPackId;
     return;
