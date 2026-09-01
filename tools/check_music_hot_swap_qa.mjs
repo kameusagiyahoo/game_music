@@ -10,6 +10,7 @@ import {
   addQaSample,
   finalizeQaSession,
   qaReportToCsv,
+  evaluateHotSwapQa,
 } from "../src/music-qa-report.js";
 
 const errors = [];
@@ -252,6 +253,15 @@ if (swap?.crossfadeSampleCount !== 3) {
   errors.push(`hot-swap sample count mismatch: ${swap?.crossfadeSampleCount}`);
 }
 
+if (summary.hotSwapQa?.status !== "review") {
+  errors.push(
+    `expected current synthetic hot swap to REVIEW, got ${summary.hotSwapQa?.status}`
+  );
+}
+if (summary.verdict !== "review") {
+  errors.push(`hot-swap REVIEW should propagate to report verdict: ${summary.verdict}`);
+}
+
 const hotEvents = report.events.filter((event) => event.type === "hot-swap");
 if (!hotEvents.some((event) => event.state === "scheduled")) {
   errors.push("scheduled hot-swap event missing");
@@ -277,6 +287,136 @@ for (const column of [
   if (!header.includes(column)) errors.push(`CSV column missing: ${column}`);
 }
 
+
+const safeGate = evaluateHotSwapQa([{
+  fromId: "pulse",
+  toId: "fantasy",
+  curve: PACK_CROSSFADE_CURVE,
+  crossfadeSampleCount: 10,
+  maxOutputPeakDbfs: -2.0,
+  maxLimiterReductionMagnitudeDb: 1.2,
+  minPowerCoefficientSum: 0.9999,
+  edgeAverageOutputRmsDbfs: -20.0,
+  midpointAverageOutputRmsDbfs: -20.6,
+  midpointRmsDeltaDb: -0.6,
+}]);
+if (safeGate.status !== "pass") {
+  errors.push(`safe Hot Swap gate should PASS: ${safeGate.status}`);
+}
+
+const legacyGate = evaluateHotSwapQa([{
+  fromId: "pulse",
+  toId: "fantasy",
+  curve: LEGACY_PACK_CROSSFADE_CURVE,
+  crossfadeSampleCount: 10,
+  maxOutputPeakDbfs: -2.0,
+  maxLimiterReductionMagnitudeDb: 1.0,
+  minPowerCoefficientSum: 0.0002,
+  edgeAverageOutputRmsDbfs: -20.0,
+  midpointAverageOutputRmsDbfs: -20.5,
+  midpointRmsDeltaDb: -0.5,
+}]);
+if (legacyGate.status !== "fail") {
+  errors.push(`legacy power collapse should FAIL: ${legacyGate.status}`);
+}
+if (!legacyGate.failures.some((message) => message.includes("power coefficient"))) {
+  errors.push("legacy power-collapse failure reason missing");
+}
+
+const rmsDipGate = evaluateHotSwapQa([{
+  fromId: "fantasy",
+  toId: "neon",
+  curve: PACK_CROSSFADE_CURVE,
+  crossfadeSampleCount: 10,
+  maxOutputPeakDbfs: -2.0,
+  maxLimiterReductionMagnitudeDb: 1.0,
+  minPowerCoefficientSum: 1.0,
+  edgeAverageOutputRmsDbfs: -20.0,
+  midpointAverageOutputRmsDbfs: -30.5,
+  midpointRmsDeltaDb: -10.5,
+}]);
+if (rmsDipGate.status !== "fail") {
+  errors.push(`midpoint RMS dip should FAIL: ${rmsDipGate.status}`);
+}
+
+const limiterGate = evaluateHotSwapQa([{
+  fromId: "neon",
+  toId: "clockwork",
+  curve: PACK_CROSSFADE_CURVE,
+  crossfadeSampleCount: 10,
+  maxOutputPeakDbfs: -1.0,
+  maxLimiterReductionMagnitudeDb: 7.0,
+  minPowerCoefficientSum: 1.0,
+  edgeAverageOutputRmsDbfs: -20.0,
+  midpointAverageOutputRmsDbfs: -21.0,
+  midpointRmsDeltaDb: -1.0,
+}]);
+if (limiterGate.status !== "fail") {
+  errors.push(`7 dB limiter Hot Swap should FAIL: ${limiterGate.status}`);
+}
+
+const peakGate = evaluateHotSwapQa([{
+  fromId: "clockwork",
+  toId: "pulse",
+  curve: PACK_CROSSFADE_CURVE,
+  crossfadeSampleCount: 10,
+  maxOutputPeakDbfs: -0.05,
+  maxLimiterReductionMagnitudeDb: 1.0,
+  minPowerCoefficientSum: 1.0,
+  edgeAverageOutputRmsDbfs: -20.0,
+  midpointAverageOutputRmsDbfs: -20.5,
+  midpointRmsDeltaDb: -0.5,
+}]);
+if (peakGate.status !== "fail") {
+  errors.push(`-0.05 dBFS Hot Swap peak should FAIL: ${peakGate.status}`);
+}
+
+const sparseGate = evaluateHotSwapQa([{
+  fromId: "pulse",
+  toId: "neon",
+  curve: PACK_CROSSFADE_CURVE,
+  crossfadeSampleCount: 2,
+  maxOutputPeakDbfs: -2.0,
+  maxLimiterReductionMagnitudeDb: 1.0,
+  minPowerCoefficientSum: 1.0,
+  midpointRmsDeltaDb: null,
+}]);
+if (sparseGate.status !== "review") {
+  errors.push(`sparse Hot Swap should REVIEW: ${sparseGate.status}`);
+}
+
+const noSwapGate = evaluateHotSwapQa([]);
+if (noSwapGate.status !== "not-applicable") {
+  errors.push(`no Hot Swap should be not-applicable: ${noSwapGate.status}`);
+}
+
+// Verify a Hot Swap hard failure propagates into the overall QA verdict.
+const failSession = createQaSession({
+  startedAtMs: 2_000,
+  sampleIntervalMs: 100,
+  targetDurationSeconds: 1,
+});
+for (let index = 0; index < 5; index += 1) {
+  const progress = index / 4;
+  const bad = hot(progress);
+  if (index === 2) bad.powerCoefficientSum = 0.0002;
+  addQaSample(failSession, qaMeter({
+    hotSwap: bad,
+    peak: -2,
+    rms: -20,
+    reduction: -1,
+  }), {
+    capturedAtMs: 2_000 + index * 100,
+  });
+}
+const failReport = finalizeQaSession(failSession, { endedAtMs: 2_500 });
+if (failReport.summary.hotSwapQa?.status !== "fail") {
+  errors.push("Hot Swap hard failure did not produce hotSwapQa FAIL");
+}
+if (failReport.summary.verdict !== "fail") {
+  errors.push("Hot Swap hard failure did not propagate to overall QA verdict");
+}
+
 if (errors.length) {
   console.error("Hot Swap QA Integration Check FAILED");
   errors.forEach((error) => console.error(`- ${error}`));
@@ -288,5 +428,7 @@ console.log("- realtime meter hot-swap metadata: OK");
 console.log("- equal-power midpoint: 0.7071 / 0.7071 / power=1.0");
 console.log("- legacy midpoint dip remains measurable: OK");
 console.log("- QA crossfade window summary: OK");
+console.log("- Hot Swap safety gate PASS / REVIEW / FAIL semantics: OK");
+console.log("- Hot Swap hard failure propagates to overall QA verdict: OK");
 console.log("- scheduled/crossfading/complete events: OK");
 console.log("- CSV hot-swap columns: OK");
