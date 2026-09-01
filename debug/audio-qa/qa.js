@@ -13,6 +13,12 @@ import {
   qaComparisonFilename,
 } from "../../src/music-qa-compare.js";
 import {
+  getQaBaselineEligibility,
+  saveQaPackBaseline,
+  loadQaPackBaseline,
+  deleteQaPackBaseline,
+} from "../../src/music-qa-baseline-registry.js";
+import {
   STANDARD_QA_SCENARIO as BASE_QA_SCENARIO,
   createQaScenarioRun,
   advanceQaScenarioRun,
@@ -95,8 +101,12 @@ const scenarioDriftValue = $("#scenarioDriftValue");
 const scenarioRunStatus = $("#scenarioRunStatus");
 const baselineFile = $("#baselineFile");
 const baselineStatus = $("#baselineStatus");
+const baselineRegistryStatus = $("#baselineRegistryStatus");
 const compareVerdict = $("#compareVerdict");
 const useCurrentBaselineButton = $("#useCurrentBaselineButton");
+const savePackBaselineButton = $("#savePackBaselineButton");
+const deletePackBaselineButton = $("#deletePackBaselineButton");
+const sharePackBaselineButton = $("#sharePackBaselineButton");
 const exportCompareJsonButton = $("#exportCompareJsonButton");
 const exportCompareCsvButton = $("#exportCompareCsvButton");
 const comparePeak = $("#comparePeak");
@@ -126,6 +136,8 @@ const RECORD_SAMPLE_INTERVAL_MS = 100;
 let recordingSession = null;
 let lastReport = null;
 let baselineReport = null;
+let baselineOrigin = null;
+let savedBaselineEntry = null;
 let comparisonReport = null;
 let scenarioRun = null;
 let lastScenarioSummary = null;
@@ -179,6 +191,115 @@ function updateQaPackLabel() {
 function preloadCurrentQaPack() {
   return music.preload({ stingers: true, transitions: true }).catch((error) => {
     console.warn("QA preload failed; START will retry", error);
+  });
+}
+
+function baselineOriginLabel() {
+  if (baselineOrigin === "saved") return "SAVED DEVICE";
+  if (baselineOrigin === "file") return "FILE";
+  if (baselineOrigin === "current") return "CURRENT SESSION";
+  return "BASELINE";
+}
+
+function renderBaselineRegistry() {
+  const saved = savedBaselineEntry;
+  const eligibility = baselineReport
+    ? getQaBaselineEligibility(baselineReport, { packId: selectedQaPackId })
+    : { eligible: false, failures: ["No baseline report selected"] };
+
+  savePackBaselineButton.disabled = !eligibility.eligible;
+  savePackBaselineButton.title = eligibility.eligible
+    ? "Save this approved Standard 60s report for the selected Pack"
+    : eligibility.failures.join(" · ");
+
+  deletePackBaselineButton.disabled = !saved;
+  sharePackBaselineButton.disabled = !saved;
+
+  if (!saved) {
+    baselineRegistryStatus.textContent =
+      `NONE · ${String(selectedQaPackId).toUpperCase()} · RUN STANDARD 60s`;
+    baselineRegistryStatus.className = "record-status";
+    return;
+  }
+
+  const approved = saved.approvedAt
+    ? new Date(saved.approvedAt).toLocaleString()
+    : "unknown time";
+  const rate = saved.sampleRate
+    ? `${(Number(saved.sampleRate) / 1000).toFixed(1)} kHz`
+    : "unknown rate";
+
+  baselineRegistryStatus.textContent =
+    `SAVED · ${String(saved.packId).toUpperCase()} v${saved.packVersion || "?"} · ${rate} · ${Number(saved.coveragePercent || 0).toFixed(0)}% · ${approved}`;
+  baselineRegistryStatus.className = "record-status is-saved";
+}
+
+function restoreSavedPackBaseline(packId = selectedQaPackId) {
+  savedBaselineEntry = loadQaPackBaseline(packId);
+
+  if (savedBaselineEntry?.report) {
+    setBaseline(savedBaselineEntry.report, { origin: "saved" });
+  } else {
+    baselineReport = null;
+    baselineOrigin = null;
+    comparisonReport = null;
+    renderComparison();
+    renderBaselineRegistry();
+  }
+}
+
+function saveSelectedPackBaseline() {
+  if (!baselineReport) return;
+
+  const eligibility = getQaBaselineEligibility(baselineReport, {
+    packId: selectedQaPackId,
+  });
+  if (!eligibility.eligible) {
+    baselineRegistryStatus.textContent =
+      "NOT SAVED · " + eligibility.failures.join(" · ");
+    baselineRegistryStatus.className = "record-status";
+    renderBaselineRegistry();
+    return;
+  }
+
+  try {
+    savedBaselineEntry = saveQaPackBaseline(baselineReport);
+    baselineOrigin = "saved";
+    renderComparison();
+    renderBaselineRegistry();
+  } catch (error) {
+    console.error("Pack QA baseline save failed", error);
+    baselineRegistryStatus.textContent = `SAVE ERROR · ${error.message}`;
+    baselineRegistryStatus.className = "record-status";
+  }
+}
+
+function deleteSelectedPackBaseline() {
+  if (!deleteQaPackBaseline(selectedQaPackId)) return;
+  savedBaselineEntry = null;
+
+  if (baselineOrigin === "saved") {
+    baselineReport = null;
+    baselineOrigin = null;
+    comparisonReport = null;
+  }
+
+  renderComparison();
+  renderBaselineRegistry();
+}
+
+async function shareSavedPackBaseline() {
+  if (!savedBaselineEntry?.report) return;
+
+  const report = savedBaselineEntry.report;
+  const filename =
+    `game-music-device-baseline-${savedBaselineEntry.packId}-${String(savedBaselineEntry.approvedAt || "baseline").replaceAll(":", "-")}.json`;
+
+  await shareOrDownload(JSON.stringify(report, null, 2), {
+    mime: "application/json",
+    filename,
+    title: "Game Music Device QA Baseline",
+    text: `${savedBaselineEntry.packId} · ${savedBaselineEntry.scenarioId}`,
   });
 }
 
@@ -293,12 +414,14 @@ async function switchQaPack(packId) {
   reductionHistory.length = 0;
   lastReport = null;
   baselineReport = null;
+  baselineOrigin = null;
+  savedBaselineEntry = null;
   comparisonReport = null;
   lastScenarioSummary = null;
 
   updateQaPackLabel();
+  restoreSavedPackBaseline(packId);
   renderReportSummary();
-  renderComparison();
   renderScenario();
   syncHotSwapTargetOptions(packId);
   render();
@@ -782,13 +905,14 @@ function renderComparison() {
   exportCompareCsvButton.disabled = !comparison?.valid;
 
   if (!baselineReport) {
-    baselineStatus.textContent = "NO BASELINE · LOAD A v21 JSON REPORT";
+    baselineStatus.textContent = "NO ACTIVE BASELINE · SAVED PACK BASELINE WILL AUTO-LOAD";
   } else {
     const version = baselineReport.metadata?.packVersion || "?";
     const date = baselineReport.generatedAt
       ? new Date(baselineReport.generatedAt).toLocaleString()
       : "unknown time";
-    baselineStatus.textContent = `BASELINE · ${baselineReport.metadata?.packName || baselineReport.metadata?.packId || "Music"} v${version} · ${date}`;
+    baselineStatus.textContent =
+      `${baselineOriginLabel()} BASELINE · ${baselineReport.metadata?.packName || baselineReport.metadata?.packId || "Music"} v${version} · ${date}`;
   }
 
   if (!comparison?.valid) {
@@ -911,19 +1035,23 @@ function runComparison() {
   return comparisonReport;
 }
 
-function setBaseline(report) {
+function setBaseline(report, { origin = "baseline" } = {}) {
   const validation = validateQaReport(report);
   if (!validation.valid) {
     baselineReport = null;
+    baselineOrigin = null;
     comparisonReport = {
       valid: false,
       errors: validation.errors.map((message) => `baseline: ${message}`),
     };
     renderComparison();
+    renderBaselineRegistry();
     return false;
   }
   baselineReport = report;
+  baselineOrigin = origin;
   runComparison();
+  renderBaselineRegistry();
   return true;
 }
 
@@ -932,8 +1060,7 @@ async function loadBaselineFile(file) {
   try {
     const text = await file.text();
     const report = JSON.parse(text);
-    if (!setBaseline(report)) return;
-    baselineStatus.textContent = `BASELINE LOADED · ${file.name}`;
+    if (!setBaseline(report, { origin: "file" })) return;
   } catch (error) {
     baselineReport = null;
     comparisonReport = {
@@ -1114,6 +1241,7 @@ function render() {
     qaScenario = createPackScenario(selectedQaPackId);
     updateQaPackLabel();
     syncHotSwapTargetOptions(selectedQaPackId);
+    if (!recordingSession) restoreSavedPackBaseline(selectedQaPackId);
   }
 
   const info = staticInfo;
@@ -1245,11 +1373,15 @@ useCurrentBaselineButton.addEventListener("click", () => {
   setBaseline(
     typeof structuredClone === "function"
       ? structuredClone(lastReport)
-      : JSON.parse(JSON.stringify(lastReport))
+      : JSON.parse(JSON.stringify(lastReport)),
+    { origin: "current" }
   );
 });
 exportCompareJsonButton.addEventListener("click", () => void exportComparison("json"));
 exportCompareCsvButton.addEventListener("click", () => void exportComparison("csv"));
+savePackBaselineButton.addEventListener("click", saveSelectedPackBaseline);
+deletePackBaselineButton.addEventListener("click", deleteSelectedPackBaseline);
+sharePackBaselineButton.addEventListener("click", () => void shareSavedPackBaseline());
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && scenarioRun?.status === "running") {
@@ -1258,11 +1390,13 @@ document.addEventListener("visibilitychange", () => {
 });
 
 updateQaPackLabel();
+restoreSavedPackBaseline(selectedQaPackId);
 void preloadCurrentQaPack();
 
 renderHotSwapMonitor();
 renderReportSummary();
 renderComparison();
+renderBaselineRegistry();
 renderScenario();
 render();
 requestAnimationFrame(animationFrame);
