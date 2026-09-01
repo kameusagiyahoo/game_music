@@ -331,6 +331,201 @@ export class WavStemMusicManager {
     return { ...this.layerMix };
   }
 
+  getPackInfo() {
+    const swap = this.pendingPackSwitch;
+    return {
+      id: this.pack?.id || null,
+      name: this.pack?.name || null,
+      pendingId: swap && !swap.committed ? swap.nextPack?.id || null : null,
+      pendingName: swap && !swap.committed ? swap.nextPack?.name || null : null,
+      hotSwap: swap ? {
+        phase: swap.committed ? "crossfading" : "scheduled",
+        fromId: swap.fromPack?.id || null,
+        toId: swap.nextPack?.id || null,
+        quantize: swap.quantize,
+        scheduledAt: swap.scheduledAt,
+        fadeEnd: swap.fadeEnd,
+        crossfadeBeats: swap.crossfadeBeats,
+      } : null,
+    };
+  }
+
+  async switchPack(nextPack, options = {}) {
+    if (!nextPack?.id || !nextPack?.audioStems) {
+      throw new Error("WAV pack switch requires a valid audioStems pack");
+    }
+
+    await this.init();
+
+    if (nextPack.id === this.pack?.id && !this.pendingPackSwitch) {
+      return {
+        ...this.getPackInfo(),
+        pending: false,
+        unchanged: true,
+      };
+    }
+
+    if (
+      this.pendingPackSwitch &&
+      !this.pendingPackSwitch.committed &&
+      this.pendingPackSwitch.nextPack?.id === nextPack.id
+    ) {
+      const target = this.#resolvePackTarget(
+        this.pendingPackSwitch.nextPack,
+        options.mode ?? this.pendingPackSwitch.targetMode,
+        options.preset ?? this.pendingPackSwitch.targetPreset,
+      );
+      this.pendingPackSwitch.targetMode = target.mode;
+      this.pendingPackSwitch.targetPreset = target.preset;
+      this.pendingPackSwitch.targetMix = target.mix;
+      STEMS.forEach((name) => {
+        const bus = this.pendingPackSwitch.nextLayerBuses?.[name];
+        if (bus) bus.gain.value = Math.max(0.0001, target.mix[name]);
+      });
+      this.#sync(this.lastStep < 0 ? 0 : this.lastStep);
+      return {
+        ...this.getPackInfo(),
+        pending: true,
+        updated: true,
+      };
+    }
+
+    if (this.pendingPackSwitch) this.cancelPendingPackSwitch();
+
+    const decoded = await this.#loadStemBuffersForPack(nextPack);
+    const target = this.#resolvePackTarget(
+      decoded.pack,
+      options.mode ?? this.mode,
+      options.preset,
+    );
+
+    if (!this.running) {
+      this.#adoptStoppedPack(decoded.pack, decoded.buffers, decoded.format, target);
+      return {
+        ...this.getPackInfo(),
+        pending: false,
+        immediate: true,
+      };
+    }
+
+    const quantize = options.quantize === "beat" || options.quantize === "bar"
+      ? options.quantize
+      : "immediate";
+    const requestedAt = Number(options.scheduledAt || 0);
+    const now = this.context.currentTime;
+    const scheduledAt = requestedAt > now + 0.01
+      ? requestedAt
+      : this.getQuantizedTime(quantize);
+    const crossfadeBeats = Math.max(0.25, Number(options.crossfadeBeats ?? 2));
+    const currentBpm = Number(this.pack?.audioStems?.bpm || 112);
+    const fadeSeconds = Math.max(
+      0.05,
+      Number(options.seconds ?? crossfadeBeats * 60 / currentBpm),
+    );
+    const fadeEnd = scheduledAt + fadeSeconds;
+
+    const nextPackGain = this.context.createGain();
+    nextPackGain.gain.value = 0.0001;
+    nextPackGain.connect(this.musicRoot);
+
+    const nextLayerBuses = {};
+    const nextSources = {};
+
+    STEMS.forEach((name) => {
+      const bus = this.context.createGain();
+      bus.gain.value = Math.max(0.0001, target.mix[name]);
+      bus.connect(nextPackGain);
+      nextLayerBuses[name] = bus;
+
+      const buffer = decoded.buffers[name];
+      if (!buffer) return;
+      const source = this.context.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.loopStart = 0;
+      source.loopEnd = buffer.duration;
+      source.connect(bus);
+      source.start(scheduledAt);
+      nextSources[name] = source;
+    });
+
+    const oldPackGain = this.packGain;
+    const oldSources = { ...this.sources };
+    const oldLayerBuses = { ...this.layerBuses };
+    const oldGain = Math.max(Number(oldPackGain?.gain?.value || 1), 0.0001);
+
+    if (oldPackGain?.gain) {
+      oldPackGain.gain.cancelScheduledValues(now);
+      oldPackGain.gain.setValueAtTime(oldGain, now);
+      if (scheduledAt > now) oldPackGain.gain.setValueAtTime(oldGain, scheduledAt);
+      oldPackGain.gain.exponentialRampToValueAtTime(0.0001, fadeEnd);
+    }
+
+    nextPackGain.gain.cancelScheduledValues(now);
+    nextPackGain.gain.setValueAtTime(0.0001, now);
+    if (scheduledAt > now) nextPackGain.gain.setValueAtTime(0.0001, scheduledAt);
+    nextPackGain.gain.exponentialRampToValueAtTime(1, fadeEnd);
+
+    this.#scheduleMasteringTransition(decoded.pack, scheduledAt, fadeEnd);
+
+    this.pendingPackSwitch = {
+      fromPack: this.pack,
+      nextPack: decoded.pack,
+      nextBuffers: decoded.buffers,
+      nextSources,
+      nextLayerBuses,
+      nextPackGain,
+      oldSources,
+      oldLayerBuses,
+      oldPackGain,
+      format: decoded.format,
+      candidates: decoded.candidates,
+      quantize,
+      scheduledAt,
+      fadeEnd,
+      fadeSeconds,
+      crossfadeBeats,
+      targetMode: target.mode,
+      targetPreset: target.preset,
+      targetMix: target.mix,
+      committed: false,
+    };
+
+    this.#sync(this.lastStep < 0 ? 0 : this.lastStep);
+    return {
+      ...this.getPackInfo(),
+      pending: true,
+      quantize,
+      scheduledAt,
+      fadeEnd,
+      fadeSeconds,
+    };
+  }
+
+  cancelPendingPackSwitch() {
+    const swap = this.pendingPackSwitch;
+    if (!swap || swap.committed) return false;
+
+    this.#stopSourceMap(swap.nextSources);
+    this.#disconnectNodeMap(swap.nextLayerBuses);
+    try { swap.nextPackGain?.disconnect(); } catch (_) {}
+
+    const now = Number(this.context?.currentTime || 0);
+    if (swap.oldPackGain?.gain && this.context) {
+      swap.oldPackGain.gain.cancelScheduledValues(now);
+      swap.oldPackGain.gain.setValueAtTime(
+        Math.max(Number(swap.oldPackGain.gain.value || 1), 0.0001),
+        now,
+      );
+      swap.oldPackGain.gain.exponentialRampToValueAtTime(1, now + 0.03);
+    }
+
+    this.pendingPackSwitch = null;
+    this.#applyMasteringConfig(this.pack, 0.03);
+    if (this.lastStep >= 0) this.#sync(this.lastStep);
+    return true;
+  }
+
   getQuantizedTime(quantize = "immediate", fromTime = null) {
     if (!this.context) return 0;
 
