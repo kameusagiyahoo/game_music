@@ -5014,6 +5014,206 @@ tools/check_music_qa_route_baseline_registry.mjs
 
 Facade / Audio Engine API自体は変更していないため、Facade API versionは引き続き `1.5.0` です。
 
+### v38 — Pack Device Baseline History / Version Switch
+
+v34〜v36のPack単体Device Baselineを、最新1件だけではなくPackごとの履歴として保持するように拡張しました。
+
+Route Matrix Baselineはv37ですでに最大6件の履歴を持っていました。v38でStandard 60sのPack Baselineも同じ運用へ揃えています。
+
+```text
+Pack Device Baseline
+per Pack
+
+Pulse
+├─ #1 latest
+├─ #2
+├─ #3
+├─ #4
+├─ #5
+└─ #6 oldest retained
+
+Fantasy
+└─ independent history
+
+Neon
+└─ independent history
+
+Clockwork
+└─ independent history
+```
+
+各Packの履歴上限は6件です。
+
+7件目を保存すると、そのPackの最古1件だけを削除します。他Packの履歴には影響しません。
+
+### Storage migration
+
+localStorage keyは互換性のため変更していません。
+
+```text
+game-music-qa-pack-baselines-v1
+```
+
+内部schemaのみ、
+
+```text
+1.0.0
+  baselines: {
+    pulse: entry
+  }
+
+        ↓ automatic read migration
+
+2.0.0
+  histories: {
+    pulse: [entry, entry, ...]
+  }
+```
+
+へ更新しています。
+
+旧v34〜v37で保存された1件Baselineは、v38で自動的に「履歴1件目」として読み込まれます。
+
+旧データを明示的に削除したり、手動で再保存する必要はありません。次回保存時にv2 schemaで永続化されます。
+
+### Backward-compatible API
+
+既存API:
+
+```js
+loadQaPackBaseline("pulse")
+```
+
+は引き続き利用でき、履歴の最新1件を返します。
+
+v38追加API:
+
+```js
+listQaPackBaselineHistory(packId)
+loadQaPackBaseline(packId, { id })
+loadQaPackBaselineEntry(id)
+deleteQaPackBaselineEntry(id)
+```
+
+既存の、
+
+```js
+deleteQaPackBaseline(packId)
+```
+
+はPackの履歴全体を削除するAPIとして維持しています。
+
+履歴管理module:
+
+```text
+src/music-qa-baseline-registry.js
+```
+
+### Audio QA workflow
+
+Audio QA DashboardのPack Device Baseline欄は、
+
+```text
+SAVE PACK BASELINE
+SHARE SELECTED
+DELETE SELECTED
+CLEAR PACK HISTORY
+
+History
+#1
+#2
+...
+#6
+```
+
+になりました。
+
+各履歴行には、
+
+- Pack version
+- 保存日時
+- Mastering Profile
+- Sampling Coverage
+- Audio Format
+- AudioContext Sample Rate
+
+を表示します。
+
+履歴行をタップすると、そのBaselineへ切り替えて既存のDevice Contract Gateを適用します。
+
+```text
+Select history
+      |
+      v
+Device Contract Gate
+      |
+      +-- EXACT
+      +-- REVIEW
+      +-- INCOMPATIBLE
+      |
+      v
+Regression Compare
+```
+
+Pack versionのみ異なる履歴はv36と同様にREVIEWとして比較可能です。
+
+M4A / OGG、48 kHz / 44.1 kHz、Mastering Profile、Scenario条件が違う履歴はINCOMPATIBLEとして数値Regression比較をブロックします。
+
+### Automatic latest selection
+
+QA Packを切り替えると、そのPackの最新履歴を自動選択します。
+
+```text
+QA PACK = NEON
+      |
+      v
+latest Neon Device Baseline
+
+QA PACK = FANTASY
+      |
+      v
+latest Fantasy Device Baseline
+```
+
+古い履歴を確認したい場合だけ、履歴カードから明示的に選びます。
+
+選択1件を削除した場合、比較中BaselineがSaved Deviceだったときは次に新しい履歴へ自動的に移ります。
+
+FILE / CURRENT SESSIONを比較中の場合は、履歴を削除しても現在の比較対象を勝手に変更しません。
+
+### v38 CI
+
+`tools/check_music_qa_baseline_registry.mjs` を履歴仕様へ拡張しました。
+
+検証:
+
+- Standard 60s eligibility
+- Device Contract EXACT / REVIEW / INCOMPATIBLE
+- legacy schema 1.0.0 -> history migration
+- migration後のv2永続化
+- 同一Packを7回保存 -> 6件保持
+- 最古entry eviction
+- latest自動load
+- ID指定load
+- global entry ID lookup
+- Packごとの履歴分離
+- selected-entry delete
+- Pack history delete
+- compact storage
+- corrupted localStorage fail closed
+
+Route Matrixのv37履歴とは保存領域とScenario contractを分離したままです。
+
+```text
+Pack Standard History
+game-music-qa-pack-baselines-v1
+
+Route Matrix History
+game-music-qa-route-matrix-baselines-v1
+```
+
+Facade / Audio Engine API自体は変更していないため、Facade API versionは引き続き `1.5.0` です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -5205,6 +5405,6 @@ assets/
 
 ## Next candidates
 
-- Device Baselineの複数version履歴と切替
-- Route Matrix BaselineのJSON Import / Merge
+- Pack / Route Matrix Device BaselineのJSON Import / Merge
+- Device Baseline履歴の名前付け / 承認メモ
 - Game 06追加
