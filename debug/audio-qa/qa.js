@@ -880,7 +880,11 @@ function renderComparison() {
     const reduction = delta.maxLimiterReductionMagnitudeDb == null ? "—" : signed(delta.maxLimiterReductionMagnitudeDb, 1, " dB");
     const power = delta.minPowerCoefficientSum == null ? "—" : signed(delta.minPowerCoefficientSum, 3);
     const duration = delta.durationRelative == null ? "—" : signed(delta.durationRelative * 100, 0, "%");
-    const curve = item.current?.curve || item.baseline?.curve || "—";
+    const baselineCurve = item.baseline?.curve || null;
+    const currentCurve = item.current?.curve || null;
+    const curve = baselineCurve && currentCurve && baselineCurve !== currentCurve
+      ? baselineCurve + " -> " + currentCurve
+      : currentCurve || baselineCurve || "—";
     return `
       <div class="compare-hot-swap-row">
         <strong>${String(item.route || "—").toUpperCase()} #${item.occurrence}</strong>
