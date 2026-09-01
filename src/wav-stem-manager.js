@@ -9,6 +9,7 @@ const clamp01 = (value) => Math.max(0, Math.min(1, Number(value)));
 const dbToGain = (db) => 10 ** (Number(db) / 20);
 
 export const PACK_CROSSFADE_CURVE = "equal-power-v1";
+export const LEGACY_PACK_CROSSFADE_CURVE = "exponential-v30";
 export const PACK_CROSSFADE_CURVE_POINTS = 129;
 
 export function buildEqualPowerCrossfadeCurves({
@@ -81,6 +82,43 @@ export function scheduleEqualPowerCrossfade({
   incomingParam.exponentialRampToValueAtTime?.(1, end);
   return {
     mode: "exponential-fallback",
+    points: 0,
+    startTime: start,
+    endTime: end,
+    duration: seconds,
+  };
+}
+
+export function scheduleLegacyExponentialCrossfade({
+  outgoingParam,
+  incomingParam,
+  now = 0,
+  startTime,
+  duration,
+  outgoingGain = 1,
+} = {}) {
+  if (!outgoingParam || !incomingParam) {
+    return { mode: "unavailable", points: 0 };
+  }
+
+  const currentTime = Math.max(0, Number(now) || 0);
+  const start = Math.max(currentTime, Number(startTime) || currentTime);
+  const seconds = Math.max(0.01, Number(duration) || 0.01);
+  const end = start + seconds;
+  const oldGain = Math.max(0.0001, Number(outgoingGain) || 0.0001);
+  const floor = 0.0001;
+
+  outgoingParam.cancelScheduledValues?.(currentTime);
+  incomingParam.cancelScheduledValues?.(currentTime);
+  outgoingParam.setValueAtTime?.(oldGain, currentTime);
+  incomingParam.setValueAtTime?.(floor, currentTime);
+  outgoingParam.setValueAtTime?.(oldGain, start);
+  incomingParam.setValueAtTime?.(floor, start);
+  outgoingParam.exponentialRampToValueAtTime?.(floor, end);
+  incomingParam.exponentialRampToValueAtTime?.(1, end);
+
+  return {
+    mode: LEGACY_PACK_CROSSFADE_CURVE,
     points: 0,
     startTime: start,
     endTime: end,
@@ -542,14 +580,28 @@ export class WavStemMusicManager {
     const oldLayerBuses = { ...this.layerBuses };
     const oldGain = Math.max(Number(oldPackGain?.gain?.value || 1), 0.0001);
 
-    const crossfade = scheduleEqualPowerCrossfade({
-      outgoingParam: oldPackGain?.gain,
-      incomingParam: nextPackGain.gain,
-      now,
-      startTime: scheduledAt,
-      duration: fadeSeconds,
-      outgoingGain: oldGain,
-    });
+    const requestedCrossfadeCurve = String(options.crossfadeCurve || "").toLowerCase();
+    const useLegacyCrossfade =
+      requestedCrossfadeCurve === "legacy" ||
+      requestedCrossfadeCurve === "exponential" ||
+      requestedCrossfadeCurve === LEGACY_PACK_CROSSFADE_CURVE;
+    const crossfade = useLegacyCrossfade
+      ? scheduleLegacyExponentialCrossfade({
+        outgoingParam: oldPackGain?.gain,
+        incomingParam: nextPackGain.gain,
+        now,
+        startTime: scheduledAt,
+        duration: fadeSeconds,
+        outgoingGain: oldGain,
+      })
+      : scheduleEqualPowerCrossfade({
+        outgoingParam: oldPackGain?.gain,
+        incomingParam: nextPackGain.gain,
+        now,
+        startTime: scheduledAt,
+        duration: fadeSeconds,
+        outgoingGain: oldGain,
+      });
 
     this.#scheduleMasteringTransition(decoded.pack, scheduledAt, fadeEnd);
 
