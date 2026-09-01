@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - "src/**"
+      - "src/music-qa-hot-swap-compare.js"
+      - "src/music-qa-hot-swap-compare.js"
       - "games/**"
       - "debug/**"
       - "settings/**"
@@ -123,6 +125,7 @@ jobs:
           node --check src/music-facade.js
           node --check src/music-qa-report.js
           node --check src/music-qa-compare.js
+          node --check src/music-qa-hot-swap-compare.js
           node --check src/music-qa-scenario.js
           node --check tools/music_qa_golden.mjs
           node --check tools/music_qa_golden_fantasy.mjs
