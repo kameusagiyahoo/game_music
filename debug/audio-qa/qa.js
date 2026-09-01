@@ -17,6 +17,9 @@ import {
   getQaBaselineCompatibility,
   saveQaPackBaseline,
   loadQaPackBaseline,
+  loadQaPackBaselineEntry,
+  listQaPackBaselineHistory,
+  deleteQaPackBaselineEntry,
   deleteQaPackBaseline,
 } from "../../src/music-qa-baseline-registry.js";
 import {
@@ -135,6 +138,8 @@ const clearRouteMatrixBaselineButton = $("#clearRouteMatrixBaselineButton");
 const baselineFile = $("#baselineFile");
 const baselineStatus = $("#baselineStatus");
 const baselineRegistryStatus = $("#baselineRegistryStatus");
+const packBaselineHistory = $("#packBaselineHistory");
+const clearPackBaselineHistoryButton = $("#clearPackBaselineHistoryButton");
 const compareVerdict = $("#compareVerdict");
 const useCurrentBaselineButton = $("#useCurrentBaselineButton");
 const savePackBaselineButton = $("#savePackBaselineButton");
@@ -275,63 +280,110 @@ function baselineOriginLabel() {
 }
 
 function renderBaselineRegistry() {
+  const history = listQaPackBaselineHistory(selectedQaPackId);
   const saved = savedBaselineEntry;
+  const busy = routeMatrixBusy();
 
-  if (routeMatrixBusy()) {
-    savePackBaselineButton.disabled = true;
-    deletePackBaselineButton.disabled = true;
-    sharePackBaselineButton.disabled = true;
-    baselineRegistryStatus.textContent = "MATRIX MODE · PACK BASELINE DISABLED";
-    baselineRegistryStatus.className = "record-status";
-    return;
-  }
   const eligibility = baselineReport
     ? getQaBaselineEligibility(baselineReport, { packId: selectedQaPackId })
     : { eligible: false, failures: ["No baseline report selected"] };
 
-  savePackBaselineButton.disabled = !eligibility.eligible;
+  savePackBaselineButton.disabled = busy || !eligibility.eligible;
   savePackBaselineButton.title = eligibility.eligible
-    ? "Save this approved Standard 60s report for the selected Pack"
+    ? "Append this approved Standard 60s report to Pack history"
     : eligibility.failures.join(" · ");
 
-  deletePackBaselineButton.disabled = !saved;
-  sharePackBaselineButton.disabled = !saved;
+  deletePackBaselineButton.disabled = busy || !saved;
+  sharePackBaselineButton.disabled = busy || !saved;
+  clearPackBaselineHistoryButton.disabled = busy || history.length === 0;
 
-  if (!saved) {
+  if (busy) {
+    baselineRegistryStatus.textContent = "MATRIX MODE · PACK BASELINE DISABLED";
+    baselineRegistryStatus.className = "record-status";
+  } else if (!history.length) {
     baselineRegistryStatus.textContent =
       `NONE · ${String(selectedQaPackId).toUpperCase()} · RUN STANDARD 60s`;
     baselineRegistryStatus.className = "record-status";
-    return;
+  } else if (saved) {
+    const approved = saved.approvedAt
+      ? new Date(saved.approvedAt).toLocaleString()
+      : "unknown time";
+    const rate = saved.sampleRate
+      ? `${(Number(saved.sampleRate) / 1000).toFixed(1)} kHz`
+      : "unknown rate";
+    const format = String(
+      saved.audioFormat || saved.report?.metadata?.audioFormat || "unknown"
+    ).toUpperCase();
+    const compatibility = lastReport
+      ? getQaBaselineCompatibility(saved, lastReport)
+      : null;
+    const compatibilityLabel = compatibility
+      ? String(compatibility.status).toUpperCase()
+      : "READY";
+
+    baselineRegistryStatus.textContent =
+      `SELECTED · ${String(saved.packId).toUpperCase()} v${saved.packVersion || "?"} · ${format} · ${rate} · ${compatibilityLabel} · HISTORY ${history.length}/6 · ${approved}`;
+    baselineRegistryStatus.className = compatibility?.status === "incompatible"
+      ? "record-status"
+      : "record-status is-saved";
+  } else {
+    baselineRegistryStatus.textContent =
+      `HISTORY ${history.length}/6 · SELECT AN ENTRY`;
+    baselineRegistryStatus.className = "record-status";
   }
 
-  const approved = saved.approvedAt
-    ? new Date(saved.approvedAt).toLocaleString()
-    : "unknown time";
-  const rate = saved.sampleRate
-    ? `${(Number(saved.sampleRate) / 1000).toFixed(1)} kHz`
-    : "unknown rate";
-  const format = String(
-    saved.audioFormat || saved.report?.metadata?.audioFormat || "unknown"
-  ).toUpperCase();
-  const compatibility = lastReport
-    ? getQaBaselineCompatibility(saved, lastReport)
-    : null;
-  const compatibilityLabel = compatibility
-    ? ` · ${String(compatibility.status).toUpperCase()}`
-    : "";
+  const signature = history.map((entry) =>
+    [
+      entry.id,
+      entry.id === savedBaselineEntry?.id ? "selected" : "",
+      entry.approvedAt,
+      busy ? "busy" : "",
+    ].join(":")
+  ).join("|");
 
-  baselineRegistryStatus.textContent =
-    `SAVED · ${String(saved.packId).toUpperCase()} v${saved.packVersion || "?"} · ${format} · ${rate}${compatibilityLabel} · ${Number(saved.coveragePercent || 0).toFixed(0)}% · ${approved}`;
-  baselineRegistryStatus.className = compatibility?.status === "incompatible"
-    ? "record-status"
-    : "record-status is-saved";
+  if (packBaselineHistory.dataset.signature !== signature) {
+    packBaselineHistory.dataset.signature = signature;
+    packBaselineHistory.innerHTML = history.map((entry) => {
+      const selected = entry.id === savedBaselineEntry?.id;
+      const date = entry.approvedAt
+        ? new Date(entry.approvedAt).toLocaleString()
+        : "unknown time";
+      const rate = entry.sampleRate
+        ? `${(Number(entry.sampleRate) / 1000).toFixed(1)} kHz`
+        : "? kHz";
+      const format = String(entry.audioFormat || "unknown").toUpperCase();
+      const coverage = Number(entry.coveragePercent || 0).toFixed(0);
+      return `
+        <button type="button"
+          class="pack-baseline-entry${selected ? " is-selected" : ""}"
+          data-pack-baseline-id="${entry.id}"
+          ${busy ? "disabled" : ""}>
+          <span>
+            <strong>v${entry.packVersion || "?"} · ${date}</strong>
+            <small>${entry.masteringProfile || "unknown mastering"} · COVERAGE ${coverage}%</small>
+          </span>
+          <span class="pack-baseline-contract">${format} · ${rate}</span>
+        </button>
+      `;
+    }).join("");
+  }
+}
+
+function selectPackBaselineEntry(entry) {
+  if (!entry?.report) return false;
+  savedBaselineEntry = entry;
+  baselineCompatibility = null;
+  const applied = setBaseline(entry.report, { origin: "saved" });
+  renderBaselineRegistry();
+  return applied;
 }
 
 function restoreSavedPackBaseline(packId = selectedQaPackId) {
-  savedBaselineEntry = loadQaPackBaseline(packId);
+  const entry = loadQaPackBaseline(packId);
+  savedBaselineEntry = entry;
 
-  if (savedBaselineEntry?.report) {
-    setBaseline(savedBaselineEntry.report, { origin: "saved" });
+  if (entry?.report) {
+    selectPackBaselineEntry(entry);
   } else {
     baselineReport = null;
     baselineOrigin = null;
@@ -357,10 +409,8 @@ function saveSelectedPackBaseline() {
   }
 
   try {
-    savedBaselineEntry = saveQaPackBaseline(baselineReport);
-    baselineOrigin = "saved";
-    runComparison();
-    renderBaselineRegistry();
+    const entry = saveQaPackBaseline(baselineReport);
+    selectPackBaselineEntry(entry);
   } catch (error) {
     console.error("Pack QA baseline save failed", error);
     baselineRegistryStatus.textContent = `SAVE ERROR · ${error.message}`;
@@ -369,17 +419,45 @@ function saveSelectedPackBaseline() {
 }
 
 function deleteSelectedPackBaseline() {
-  if (!deleteQaPackBaseline(selectedQaPackId)) return;
-  savedBaselineEntry = null;
+  if (!savedBaselineEntry?.id) return;
+  const deletedId = savedBaselineEntry.id;
+  const wasActiveBaseline = baselineOrigin === "saved";
 
-  if (baselineOrigin === "saved") {
+  if (!deleteQaPackBaselineEntry(deletedId)) return;
+
+  const next = loadQaPackBaseline(selectedQaPackId);
+  savedBaselineEntry = next;
+
+  if (wasActiveBaseline) {
+    if (next?.report) {
+      selectPackBaselineEntry(next);
+      return;
+    }
     baselineReport = null;
     baselineOrigin = null;
     baselineCompatibility = null;
     comparisonReport = null;
+    renderComparison();
   }
 
-  renderComparison();
+  renderBaselineRegistry();
+}
+
+function clearSelectedPackBaselineHistory() {
+  const hadActiveSavedBaseline = baselineOrigin === "saved";
+  if (!deleteQaPackBaseline(selectedQaPackId)) return;
+
+  savedBaselineEntry = null;
+
+  if (hadActiveSavedBaseline) {
+    baselineReport = null;
+    baselineOrigin = null;
+    baselineCompatibility = null;
+    comparisonReport = null;
+    renderComparison();
+  }
+
+  packBaselineHistory.dataset.signature = "";
   renderBaselineRegistry();
 }
 
@@ -676,6 +754,7 @@ async function switchQaPack(packId) {
   routeMatrixBaselineCompatibility = null;
   routeMatrixGrid.dataset.signature = "";
   routeMatrixBaselineHistory.dataset.signature = "";
+  packBaselineHistory.dataset.signature = "";
 
   updateQaPackLabel();
   restoreSavedPackBaseline(packId);
@@ -2117,6 +2196,14 @@ exportCompareCsvButton.addEventListener("click", () => void exportComparison("cs
 savePackBaselineButton.addEventListener("click", saveSelectedPackBaseline);
 deletePackBaselineButton.addEventListener("click", deleteSelectedPackBaseline);
 sharePackBaselineButton.addEventListener("click", () => void shareSavedPackBaseline());
+clearPackBaselineHistoryButton.addEventListener("click", clearSelectedPackBaselineHistory);
+packBaselineHistory.addEventListener("click", (event) => {
+  if (routeMatrixBusy()) return;
+  const button = event.target.closest("[data-pack-baseline-id]");
+  if (!button) return;
+  const entry = loadQaPackBaselineEntry(button.dataset.packBaselineId);
+  if (entry?.packId === selectedQaPackId) selectPackBaselineEntry(entry);
+});
 
 saveRouteMatrixBaselineButton.addEventListener("click", saveCurrentRouteMatrixBaseline);
 shareRouteMatrixBaselineButton.addEventListener("click", () => {
