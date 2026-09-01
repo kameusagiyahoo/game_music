@@ -33,6 +33,7 @@ on:
       - "tools/encode_fantasy_audio.sh"
       - "tools/encode_pulse_audio.sh"
       - "tools/music_qa_golden_neon.mjs"
+      - "tools/check_music_qa_golden_neon.mjs"
       - "tools/check_music_neon_mastering.mjs"
       - "tools/check_neon_audio_profile.py"
       - "tools/encode_neon_audio.sh"
@@ -68,6 +69,7 @@ on:
       - "tools/encode_fantasy_audio.sh"
       - "tools/encode_pulse_audio.sh"
       - "tools/music_qa_golden_neon.mjs"
+      - "tools/check_music_qa_golden_neon.mjs"
       - "tools/check_music_neon_mastering.mjs"
       - "tools/check_neon_audio_profile.py"
       - "tools/encode_neon_audio.sh"
@@ -109,6 +111,7 @@ jobs:
           node --check tools/music_qa_golden_fantasy.mjs
           node --check tools/check_music_qa_golden_fantasy.mjs
           node --check tools/music_qa_golden_neon.mjs
+          node --check tools/check_music_qa_golden_neon.mjs
           node --check tools/check_music_neon_mastering.mjs
           node --check tools/check_music_multi_wav_packs.mjs
           node --check tools/check_music_fantasy_mastering.mjs
@@ -179,8 +182,20 @@ jobs:
           retention-days: 14
       - name: Check Fantasy Golden QA Gate Semantics
         run: node tools/check_music_qa_golden_fantasy.mjs
-      - name: Print Neon Golden QA Candidate
-        run: node tools/music_qa_golden_neon.mjs --print
+      - name: Check Neon Golden QA + Publish Summary
+        env:
+          GOLDEN_QA_REPORT_PATH: qa/out/neon-standard-v1-golden-report.json
+        run: node tools/music_qa_golden_neon.mjs --check
+      - name: Upload Neon Golden QA Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: neon-golden-qa-report
+          path: qa/out/neon-standard-v1-golden-report.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Check Neon Golden QA Gate Semantics
+        run: node tools/check_music_qa_golden_neon.mjs
       - name: Check Pulse Audio Profile
         run: python tools/check_pulse_audio_profile.py
       - name: Check Fantasy Audio Profile
