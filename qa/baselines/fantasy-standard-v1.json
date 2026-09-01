@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "fantasy-standard-v1-golden",
+  "renderProfile": "offline-pre-limiter-v1",
+  "pack": {
+    "id": "fantasy",
+    "version": "2.0.0",
+    "masteringProfile": "fantasy-gentle-v1",
+    "facadeApi": "1.5.0"
+  },
+  "scenario": {
+    "id": "fantasy-standard-v1",
+    "version": "1.0.0",
+    "durationMs": 60000
+  },
+  "audio": {
+    "sampleRate": 44100,
+    "channels": 2,
+    "headroomDb": -4
+  },
+  "sourceFingerprint": "c081835d8df9da9eddcc0e20a0fccc61f89ffe403950fb67347a9a3d930b63ea",
+  "policy": {
+    "maxOverallPeakIncreaseDb": 0.75,
+    "maxStagePeakIncreaseDb": 0.75,
+    "maxOverallRmsIncreaseDb": 1.5,
+    "maxStageRmsIncreaseDb": 1.5,
+    "maxAbsolutePeakDbfs": 3
+  },
+  "overall": {
+    "durationSeconds": 60,
+    "peakDbfs": -6.8385,
+    "rmsDbfs": -24.6587
+  },
+  "stages": {
+    "normal": {
+      "stage": "normal",
+      "preset": "focus",
+      "durationSeconds": 10,
+      "frameCount": 441000,
+      "peakDbfs": -12.5225,
+      "rmsDbfs": -27.2635,
+      "peakLinear": 0.236525,
+      "rmsLinear": 0.043333,
+      "oneShots": []
+    },
+    "build": {
+      "stage": "build",
+      "preset": "build",
+      "durationSeconds": 10,
+      "frameCount": 441000,
+      "peakDbfs": -10.619,
+      "rmsDbfs": -24.7968,
+      "peakLinear": 0.294476,
+      "rmsLinear": 0.057565,
+      "oneShots": [
+        {
+          "kind": "transitions",
+          "name": "riser",
+          "gain": 0.72
+        }
+      ]
+    },
+    "overdrive": {
+      "stage": "overdrive",
+      "preset": "overdrive",
+      "durationSeconds": 20,
+      "frameCount": 882000,
+      "peakDbfs": -8.0444,
+      "rmsDbfs": -23.2038,
+      "peakLinear": 0.396077,
+      "rmsLinear": 0.069153,
+      "oneShots": [
+        {
+          "kind": "transitions",
+          "name": "fill",
+          "gain": 0.72
+        }
+      ]
+    },
+    "result": {
+      "stage": "result",
+      "preset": "result",
+      "durationSeconds": 20,
+      "frameCount": 882000,
+      "peakDbfs": -6.8385,
+      "rmsDbfs": -25.3992,
+      "peakLinear": 0.455067,
+      "rmsLinear": 0.053708,
+      "oneShots": [
+        {
+          "kind": "transitions",
+          "name": "impact",
+          "gain": 0.72
+        },
+        {
+          "kind": "stingers",
+          "name": "victory",
+          "gain": 1
+        }
+      ]
+    }
+  }
+}
