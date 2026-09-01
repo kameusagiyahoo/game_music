@@ -122,6 +122,7 @@ jobs:
           bash -n tools/encode_fantasy_audio.sh
           bash -n tools/encode_neon_audio.sh
           bash -n tools/encode_clockwork_audio.sh
+          bash -n tools/encode_clockwork_audio.sh
       - name: Check JavaScript syntax
         run: |
           node --check src/music-pack-manifest.js
@@ -266,6 +267,8 @@ jobs:
           retention-days: 14
       - name: Check Clockwork Golden QA Gate Semantics
         run: node tools/check_music_qa_golden_clockwork.mjs
+      - name: Print Clockwork Golden QA Candidate
+        run: node tools/music_qa_golden_clockwork.mjs --print
       - name: Check Pulse Audio Profile
         run: python tools/check_pulse_audio_profile.py
       - name: Check Fantasy Audio Profile
