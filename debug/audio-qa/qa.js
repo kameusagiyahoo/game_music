@@ -1304,6 +1304,7 @@ async function startHotSwapRouteMatrix() {
 
   renderComparison();
   renderBaselineRegistry();
+  renderRouteMatrixBaselineRegistry();
   renderRouteMatrix();
   renderReportSummary();
 
@@ -1582,9 +1583,11 @@ function renderComparison() {
   compareCurrentCoverage.textContent = `${Number(metrics.coveragePercent.current || 0).toFixed(0)}%`;
 
   compareDirections.innerHTML = [
-    ...(comparison.deviceBaselineCompatibility
-      ? [`DEVICE BASELINE ${String(comparison.deviceBaselineCompatibility.status || "exact").toUpperCase()}`]
-      : []),
+    ...(comparison.routeMatrixBaselineCompatibility
+      ? [`ROUTE BASELINE ${String(comparison.routeMatrixBaselineCompatibility.status || "exact").toUpperCase()}`]
+      : comparison.deviceBaselineCompatibility
+        ? [`DEVICE BASELINE ${String(comparison.deviceBaselineCompatibility.status || "exact").toUpperCase()}`]
+        : []),
     `PEAK ${String(comparison.summary?.peakDirection || "stable").toUpperCase()}`,
     `RMS ${String(comparison.summary?.rmsDirection || "stable").toUpperCase()}`,
     `LIMITER ${String(comparison.summary?.limiterDirection || "stable").toUpperCase()}`,
@@ -1662,27 +1665,40 @@ function renderComparison() {
 function runComparison() {
   if (!baselineReport || !lastReport) {
     baselineCompatibility = null;
+    routeMatrixBaselineCompatibility = null;
     comparisonReport = null;
     renderComparison();
     renderBaselineRegistry();
+    renderRouteMatrixBaselineRegistry();
     return null;
   }
 
   baselineCompatibility = baselineOrigin === "saved" && savedBaselineEntry
     ? getQaBaselineCompatibility(savedBaselineEntry, lastReport)
     : null;
+  routeMatrixBaselineCompatibility =
+    baselineOrigin === "route-saved" && savedRouteMatrixEntry
+      ? getQaRouteMatrixBaselineCompatibility(savedRouteMatrixEntry, lastReport)
+      : null;
 
-  if (baselineCompatibility && !baselineCompatibility.comparable) {
+  const activeCompatibility =
+    routeMatrixBaselineCompatibility || baselineCompatibility;
+  const compatibilityLabel = routeMatrixBaselineCompatibility
+    ? "Saved Route Matrix Device Baseline"
+    : "Saved Device Baseline";
+
+  if (activeCompatibility && !activeCompatibility.comparable) {
     comparisonReport = {
       valid: false,
-      compatibility: baselineCompatibility,
+      compatibility: activeCompatibility,
       errors: [
-        "Saved Device Baseline is incompatible with the current run.",
-        ...baselineCompatibility.failures,
+        compatibilityLabel + " is incompatible with the current run.",
+        ...activeCompatibility.failures,
       ],
     };
     renderComparison();
     renderBaselineRegistry();
+    renderRouteMatrixBaselineRegistry();
     return comparisonReport;
   }
 
@@ -1690,24 +1706,36 @@ function runComparison() {
 
   if (baselineCompatibility) {
     comparisonReport.deviceBaselineCompatibility = baselineCompatibility;
+  }
+  if (routeMatrixBaselineCompatibility) {
+    comparisonReport.routeMatrixBaselineCompatibility =
+      routeMatrixBaselineCompatibility;
+  }
 
-    if (baselineCompatibility.status === "review") {
-      comparisonReport.warnings = [
-        ...(comparisonReport.warnings || []),
-        ...baselineCompatibility.warnings.map((warning) => ({
-          code: "device-baseline-" + warning.code,
-          severity: "review",
-          message: "Device Baseline: " + warning.message,
-        })),
-      ];
-      if (!["fail", "review"].includes(comparisonReport.status)) {
-        comparisonReport.status = "review";
-      }
+  if (activeCompatibility?.status === "review") {
+    const prefix = routeMatrixBaselineCompatibility
+      ? "Route Matrix Baseline"
+      : "Device Baseline";
+    const codePrefix = routeMatrixBaselineCompatibility
+      ? "route-matrix-baseline-"
+      : "device-baseline-";
+
+    comparisonReport.warnings = [
+      ...(comparisonReport.warnings || []),
+      ...activeCompatibility.warnings.map((warning) => ({
+        code: codePrefix + warning.code,
+        severity: "review",
+        message: prefix + ": " + warning.message,
+      })),
+    ];
+    if (!["fail", "review"].includes(comparisonReport.status)) {
+      comparisonReport.status = "review";
     }
   }
 
   renderComparison();
   renderBaselineRegistry();
+  renderRouteMatrixBaselineRegistry();
   return comparisonReport;
 }
 
@@ -1717,6 +1745,7 @@ function setBaseline(report, { origin = "baseline" } = {}) {
     baselineReport = null;
     baselineOrigin = null;
     baselineCompatibility = null;
+    routeMatrixBaselineCompatibility = null;
     comparisonReport = {
       valid: false,
       errors: validation.errors.map((message) => `baseline: ${message}`),
@@ -1727,6 +1756,7 @@ function setBaseline(report, { origin = "baseline" } = {}) {
   }
   baselineReport = report;
   baselineOrigin = origin;
+  if (origin !== "route-saved") routeMatrixBaselineCompatibility = null;
   runComparison();
   renderBaselineRegistry();
   return true;
