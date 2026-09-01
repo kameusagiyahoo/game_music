@@ -115,7 +115,11 @@ let lastRecordSampleAt = 0;
 let selectedQaPackId = qaPackSelect?.value || "pulse";
 
 function createPackScenario(packId) {
-  const label = packId === "fantasy" ? "Fantasy" : "Pulse";
+  const label = packId === "fantasy"
+    ? "Fantasy"
+    : packId === "neon"
+      ? "Neon"
+      : "Pulse";
   return Object.freeze({
     ...BASE_QA_SCENARIO,
     id: `${packId}-standard-v1`,
@@ -157,7 +161,7 @@ function preloadCurrentQaPack() {
 }
 
 async function switchQaPack(packId) {
-  if (!["pulse", "fantasy"].includes(packId)) return;
+  if (!["pulse", "fantasy", "neon"].includes(packId)) return;
   if (recordingSession || scenarioRun?.status === "running") {
     qaPackSelect.value = selectedQaPackId;
     return;
@@ -538,7 +542,7 @@ function renderComparison() {
     const date = baselineReport.generatedAt
       ? new Date(baselineReport.generatedAt).toLocaleString()
       : "unknown time";
-    baselineStatus.textContent = `BASELINE · PULSE v${version} · ${date}`;
+    baselineStatus.textContent = `BASELINE · ${baselineReport.metadata?.packName || baselineReport.metadata?.packId || "Music"} v${version} · ${date}`;
   }
 
   if (!comparison?.valid) {
