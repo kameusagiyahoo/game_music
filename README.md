@@ -4758,6 +4758,262 @@ tools/check_music_qa_baseline_registry.mjs
 
 Facade / Audio Engine APIは変更していないため、Facade API versionは引き続き `1.5.0` です。
 
+### v37 — Route Matrix Device Baseline / 12 Route Regression History
+
+v35の12 Route自動Scenarioとv36のDevice Contract Gateを、Route Matrix専用Baselineへ拡張しました。
+
+Pack単体のStandard 60s Baselineとは保存先を分離します。
+
+```text
+Pack Device Baseline
+  <pack>-standard-v1
+  1 Pack
+  localStorage:
+  game-music-qa-pack-baselines-v1
+
+Route Matrix Device Baseline
+  hot-swap-route-matrix-v1
+  4 Packs / 12 directed routes
+  localStorage:
+  game-music-qa-route-matrix-baselines-v1
+```
+
+Route Matrix ReportをPack単体Baselineとして誤保存することは引き続きできません。
+
+### Route Matrix baseline eligibility
+
+保存可能なのは、以下を満たす実機Reportだけです。
+
+```text
+Scenario = hot-swap-route-matrix-v1
+Scenario completed
+12 / 12 routes completed
+12 Hot Swaps observed
+12 Hot Swap QA evaluations
+12 unique directed routes
+Sampling Coverage >= 90%
+Route Matrix Gate != FAIL
+```
+
+さらに比較条件を再現できるよう、以下の契約情報を必須にしています。
+
+```text
+Route Matrix contract
+├─ Scenario ID / version
+├─ Route Matrix schema
+├─ Start Pack
+├─ Route Count
+├─ Route Interval
+├─ Duration
+├─ Quantize
+├─ Crossfade Beats
+├─ Crossfade Curve
+└─ AudioContext Sample Rate
+
+Per-Pack contract × 4
+├─ Pack ID
+├─ Pack Version
+├─ Mastering Profile
+├─ Audio Format
+└─ Facade API
+```
+
+4 Packのpreload時に実際に選択されたAudio Formatを記録するため、M4A / OGG / WAV fallback状態もBaseline契約へ入ります。
+
+### Compatibility Gate
+
+Route Matrix Device Baselineの比較判定も3段階です。
+
+```text
+EXACT
+  Scenario / Matrix config same
+  Start Pack same
+  Sample Rate same
+  Crossfade config same
+  4 PackのFormat / Mastering same
+  Pack version same
+  → 12 route Regression Compare
+
+REVIEW
+  Pack versionのみ変更
+  Facade APIのみ変更
+  → 比較可能
+  → warning付き
+
+INCOMPATIBLE
+  Start Pack違い
+  M4A / OGGなどFormat違い
+  Sample Rate違い
+  Mastering違い
+  Quantize違い
+  Crossfade Beats違い
+  Crossfade Curve違い
+  Route Matrix schema / timeline違い
+  → 自動比較BLOCK
+```
+
+条件がINCOMPATIBLEの場合は、12 RouteのPeak / Mid RMS / Limiter / Power Σ差を数値Regressionとして扱いません。
+
+### 12 Route Regression
+
+互換性を通過したBaselineは既存v33のHot Swap比較Engineへ渡します。
+
+そのため12方向すべてについて、
+
+```text
+Fantasy -> Neon
+Fantasy -> Pulse
+Fantasy -> Clockwork
+...
+Clockwork -> Pulse
+
+各Route:
+Peak delta
+Midpoint RMS delta
+Limiter Reduction delta
+Minimum Power Σ delta
+Crossfade Duration delta
+Curve
+```
+
+をBaseline / Currentで比較します。
+
+Pack versionだけ変更されたRunでは比較結果自体に加えて、
+
+```text
+ROUTE BASELINE REVIEW
+```
+
+を表示します。
+
+### Device history
+
+Route Matrix Baselineは最新1件だけではなく、端末内に最大6件保存します。
+
+```text
+Route Matrix Device History
+#1 latest
+#2
+#3
+#4
+#5
+#6 oldest retained
+```
+
+7件目を保存すると最古の1件を落とします。
+
+Raw Meter Samples / Eventsは保存せず、
+
+- metadata
+- summary
+- 12 Hot Swap summary
+- QA verdict
+- Matrix contract
+
+だけをcompact保存します。
+
+### Audio QA workflow
+
+Audio QA DashboardのRoute Matrix欄へ追加しました。
+
+```text
+RUN ALL 12 ROUTES
+        |
+        v
+64 sec complete
+        |
+        +--> Route Matrix Gate
+        +--> route-by-route QA
+        |
+        v
+SAVE MATRIX BASELINE
+        |
+        v
+Device History (max 6)
+```
+
+操作:
+
+```text
+SAVE MATRIX BASELINE
+SHARE SELECTED
+CLEAR HISTORY
+```
+
+履歴行をタップすると、その実機Baselineへ切り替わります。
+
+新しいMatrixを開始すると、**同じStart Packの最新Baseline**を自動ロードします。
+
+```text
+PULSE start Matrix
+   -> latest PULSE-start baseline
+
+FANTASY start Matrix
+   -> latest FANTASY-start baseline
+```
+
+一方、Standard 60sを開始するとPack単体Baselineへ自動的に戻ります。
+
+これにより、
+
+```text
+Pack Standard Baseline
+Route Matrix Baseline
+```
+
+を同じQA Compare画面で使いながら、比較条件を混同しません。
+
+URL:
+
+https://kameusagiyahoo.github.io/game_music/debug/audio-qa/
+
+### v37 implementation
+
+新規module:
+
+```text
+src/music-qa-route-baseline-registry.js
+```
+
+主なAPI:
+
+```js
+getQaRouteMatrixBaselineEligibility()
+getQaRouteMatrixBaselineCompatibility()
+saveQaRouteMatrixBaseline()
+listQaRouteMatrixBaselines()
+loadQaRouteMatrixBaseline()
+loadLatestQaRouteMatrixBaseline()
+deleteQaRouteMatrixBaseline()
+clearQaRouteMatrixBaselines()
+```
+
+CI:
+
+```text
+tools/check_music_qa_route_baseline_registry.mjs
+```
+
+仮想Device Reportで以下を検証します。
+
+- safe 12/12 Matrix -> eligible
+- incomplete 11/12 -> BLOCK
+- Coverage 90%未満 -> BLOCK
+- compact storageでSamples / Events除去
+- same contract -> EXACT
+- Pack version change -> REVIEW
+- Audio Format mismatch -> INCOMPATIBLE
+- Sample Rate mismatch -> INCOMPATIBLE
+- Mastering mismatch -> INCOMPATIBLE
+- Crossfade Curve mismatch -> INCOMPATIBLE
+- Start Pack mismatch -> INCOMPATIBLE
+- 6件履歴保持
+- latest / start-Pack別latest
+- load / delete / clear
+- corrupted localStorage fail closed
+
+Facade / Audio Engine API自体は変更していないため、Facade API versionは引き続き `1.5.0` です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -4902,6 +5158,7 @@ src/
 ├── music-qa-compare.js
 ├── music-qa-hot-swap-compare.js
 ├── music-qa-baseline-registry.js
+├── music-qa-route-baseline-registry.js
 ├── music-qa-scenario.js
 ├── music-pack-manifest.js
 ├── audio-asset-cache.js
@@ -4948,6 +5205,6 @@ assets/
 
 ## Next candidates
 
-- Route Matrix専用Device Baseline / 12 Route Regression履歴
 - Device Baselineの複数version履歴と切替
+- Route Matrix BaselineのJSON Import / Merge
 - Game 06追加
