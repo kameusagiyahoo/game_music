@@ -2,6 +2,7 @@ import { QA_SCENARIO_SCHEMA_VERSION } from "./music-qa-scenario.js";
 
 export const HOT_SWAP_ROUTE_MATRIX_SCHEMA_VERSION = "1.0.0";
 export const HOT_SWAP_ROUTE_MATRIX_ID = "hot-swap-route-matrix-v1";
+export const HOT_SWAP_ROUTE_MATRIX_MIN_COVERAGE_PERCENT = 90;
 export const HOT_SWAP_ROUTE_MATRIX_PACKS = Object.freeze([
   "fantasy",
   "neon",
@@ -229,5 +230,123 @@ export function hotSwapRouteMatrixExecutionSummary(run) {
     routeIntervalMs: Number(scenario.routeIntervalMs || 0),
     durationMs: Number(scenario.durationMs || 0),
     routes,
+  };
+}
+
+
+export function evaluateHotSwapRouteMatrixReport(report, {
+  packIds = HOT_SWAP_ROUTE_MATRIX_PACKS,
+  minCoveragePercent = HOT_SWAP_ROUTE_MATRIX_MIN_COVERAGE_PERCENT,
+} = {}) {
+  const nodes = uniqueStrings(packIds);
+  const expectedRouteCount = nodes.length * (nodes.length - 1);
+  const expectedRoutes = new Set();
+
+  for (const fromId of nodes) {
+    for (const toId of nodes) {
+      if (fromId !== toId) expectedRoutes.add(`${fromId}->${toId}`);
+    }
+  }
+
+  const failures = [];
+  const warnings = [];
+  const metadata = report?.metadata || {};
+  const summary = report?.summary || {};
+  const matrixExecution = metadata.qaRouteMatrixExecution || {};
+  const scenarioId = String(metadata.qaScenarioId || "");
+  const scenarioStatus = String(metadata.qaScenarioStatus || "");
+  const coverage = Number(summary.samplingCoveragePercent);
+  const verdict = String(summary.verdict || "").toLowerCase();
+  const hotSwapQaStatus = String(summary.hotSwapQa?.status || "not-applicable").toLowerCase();
+  const observed = Array.isArray(summary.hotSwaps) ? summary.hotSwaps : [];
+  const observedRoutes = new Set(
+    observed
+      .filter((swap) => swap?.fromId && swap?.toId)
+      .map((swap) => `${swap.fromId}->${swap.toId}`)
+  );
+
+  if (scenarioId !== HOT_SWAP_ROUTE_MATRIX_ID) {
+    failures.push(
+      `Scenario ID ${scenarioId || "missing"} != ${HOT_SWAP_ROUTE_MATRIX_ID}`
+    );
+  }
+  if (scenarioStatus !== "completed") {
+    failures.push(`Scenario status must be completed, got ${scenarioStatus || "missing"}`);
+  }
+
+  if (Number(matrixExecution.routeCount || 0) !== expectedRouteCount) {
+    failures.push(
+      `matrix route count ${Number(matrixExecution.routeCount || 0)} != ${expectedRouteCount}`
+    );
+  }
+  if (Number(matrixExecution.completedRoutes || 0) !== expectedRouteCount) {
+    failures.push(
+      `matrix completed routes ${Number(matrixExecution.completedRoutes || 0)} != ${expectedRouteCount}`
+    );
+  }
+
+  if (Number(summary.hotSwapCount || 0) !== expectedRouteCount) {
+    failures.push(
+      `observed Hot Swap count ${Number(summary.hotSwapCount || 0)} != ${expectedRouteCount}`
+    );
+  }
+  if (Number(summary.hotSwapQa?.evaluatedCount || 0) !== expectedRouteCount) {
+    failures.push(
+      `Hot Swap QA evaluated count ${Number(summary.hotSwapQa?.evaluatedCount || 0)} != ${expectedRouteCount}`
+    );
+  }
+  if (observedRoutes.size !== expectedRouteCount) {
+    failures.push(
+      `unique observed directed routes ${observedRoutes.size} != ${expectedRouteCount}`
+    );
+  }
+
+  for (const route of expectedRoutes) {
+    if (!observedRoutes.has(route)) failures.push(`missing observed route: ${route}`);
+  }
+  for (const route of observedRoutes) {
+    if (!expectedRoutes.has(route)) failures.push(`unexpected observed route: ${route}`);
+  }
+
+  if (!Number.isFinite(coverage)) {
+    warnings.push("Sampling coverage is unavailable");
+  } else if (coverage < Number(minCoveragePercent)) {
+    warnings.push(
+      `Sampling coverage ${coverage.toFixed(1)}% < ${Number(minCoveragePercent).toFixed(1)}%`
+    );
+  }
+
+  if (hotSwapQaStatus === "fail") {
+    failures.push("Hot Swap QA verdict is FAIL");
+  } else if (hotSwapQaStatus === "review") {
+    warnings.push("Hot Swap QA verdict requires REVIEW");
+  } else if (hotSwapQaStatus !== "pass") {
+    warnings.push(`Hot Swap QA verdict is ${hotSwapQaStatus || "unknown"}`);
+  }
+
+  if (verdict === "fail") {
+    failures.push("Overall QA verdict is FAIL");
+  } else if (verdict === "review") {
+    warnings.push("Overall QA verdict requires REVIEW");
+  }
+
+  const status = failures.length
+    ? "fail"
+    : warnings.length
+      ? "review"
+      : "pass";
+
+  return {
+    status,
+    expectedRouteCount,
+    observedRouteCount: Number(summary.hotSwapCount || 0),
+    uniqueObservedRouteCount: observedRoutes.size,
+    evaluatedRouteCount: Number(summary.hotSwapQa?.evaluatedCount || 0),
+    completedRouteCount: Number(matrixExecution.completedRoutes || 0),
+    samplingCoveragePercent: Number.isFinite(coverage) ? coverage : null,
+    hotSwapQaStatus,
+    overallVerdict: verdict || null,
+    failures,
+    warnings,
   };
 }
