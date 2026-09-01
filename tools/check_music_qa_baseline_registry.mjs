@@ -7,6 +7,7 @@ import {
   listQaPackBaselines,
   deleteQaPackBaseline,
   clearQaPackBaselines,
+  getQaBaselineCompatibility,
 } from "../src/music-qa-baseline-registry.js";
 
 const store = new Map();
@@ -28,6 +29,9 @@ function report({
   sampleRate = 48_000,
   packVersion = "1.4.1",
   masteringProfile = "game-balanced-v1",
+  audioFormat = "m4a",
+  facadeApi = "1.5.0",
+  scenarioVersion = "1.0.0",
 } = {}) {
   return {
     schemaVersion: "1.0.0",
@@ -38,9 +42,11 @@ function report({
       packName: packId.toUpperCase(),
       packVersion,
       masteringProfile,
+      audioFormat,
+      facadeApi,
       initialSampleRate: sampleRate,
       qaScenarioId: scenarioId,
-      qaScenarioVersion: "1.0.0",
+      qaScenarioVersion: scenarioVersion,
       qaScenarioStatus: scenarioStatus,
     },
     summary: {
@@ -79,6 +85,19 @@ if (!eligibility.eligible) {
   errors.push("completed standard report should be eligible: " + eligibility.failures.join("; "));
 }
 
+
+const missingFormat = getQaBaselineEligibility(report({ audioFormat: null }));
+if (missingFormat.eligible) errors.push("baseline without audio format should be rejected");
+
+const missingRate = getQaBaselineEligibility(report({ sampleRate: 0 }));
+if (missingRate.eligible) errors.push("baseline without sample rate should be rejected");
+
+const missingVersion = getQaBaselineEligibility(report({ packVersion: null }));
+if (missingVersion.eligible) errors.push("baseline without pack version should be rejected");
+
+const missingMastering = getQaBaselineEligibility(report({ masteringProfile: null }));
+if (missingMastering.eligible) errors.push("baseline without mastering profile should be rejected");
+
 const compact = compactQaBaselineReport(valid);
 if (compact.samples.length !== 0 || compact.events.length !== 0) {
   errors.push("compact baseline must drop raw samples/events");
@@ -101,6 +120,63 @@ if (failedReport.eligible) errors.push("FAIL report should be rejected");
 
 const wrongPack = getQaBaselineEligibility(valid, { packId: "fantasy" });
 if (wrongPack.eligible) errors.push("pack mismatch should be rejected");
+
+
+const compatibilityBaseline = saveQaPackBaseline(valid, {
+  storage,
+  approvedAt: "2026-09-01T12:10:00.000Z",
+});
+
+const exactCompatibility = getQaBaselineCompatibility(
+  compatibilityBaseline,
+  report(),
+);
+if (!exactCompatibility.comparable || exactCompatibility.status !== "exact") {
+  errors.push("same device contract should be EXACT");
+}
+
+const versionCompatibility = getQaBaselineCompatibility(
+  compatibilityBaseline,
+  report({ packVersion: "1.5.0" }),
+);
+if (!versionCompatibility.comparable || versionCompatibility.status !== "review") {
+  errors.push("pack-version-only change should be REVIEW but comparable");
+}
+if (!versionCompatibility.warnings.some((item) => item.code === "pack-version")) {
+  errors.push("pack-version REVIEW warning missing");
+}
+
+const formatCompatibility = getQaBaselineCompatibility(
+  compatibilityBaseline,
+  report({ audioFormat: "ogg" }),
+);
+if (formatCompatibility.comparable || formatCompatibility.status !== "incompatible") {
+  errors.push("M4A -> OGG should be INCOMPATIBLE");
+}
+
+const rateCompatibility = getQaBaselineCompatibility(
+  compatibilityBaseline,
+  report({ sampleRate: 44_100 }),
+);
+if (rateCompatibility.comparable || rateCompatibility.status !== "incompatible") {
+  errors.push("48 kHz -> 44.1 kHz should be INCOMPATIBLE");
+}
+
+const masteringCompatibility = getQaBaselineCompatibility(
+  compatibilityBaseline,
+  report({ masteringProfile: "other-mastering-v1" }),
+);
+if (masteringCompatibility.comparable) {
+  errors.push("mastering-profile change should be INCOMPATIBLE");
+}
+
+const scenarioCompatibility = getQaBaselineCompatibility(
+  compatibilityBaseline,
+  report({ scenarioId: "pulse-standard-v2" }),
+);
+if (scenarioCompatibility.comparable) {
+  errors.push("scenario change should be INCOMPATIBLE");
+}
 
 const savedPulse = saveQaPackBaseline(valid, {
   storage,
@@ -165,8 +241,12 @@ if (errors.length) {
 }
 
 console.log("Device QA Baseline Registry Check PASSED");
-console.log("- completed Standard 60s report: eligible");
+console.log("- completed Standard 60s report with device contract: eligible");
+console.log("- missing format/rate/version/mastering: blocked");
 console.log("- wrong/aborted/low-coverage/FAIL reports: blocked");
+console.log("- EXACT same-contract comparison: OK");
+console.log("- pack version only: REVIEW + comparable");
+console.log("- format/sample-rate/mastering/scenario mismatch: INCOMPATIBLE");
 console.log("- per-pack save/load/replace/delete: OK");
 console.log("- compact storage drops raw samples/events");
 console.log("- corrupted localStorage fails closed");
