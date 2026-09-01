@@ -58,6 +58,10 @@ const music = createMusicFacade({
 const packEntry = music.entry;
 applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
 
+void music.preload({ stingers: true, transitions: true }).catch((error) => {
+  console.warn("Mystic Match preload failed; START will retry", error);
+});
+
 const best = Number(localStorage.getItem("mystic-match-best") || 0);
 bestValue.textContent = best ? best.toLocaleString("ja-JP") : "—";
 
