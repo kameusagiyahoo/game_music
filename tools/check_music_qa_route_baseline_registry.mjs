@@ -270,7 +270,8 @@ if (incompleteEligibility.eligible) {
   errors.push("11/12 Route Matrix must not be baseline-eligible");
 }
 
-const lowCoverage = buildReport({ coverageTargetSeconds: 8 });
+const lowCoverage = JSON.parse(JSON.stringify(valid));
+lowCoverage.summary.samplingCoveragePercent = 82;
 const lowCoverageEligibility = getQaRouteMatrixBaselineEligibility(lowCoverage);
 if (lowCoverageEligibility.eligible) {
   errors.push("low-coverage Route Matrix must not be baseline-eligible");
