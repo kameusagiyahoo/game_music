@@ -5,7 +5,6 @@ on:
     paths:
       - "src/**"
       - "src/music-qa-hot-swap-compare.js"
-      - "src/music-qa-hot-swap-compare.js"
       - "games/**"
       - "debug/**"
       - "settings/**"
@@ -121,7 +120,6 @@ jobs:
           bash -n tools/encode_pulse_audio.sh
           bash -n tools/encode_fantasy_audio.sh
           bash -n tools/encode_neon_audio.sh
-          bash -n tools/encode_clockwork_audio.sh
           bash -n tools/encode_clockwork_audio.sh
       - name: Check JavaScript syntax
         run: |
