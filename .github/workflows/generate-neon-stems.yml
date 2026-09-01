@@ -1,0 +1,66 @@
+name: Generate Neon multi-format audio
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "tools/generate_neon_stems.py"
+      - "tools/encode_neon_audio.sh"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: neon-audio-generation
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Generate Neon WAV stems, stingers and transitions
+        run: python tools/generate_neon_stems.py
+      - name: Validate Neon WAV profile
+        run: python tools/check_neon_audio_profile.py
+      - name: Encode Neon OGG and AAC/M4A variants
+        run: bash tools/encode_neon_audio.sh
+      - name: Validate generated format profile
+        run: |
+          set -euo pipefail
+          for src in assets/stems/neon/*.{wav,ogg,m4a} assets/stingers/neon/*.{wav,ogg,m4a} assets/transitions/neon/*.{wav,ogg,m4a}; do
+            sample_rate="$(ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of default=noprint_wrappers=1:nokey=1 "$src")"
+            channels="$(ffprobe -v error -select_streams a:0 -show_entries stream=channels -of default=noprint_wrappers=1:nokey=1 "$src")"
+            if [ "$sample_rate" != "44100" ] || [ "$channels" != "2" ]; then
+              echo "Invalid Neon audio profile: $src sample_rate=$sample_rate channels=$channels"
+              exit 1
+            fi
+          done
+          echo "All Neon audio assets are 44.1 kHz stereo"
+      - name: Validate decoded cross-format parity
+        run: python tools/check_neon_format_parity.py
+      - name: Validate format parity gate semantics
+        run: python tools/check_neon_format_parity_semantics.py
+      - name: Commit generated Neon audio
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "418982346+github-actions[bot]@users.noreply.github.com"
+          git add assets/stems/neon/*.{wav,ogg,m4a}
+          git add assets/stingers/neon/*.{wav,ogg,m4a}
+          git add assets/transitions/neon/*.{wav,ogg,m4a}
+          if git diff --cached --quiet; then
+            echo "Neon audio already up to date"
+            exit 0
+          fi
+          git commit -m "Generate Neon multi-format audio"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
