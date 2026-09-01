@@ -97,11 +97,24 @@ function runtimeCallbacks() {
       syncState.textContent = info.mode === "ready" || !info.bar
         ? "BAR — / BEAT —"
         : `BAR ${info.bar} / BEAT ${info.beat}`;
+      if (info.pendingPackName) pendingPack.textContent = info.pendingPackName;
     },
     onLayerChange(info = {}) {
       if (music?.engine === "wav-stem" && info.pendingPreset) {
         musicState.textContent = `NEXT BAR · ${String(info.pendingPreset).toUpperCase()}`;
       }
+    },
+    onPackChange(info = {}) {
+      if (!info.id) return;
+      currentPack.textContent = info.name || getMusicPackEntry(info.id)?.name || info.id;
+      engineState.textContent = "WAV-STEM";
+      if (info.phase === "crossfading") {
+        pendingPack.textContent = `${info.name || info.id} · XFADE`;
+        musicState.textContent = "HOT SWAP · CROSSFADING";
+      } else if (info.phase === "complete") {
+        pendingPack.textContent = "—";
+      }
+      refreshPackButtons();
     },
   };
 }
@@ -199,7 +212,7 @@ function queuePack(packId) {
     } else {
       pendingPackId = packId;
       pendingPack.textContent = entry.name;
-      setMessage("Music Packを予約", `${entry.name} / ${entry.engine} を次のウェーブで適用します。`, "RUNTIME SHIFT QUEUED");
+      setMessage("Music Packを予約", `${entry.name} を次のウェーブ境界でクロスフェードします。`, "HOT SWAP QUEUED");
     }
   } else {
     pendingPackId = null;
@@ -282,27 +295,35 @@ async function startWave() {
   tensionTriggered = false;
   clearNodes();
 
+  let hotSwapped = false;
   if (pendingPackId && pendingPackId !== music?.entry?.id) {
     const nextEntry = getMusicPackEntry(pendingPackId);
-    setMessage("Runtimeを交換中", `${nextEntry.name} → ${nextEntry.engine.toUpperCase()}`, "MUSIC ASSET RESOLVER");
     const nextId = pendingPackId;
     pendingPackId = null;
-    pendingPack.textContent = "—";
+    setMessage(
+      "Pack Hot Swap",
+      `${music.entry.name} → ${nextEntry.name}。同じAudioContextのまま2 beatクロスフェードします。`,
+      "REAL AUDIO HOT SWAP"
+    );
     try {
-      await activateRuntime(nextId, true);
+      await music.pack(nextId, {
+        quantize: "immediate",
+        crossfadeBeats: 2,
+        mode: "normal",
+      });
+      hotSwapped = true;
+      pendingPack.textContent = `${nextEntry.name} · XFADE`;
     } catch (error) {
       console.error(error);
-      setMessage("音源の切替に失敗", "別のMusic Packを選んで再試行してください。", "AUDIO ERROR");
-      state = "ready";
-      startButton.disabled = false;
-      startButton.textContent = "ゲーム開始";
-      return;
+      setMessage("音源の切替に失敗", "現在のPackを継続します。別のMusic Packを選んで再試行してください。", "AUDIO ERROR");
     }
   } else if (!music?.running) {
     await music.start("normal");
   }
 
-  await music.state("normal", { quantize: "immediate", seconds: 0.20 });
+  if (!hotSwapped) {
+    await music.state("normal", { quantize: "immediate", seconds: 0.20 });
+  }
 
   state = "playing";
   waveStartedAt = performance.now();
@@ -348,8 +369,8 @@ async function finishWave() {
   const next = pendingPackId ? getMusicPackEntry(pendingPackId) : null;
   setMessage(
     `WAVE ${wave} COMPLETE`,
-    next ? `次は ${next.name} / ${next.engine.toUpperCase()} へRuntimeを交換します。` : "同じRuntimeのまま次のウェーブへ進みます。",
-    "SHIFT GATE"
+    next ? `次は ${next.name} へ同一AudioContext Hot Swapします。` : "同じPackのまま次のウェーブへ進みます。",
+    "HOT SWAP GATE"
   );
   await wait(1100);
   wave += 1;
@@ -396,7 +417,7 @@ function resetGame() {
   clearNodes();
   updateStatus(WAVE_SECONDS);
   previewPack(selectedPackId);
-  setMessage("光ったノードを追いかける", "Pack変更は次のウェーブ境界で適用。再生EngineはResolverが自動選択します。");
+  setMessage("光ったノードを追いかける", "Pack変更は次のウェーブ境界で、同じAudioContextのままクロスフェードします。");
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
 }
