@@ -11,7 +11,7 @@
   <main class="shell">
     <header class="hero">
       <div>
-        <p class="eyebrow">GAME MUSIC LAB / ENGINE v34</p>
+        <p class="eyebrow">GAME MUSIC LAB / ENGINE v35</p>
         <h1>Audio QA Dashboard</h1>
         <p class="lead">Pulse / Fantasy / Neon / Clockworkの4つの実Audio Packを切り替え、Master / Limiter / Stem状態をiPhone上で監視します。</p>
       </div>
@@ -89,6 +89,41 @@
         <div><span>NEW GAIN</span><strong id="hotSwapIncomingValue">—</strong></div>
         <div><span>POWER Σ</span><strong id="hotSwapPowerValue">—</strong></div>
       </div>
+    </section>
+
+    <section class="panel route-matrix-panel">
+      <div class="route-matrix-head">
+        <div>
+          <p class="eyebrow">AUTOMATED QA / ALL 12 DIRECTED ROUTES</p>
+          <h2>Hot Swap Route Matrix</h2>
+          <p id="routeMatrixStatusText" class="record-status">READY · 4 PACKS × 3 TARGETS · 64 SEC</p>
+        </div>
+        <strong id="routeMatrixStatus" class="route-matrix-status idle">IDLE</strong>
+      </div>
+
+      <div class="route-matrix-progress">
+        <div id="routeMatrixProgressBar"></div>
+      </div>
+
+      <div class="route-matrix-actions">
+        <button id="runRouteMatrixButton" class="route-matrix-run-button" type="button">RUN ALL 12 ROUTES</button>
+        <button id="cancelRouteMatrixButton" type="button" disabled>CANCEL MATRIX</button>
+      </div>
+
+      <div class="route-matrix-metrics">
+        <div><span>TIMER</span><strong id="routeMatrixTimer">00:00.0 / 01:04.0</strong></div>
+        <div><span>COMPLETED</span><strong id="routeMatrixCompleted">0 / 12</strong></div>
+        <div><span>START PACK</span><strong id="routeMatrixStartPack">PULSE</strong></div>
+        <div><span>MAX DRIFT</span><strong id="routeMatrixDrift">—</strong></div>
+      </div>
+
+      <div class="route-matrix-current">
+        <span>CURRENT / NEXT ROUTE</span>
+        <strong id="routeMatrixCurrentRoute">—</strong>
+      </div>
+
+      <div id="routeMatrixGrid" class="route-matrix-grid"></div>
+      <p class="record-status">NEXT BAR · 2 BEAT · EQUAL-POWER。実行中はPack変更・手動Hot Swap・Standard 60sをロックし、12 Routeを1つのQA Reportへ記録します。</p>
     </section>
 
     <section class="panel scenario-panel">
