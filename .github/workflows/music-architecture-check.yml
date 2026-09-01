@@ -21,6 +21,8 @@ on:
       - "tools/check_music_qa_compare.mjs"
       - "tools/check_music_qa_scenario.mjs"
       - "tools/music_qa_golden.mjs"
+      - "tools/music_qa_golden_fantasy.mjs"
+      - "tools/music_qa_golden_fantasy.mjs"
       - "tools/check_music_qa_golden.mjs"
       - "qa/baselines/**"
       - "tools/check_pulse_mastering.py"
@@ -84,6 +86,7 @@ jobs:
           node --check src/music-qa-compare.js
           node --check src/music-qa-scenario.js
           node --check tools/music_qa_golden.mjs
+          node --check tools/music_qa_golden_fantasy.mjs
           node --check src/game.js
           node --check games/orbit-rush/game.js
           node --check games/pulse-forge/game.js
@@ -131,6 +134,8 @@ jobs:
           retention-days: 14
       - name: Check Golden QA Gate Semantics
         run: node tools/check_music_qa_golden.mjs
+      - name: Print Fantasy Golden QA Candidate
+        run: node tools/music_qa_golden_fantasy.mjs --print
       - name: Check Pulse Audio Profile
         run: python tools/check_pulse_audio_profile.py
       - name: Check Pulse Mastering
