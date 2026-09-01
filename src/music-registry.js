@@ -40,9 +40,12 @@ export const GAME_DEFAULT_PACKS = Object.freeze({
   [GAME_IDS.AETHER_SHIFT]: "clockwork",
 });
 
+const WAV_STEM_SELECTION_VERSION = 2;
+
 export const DEFAULT_MUSIC_SETTINGS = Object.freeze({
   proceduralPackId: "auto",
   wavStemPackId: "auto",
+  wavStemSelectionVersion: WAV_STEM_SELECTION_VERSION,
   bgmEnabled: true,
   sfxEnabled: true,
   bgmVolume: 0.80,
@@ -70,15 +73,26 @@ function normalizeSettings(input = {}) {
       ? input.proceduralPackId
       : DEFAULT_MUSIC_SETTINGS.proceduralPackId;
 
-  const wavStemPackId = input.wavStemPackId === "auto"
+  // v26 and earlier had only Pulse as a WAV pack, so stored "pulse"
+  // was effectively the default rather than a meaningful multi-pack choice.
+  // Migrate that legacy value to AUTO once. New explicit choices carry v2.
+  const legacyWavSelection =
+    Number(input.wavStemSelectionVersion || 0) < WAV_STEM_SELECTION_VERSION;
+  const requestedWavPackId =
+    legacyWavSelection && input.wavStemPackId === "pulse"
+      ? "auto"
+      : input.wavStemPackId;
+
+  const wavStemPackId = requestedWavPackId === "auto"
     ? "auto"
-    : registry[input.wavStemPackId]?.engine === MUSIC_ENGINES.WAV_STEM
-      ? input.wavStemPackId
+    : registry[requestedWavPackId]?.engine === MUSIC_ENGINES.WAV_STEM
+      ? requestedWavPackId
       : DEFAULT_MUSIC_SETTINGS.wavStemPackId;
 
   return {
     proceduralPackId,
     wavStemPackId,
+    wavStemSelectionVersion: WAV_STEM_SELECTION_VERSION,
     bgmEnabled: input.bgmEnabled === undefined ? DEFAULT_MUSIC_SETTINGS.bgmEnabled : Boolean(input.bgmEnabled),
     sfxEnabled: input.sfxEnabled === undefined ? DEFAULT_MUSIC_SETTINGS.sfxEnabled : Boolean(input.sfxEnabled),
     bgmVolume: clamp01(input.bgmVolume, DEFAULT_MUSIC_SETTINGS.bgmVolume),
