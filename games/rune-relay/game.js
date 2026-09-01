@@ -60,8 +60,6 @@ let acceptingInput = false;
 let playbackToken = 0;
 let tensionRequested = false;
 let masterSoundEnabled = true;
-let pendingRuntimePackId = null;
-let runtimeSwapInProgress = false;
 
 function renderPackRegistry() {
   packButtonsContainer.innerHTML = packEntries.map((entry) => `
@@ -76,13 +74,11 @@ function renderPackRegistry() {
 function renderPackButtons(info = {}) {
   const activeInfo = info.id ? info : music.info();
   currentPack.textContent = activeInfo.name || music.info().name;
-  pendingPack.textContent = pendingRuntimePackId
-    ? PACKS[pendingRuntimePackId]?.name || pendingRuntimePackId
-    : activeInfo.pendingName || "—";
+  pendingPack.textContent = activeInfo.pendingName || "—";
   document.querySelectorAll(".pack-button").forEach((button) => {
     const id = button.dataset.pack;
     button.classList.toggle("is-active", id === (activeInfo.id || music.info().id));
-    button.classList.toggle("is-pending", id === (pendingRuntimePackId || activeInfo.pendingId));
+    button.classList.toggle("is-pending", id === activeInfo.pendingId);
   });
 }
 
@@ -97,14 +93,18 @@ function runtimeCallbacks() {
     onModeChange(label) {
       musicState.textContent = label;
     },
-    onPackChange(info) {
-      if (music) renderPackButtons(info);
+    onPackChange(info = {}) {
+      if (!music) return;
+      renderPackButtons(info);
+      if (info.phase === "crossfading") {
+        musicState.textContent = "HOT SWAP · CROSSFADING";
+      } else if (info.phase === "complete") {
+        pendingPack.textContent = "—";
+      }
     },
     onSync(info) {
       syncState.textContent = info.mode === "ready" ? "BAR — / BEAT —" : `BAR ${info.bar} / BEAT ${info.beat}`;
-      pendingPack.textContent = pendingRuntimePackId
-        ? PACKS[pendingRuntimePackId]?.name || pendingRuntimePackId
-        : info.pendingPackName || "—";
+      pendingPack.textContent = info.pendingPackName || (info.hotSwap?.phase === "crossfading" ? "CROSSFADING" : "—");
     },
   };
 }
@@ -139,35 +139,11 @@ async function activateRuntime(packId, { play = false, mode = "normal" } = {}) {
   music = createRuntime(packId);
   selectedPackId = packId;
   localStorage.setItem(STORAGE_KEY, packId);
-  pendingRuntimePackId = null;
   pendingPack.textContent = "—";
   renderPackButtons(music.info());
 
   if (play) await music.start(mode);
   return music;
-}
-
-async function applyPendingRuntimeAtSequenceBoundary() {
-  if (!pendingRuntimePackId || runtimeSwapInProgress) return;
-  const nextId = pendingRuntimePackId;
-  const entry = PACKS[nextId];
-  if (!entry) {
-    pendingRuntimePackId = null;
-    return;
-  }
-
-  runtimeSwapInProgress = true;
-  setMessage(
-    "Music Runtimeを交換",
-    `${entry.name} / ${entry.engine.toUpperCase()} をシーケンス境界で適用します。`,
-    "CROSS-ENGINE SWITCH"
-  );
-  try {
-    const mode = remaining <= TENSION_AT ? "tension" : "normal";
-    await activateRuntime(nextId, { play: true, mode });
-  } finally {
-    runtimeSwapInProgress = false;
-  }
 }
 
 function setMessage(title, body, kicker = "MEMORY / PACK SWITCH") {
@@ -207,7 +183,6 @@ function makeInitialSequence() {
 }
 
 async function playSequence() {
-  await applyPendingRuntimeAtSequenceBoundary();
   const token = ++playbackToken;
   acceptingInput = false;
   inputIndex = 0;
@@ -281,7 +256,7 @@ function requestTension() {
   if (tensionRequested) return;
   tensionRequested = true;
   const packInfo = music.info();
-  if (!pendingRuntimePackId && packInfo.pendingId && PACKS[packInfo.pendingId]) {
+  if (packInfo.pendingId && PACKS[packInfo.pendingId]) {
     void music.pack(packInfo.pendingId, {
       quantize: "bar",
       crossfadeBeats: 1.5,
@@ -306,8 +281,6 @@ function resetGame() {
   streak = 0;
   inputIndex = 0;
   tensionRequested = false;
-  pendingRuntimePackId = null;
-  runtimeSwapInProgress = false;
   makeInitialSequence();
   clearPadEffects();
   resultOverlay.hidden = true;
@@ -373,41 +346,34 @@ async function choosePack(id) {
   selectedPackId = id;
   localStorage.setItem(STORAGE_KEY, id);
   warmPack(id);
-
-  if (entry.engine === "wav-stem") {
-    saveMusicSettings({ wavStemPackId: id });
-  } else {
-    saveMusicSettings({ proceduralPackId: id });
-  }
+  saveMusicSettings({ wavStemPackId: id });
 
   const info = music.info();
   if (state === "playing") {
     if (id === info.id) {
-      pendingRuntimePackId = null;
-      if (info.pendingId) music.cancel("pack");
+      if (info.pendingId) {
+        music.cancel("pack");
+        setMessage(
+          `${entry.name} を継続`,
+          "予約中のPack Hot Swapをキャンセルしました。",
+          "HOT SWAP CANCELLED"
+        );
+      }
       renderPackButtons(music.info());
       return;
     }
 
     const mode = remaining <= TENSION_AT ? "tension" : "normal";
-    if (entry.engine === music.engine) {
-      pendingRuntimePackId = null;
-      await music.pack(id, { quantize: "bar", crossfadeBeats: 2, mode });
-      setMessage(
-        `${entry.name} を予約`,
-        "同じEngineなので現在の小節が終わると切り替えます。",
-        "PACK SWITCH QUEUED"
-      );
-    } else {
-      music.cancel("pack");
-      pendingRuntimePackId = id;
-      pendingPack.textContent = entry.name;
-      setMessage(
-        `${entry.name} を予約`,
-        "Engineが変わるため次のシーケンス境界でRuntimeを交換します。",
-        "CROSS-ENGINE QUEUED"
-      );
-    }
+    await music.pack(id, {
+      quantize: "bar",
+      crossfadeBeats: 2,
+      mode,
+    });
+    setMessage(
+      `${entry.name} を予約`,
+      "同じAudioContextのまま、次の小節頭から2 beatクロスフェードします。",
+      "HOT SWAP QUEUED"
+    );
     renderPackButtons(music.info());
     return;
   }
