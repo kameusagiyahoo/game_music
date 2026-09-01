@@ -11,7 +11,7 @@
   <main class="shell">
     <header class="hero">
       <div>
-        <p class="eyebrow">GAME MUSIC LAB / ENGINE v35</p>
+        <p class="eyebrow">GAME MUSIC LAB / ENGINE v36</p>
         <h1>Audio QA Dashboard</h1>
         <p class="lead">Pulse / Fantasy / Neon / Clockworkの4つの実Audio Packを切り替え、Master / Limiter / Stem状態をiPhone上で監視します。</p>
       </div>
@@ -331,6 +331,7 @@
       <p><strong>Hot Swap Gate:</strong> Power Σ &lt; 0.80、Output Peak &gt; -0.15 dBFS、Limiter Reduction &gt; 6 dB、またはCrossfade中央RMSが両端平均より9 dB超低下するとFAILです。中間域はREVIEWになります。</p>
       <p><strong>v33 Baseline Compare:</strong> 同じHot Swap routeをBaselineと比較し、Peak / Mid RMS / Limiter / Power Σ / Crossfade Durationの悪化量もRegression判定します。</p>
       <p><strong>v34 Pack Device Baseline:</strong> Standard 60sを完走しCoverage 90%以上・FAILでない実機ReportだけをPack別Baselineとして保存できます。Pack切替時は対応Baselineを自動ロードします。</p>
+      <p><strong>v36 Device Contract Gate:</strong> Saved BaselineはPack / Audio Format / AudioContext Sample Rate / Mastering / Scenario条件を照合します。Pack versionだけの変更はREVIEWとして比較可能、Format・Sample Rate・Mastering・Scenario差はINCOMPATIBLEとして自動比較をブロックします。</p>
       <p>このMeterは0音量の監視branchで、ゲーム本来のMastering経路には加算されません。</p>
       <p>Recorderは約10fpsのMeter値を最大60秒記録し、終了後にJSON / CSVをiPhone共有シートまたはダウンロードへ出力します。</p>
       <p>STANDARD 60sは選択中PackでNORMAL 10s → BUILD 10s → OVERDRIVE 20s → RESULT + VICTORY 20sを自動実行し、Recorderも同時に開始します。</p>
