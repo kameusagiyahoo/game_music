@@ -111,6 +111,7 @@ const compareDirections = $("#compareDirections");
 const compareWarnings = $("#compareWarnings");
 const compareModes = $("#compareModes");
 const compareStages = $("#compareStages");
+const compareHotSwaps = $("#compareHotSwaps");
 const canvas = $("#historyCanvas");
 const ctx = canvas.getContext("2d");
 
@@ -807,6 +808,7 @@ function renderComparison() {
     ).join("") || "";
     compareModes.innerHTML = "";
     compareStages.innerHTML = "";
+    compareHotSwaps.innerHTML = "";
     return;
   }
 
@@ -831,6 +833,10 @@ function renderComparison() {
     `IMPROVED MODES ${comparison.summary?.improvedModeCount || 0}`,
     `REGRESSION STAGES ${comparison.summary?.regressionStageCount || 0}`,
     `IMPROVED STAGES ${comparison.summary?.improvedStageCount || 0}`,
+    `HOT SWAP ${String(comparison.summary?.hotSwapStatus || "N/A").toUpperCase()}`,
+    `SWAP REGRESSIONS ${comparison.summary?.hotSwapRegressionCount || 0}`,
+    `SWAP IMPROVEMENTS ${comparison.summary?.hotSwapImprovementCount || 0}`,
+    `ROUTE CHANGES ${comparison.summary?.hotSwapRouteChangeCount || 0}`,
   ].map((label) => `<span class="direction-chip">${label}</span>`).join("");
 
   compareWarnings.innerHTML = (comparison.warnings || []).map((warning) =>
@@ -863,6 +869,28 @@ function renderComparison() {
         <span>PK ${peak}</span>
         <span>RMS ${rms}</span>
         <span>GR ${reduction}</span>
+      </div>
+    `;
+  }).join("");
+
+  compareHotSwaps.innerHTML = (comparison.hotSwaps?.items || []).map((item) => {
+    const delta = item.delta || {};
+    const peak = delta.maxOutputPeakDb == null ? item.presence.toUpperCase() : signed(delta.maxOutputPeakDb, 1, " dB");
+    const midpoint = delta.midpointRmsDeltaDb == null ? "—" : signed(delta.midpointRmsDeltaDb, 1, " dB");
+    const reduction = delta.maxLimiterReductionMagnitudeDb == null ? "—" : signed(delta.maxLimiterReductionMagnitudeDb, 1, " dB");
+    const power = delta.minPowerCoefficientSum == null ? "—" : signed(delta.minPowerCoefficientSum, 3);
+    const duration = delta.durationRelative == null ? "—" : signed(delta.durationRelative * 100, 0, "%");
+    const curve = item.current?.curve || item.baseline?.curve || "—";
+    return `
+      <div class="compare-hot-swap-row">
+        <strong>${String(item.route || "—").toUpperCase()} #${item.occurrence}</strong>
+        <span class="compare-mode-status ${item.status}">${item.status}</span>
+        <span>PK ${peak}</span>
+        <span>MID ${midpoint}</span>
+        <span>GR ${reduction}</span>
+        <span>Σ ${power}</span>
+        <span>DUR ${duration}</span>
+        <small>${String(curve).toUpperCase()}</small>
       </div>
     `;
   }).join("");
