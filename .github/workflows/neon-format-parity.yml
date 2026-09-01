@@ -21,6 +21,10 @@ on:
       - ".github/workflows/neon-format-parity.yml"
   workflow_dispatch:
 
+concurrency:
+  group: neon-format-parity-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   parity:
     runs-on: ubuntu-latest
