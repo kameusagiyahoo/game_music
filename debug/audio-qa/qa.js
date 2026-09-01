@@ -398,6 +398,161 @@ async function shareSavedPackBaseline() {
   });
 }
 
+function routeMatrixReport(report = lastReport) {
+  return report?.metadata?.qaScenarioId === "hot-swap-route-matrix-v1"
+    ? report
+    : null;
+}
+
+function renderRouteMatrixBaselineRegistry() {
+  const history = listQaRouteMatrixBaselines();
+  const candidate = routeMatrixReport();
+  const eligibility = candidate
+    ? getQaRouteMatrixBaselineEligibility(candidate)
+    : { eligible: false, failures: ["Complete all 12 routes to create a Matrix baseline"] };
+  const busy = routeMatrixBusy();
+
+  saveRouteMatrixBaselineButton.disabled = busy || !eligibility.eligible;
+  saveRouteMatrixBaselineButton.title = eligibility.eligible
+    ? "Save this completed 12-route device report"
+    : eligibility.failures.join(" · ");
+  shareRouteMatrixBaselineButton.disabled = busy || !savedRouteMatrixEntry?.report;
+  clearRouteMatrixBaselineButton.disabled = busy || history.length === 0;
+
+  const compatibility = savedRouteMatrixEntry && candidate
+    ? getQaRouteMatrixBaselineCompatibility(savedRouteMatrixEntry, candidate)
+    : null;
+  routeMatrixBaselineCompatibility = compatibility;
+
+  if (!history.length) {
+    routeMatrixBaselineStatus.textContent =
+      "NONE · COMPLETE 12 ROUTES TO SAVE";
+  } else if (savedRouteMatrixEntry) {
+    const rate = savedRouteMatrixEntry.sampleRate
+      ? `${(Number(savedRouteMatrixEntry.sampleRate) / 1000).toFixed(1)} kHz`
+      : "unknown rate";
+    const contract = compatibility
+      ? String(compatibility.status || "exact").toUpperCase()
+      : "READY";
+    routeMatrixBaselineStatus.textContent =
+      `SELECTED · ${String(savedRouteMatrixEntry.startPackId || "—").toUpperCase()} START · ${rate} · ${contract} · HISTORY ${history.length}/6`;
+  } else {
+    routeMatrixBaselineStatus.textContent =
+      `HISTORY ${history.length}/6 · SELECT AN ENTRY OR RUN MATRIX`;
+  }
+
+  const signature = history.map((entry) =>
+    [
+      entry.id,
+      entry.id === savedRouteMatrixEntry?.id ? "selected" : "",
+      entry.approvedAt,
+    ].join(":")
+  ).join("|");
+
+  if (routeMatrixBaselineHistory.dataset.signature !== signature) {
+    routeMatrixBaselineHistory.dataset.signature = signature;
+    routeMatrixBaselineHistory.innerHTML = history.map((entry) => {
+      const selected = entry.id === savedRouteMatrixEntry?.id;
+      const date = entry.approvedAt
+        ? new Date(entry.approvedAt).toLocaleString()
+        : "unknown time";
+      const rate = entry.sampleRate
+        ? `${(Number(entry.sampleRate) / 1000).toFixed(1)} kHz`
+        : "? kHz";
+      const versions = (entry.packContracts || [])
+        .map((pack) => `${String(pack.id || "").toUpperCase()} ${pack.version || "?"}`)
+        .join(" · ");
+      return `
+        <button type="button"
+          class="route-baseline-entry${selected ? " is-selected" : ""}"
+          data-route-baseline-id="${entry.id}">
+          <span>
+            <strong>${String(entry.startPackId || "—").toUpperCase()} START · ${date}</strong>
+            <small>${versions}</small>
+          </span>
+          <span class="route-baseline-contract">${rate} · ${String(entry.crossfadeCurve || "—").toUpperCase()}</span>
+        </button>
+      `;
+    }).join("");
+  }
+}
+
+function selectRouteMatrixBaseline(entry) {
+  if (!entry?.report) return false;
+  savedRouteMatrixEntry = entry;
+  routeMatrixBaselineCompatibility = null;
+  const applied = setBaseline(entry.report, { origin: "route-saved" });
+  renderRouteMatrixBaselineRegistry();
+  return applied;
+}
+
+function restoreLatestRouteMatrixBaseline(startPackId = selectedQaPackId) {
+  const entry = loadLatestQaRouteMatrixBaseline({ startPackId });
+  if (!entry) {
+    savedRouteMatrixEntry = null;
+    routeMatrixBaselineCompatibility = null;
+    if (baselineOrigin === "route-saved") {
+      baselineReport = null;
+      baselineOrigin = null;
+      comparisonReport = null;
+      renderComparison();
+    }
+    renderRouteMatrixBaselineRegistry();
+    return null;
+  }
+
+  selectRouteMatrixBaseline(entry);
+  return entry;
+}
+
+function saveCurrentRouteMatrixBaseline() {
+  const candidate = routeMatrixReport();
+  if (!candidate) return;
+
+  const eligibility = getQaRouteMatrixBaselineEligibility(candidate);
+  if (!eligibility.eligible) {
+    routeMatrixBaselineStatus.textContent =
+      "NOT SAVED · " + eligibility.failures.join(" · ");
+    return;
+  }
+
+  try {
+    const entry = saveQaRouteMatrixBaseline(candidate);
+    selectRouteMatrixBaseline(entry);
+  } catch (error) {
+    console.error("Route Matrix baseline save failed", error);
+    routeMatrixBaselineStatus.textContent = `SAVE ERROR · ${error.message}`;
+  }
+}
+
+async function shareSelectedRouteMatrixBaseline() {
+  if (!savedRouteMatrixEntry?.report) return;
+  const filename =
+    `game-music-route-matrix-baseline-${String(savedRouteMatrixEntry.startPackId || "matrix")}-${String(savedRouteMatrixEntry.approvedAt || "baseline").replaceAll(":", "-")}.json`;
+
+  await shareOrDownload(JSON.stringify(savedRouteMatrixEntry.report, null, 2), {
+    mime: "application/json",
+    filename,
+    title: "Game Music Route Matrix Device Baseline",
+    text: `12 routes · ${savedRouteMatrixEntry.startPackId} start`,
+  });
+}
+
+function clearRouteMatrixBaselineHistory() {
+  if (!clearQaRouteMatrixBaselines()) return;
+  savedRouteMatrixEntry = null;
+  routeMatrixBaselineCompatibility = null;
+
+  if (baselineOrigin === "route-saved") {
+    baselineReport = null;
+    baselineOrigin = null;
+    comparisonReport = null;
+    renderComparison();
+  }
+
+  renderRouteMatrixBaselineRegistry();
+}
+
 
 function syncHotSwapTargetOptions(activePackId = music.info().id || selectedQaPackId) {
   const options = [...hotSwapTargetSelect.options];
@@ -517,13 +672,17 @@ async function switchQaPack(packId) {
   comparisonReport = null;
   lastScenarioSummary = null;
   lastRouteMatrixSummary = null;
+  savedRouteMatrixEntry = null;
+  routeMatrixBaselineCompatibility = null;
   routeMatrixGrid.dataset.signature = "";
+  routeMatrixBaselineHistory.dataset.signature = "";
 
   updateQaPackLabel();
   restoreSavedPackBaseline(packId);
   renderReportSummary();
   renderScenario();
   renderRouteMatrix();
+  renderRouteMatrixBaselineRegistry();
   syncHotSwapTargetOptions(packId);
   render();
   await preloadCurrentQaPack();
@@ -840,6 +999,7 @@ async function advanceScenario(now = performance.now()) {
 async function startStandardScenario() {
   if (scenarioRun?.status === "running" || routeMatrixBusy() || recordingSession) return;
 
+  restoreSavedPackBaseline(selectedQaPackId);
   lastScenarioSummary = null;
   music.cancel("all");
   if (music.running) music.stop();
@@ -1070,6 +1230,7 @@ function closeRouteMatrix() {
   renderRouteMatrix();
   renderScenario();
   renderBaselineRegistry();
+  renderRouteMatrixBaselineRegistry();
 }
 
 async function advanceRouteMatrix(now = performance.now()) {
@@ -1120,10 +1281,14 @@ async function startHotSwapRouteMatrix() {
   routeMatrixPreparing = true;
   lastRouteMatrixSummary = null;
   lastReport = null;
-  baselineReport = null;
-  baselineOrigin = null;
   comparisonReport = null;
   music.cancel("all");
+
+  savedRouteMatrixEntry = loadLatestQaRouteMatrixBaseline({ startPackId: startId });
+  baselineReport = savedRouteMatrixEntry?.report || null;
+  baselineOrigin = savedRouteMatrixEntry ? "route-saved" : null;
+  baselineCompatibility = null;
+  routeMatrixBaselineCompatibility = null;
 
   if (music.info().id !== startId) {
     if (music.running) music.stop();
@@ -1149,7 +1314,7 @@ async function startHotSwapRouteMatrix() {
   await music.start("normal");
   refreshStaticInfo();
 
-  await preloadRouteMatrixPacks();
+  const routePackContracts = await preloadRouteMatrixPacks();
   if (token !== routeMatrixToken || !routeMatrixPreparing) return;
 
   const scenario = createHotSwapRouteMatrixScenario({ startId });
@@ -1174,6 +1339,7 @@ async function startHotSwapRouteMatrix() {
         quantize: scenario.steps[0]?.actions?.[0]?.options?.quantize || "bar",
         crossfadeCurve:
           scenario.steps[0]?.actions?.[0]?.options?.crossfadeCurve || "equal-power-v1",
+        packContracts: routePackContracts,
         routes: scenario.routes.map(({ index, id, fromId, toId }) => ({
           index, id, fromId, toId,
         })),
@@ -1215,6 +1381,7 @@ function abortRouteMatrix(reason = "cancelled") {
     };
     renderRouteMatrix();
     renderBaselineRegistry();
+    renderRouteMatrixBaselineRegistry();
     return;
   }
 
