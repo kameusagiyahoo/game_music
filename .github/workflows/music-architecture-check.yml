@@ -38,6 +38,7 @@ on:
       - "tools/check_neon_audio_profile.py"
       - "tools/encode_neon_audio.sh"
       - "tools/music_qa_golden_clockwork.mjs"
+      - "tools/check_music_qa_golden_clockwork.mjs"
       - "tools/check_music_clockwork_mastering.mjs"
       - "tools/check_clockwork_audio_profile.py"
       - "tools/encode_clockwork_audio.sh"
@@ -78,6 +79,7 @@ on:
       - "tools/check_neon_audio_profile.py"
       - "tools/encode_neon_audio.sh"
       - "tools/music_qa_golden_clockwork.mjs"
+      - "tools/check_music_qa_golden_clockwork.mjs"
       - "tools/check_music_clockwork_mastering.mjs"
       - "tools/check_clockwork_audio_profile.py"
       - "tools/encode_clockwork_audio.sh"
@@ -123,6 +125,7 @@ jobs:
           node --check tools/check_music_qa_golden_neon.mjs
           node --check tools/check_music_neon_mastering.mjs
           node --check tools/music_qa_golden_clockwork.mjs
+          node --check tools/check_music_qa_golden_clockwork.mjs
           node --check tools/check_music_clockwork_mastering.mjs
           node --check tools/check_music_multi_wav_packs.mjs
           node --check tools/check_music_fantasy_mastering.mjs
@@ -209,8 +212,20 @@ jobs:
           retention-days: 14
       - name: Check Neon Golden QA Gate Semantics
         run: node tools/check_music_qa_golden_neon.mjs
-      - name: Print Clockwork Golden QA Candidate
-        run: node tools/music_qa_golden_clockwork.mjs --print
+      - name: Check Clockwork Golden QA + Publish Summary
+        env:
+          GOLDEN_QA_REPORT_PATH: qa/out/clockwork-standard-v1-golden-report.json
+        run: node tools/music_qa_golden_clockwork.mjs --check
+      - name: Upload Clockwork Golden QA Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clockwork-golden-qa-report
+          path: qa/out/clockwork-standard-v1-golden-report.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Check Clockwork Golden QA Gate Semantics
+        run: node tools/check_music_qa_golden_clockwork.mjs
       - name: Check Pulse Audio Profile
         run: python tools/check_pulse_audio_profile.py
       - name: Check Fantasy Audio Profile
