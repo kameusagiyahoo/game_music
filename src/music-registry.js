@@ -42,7 +42,7 @@ export const GAME_DEFAULT_PACKS = Object.freeze({
 
 export const DEFAULT_MUSIC_SETTINGS = Object.freeze({
   proceduralPackId: "auto",
-  wavStemPackId: "pulse",
+  wavStemPackId: "auto",
   bgmEnabled: true,
   sfxEnabled: true,
   bgmVolume: 0.80,
@@ -70,9 +70,11 @@ function normalizeSettings(input = {}) {
       ? input.proceduralPackId
       : DEFAULT_MUSIC_SETTINGS.proceduralPackId;
 
-  const wavStemPackId = registry[input.wavStemPackId]?.engine === MUSIC_ENGINES.WAV_STEM
-    ? input.wavStemPackId
-    : DEFAULT_MUSIC_SETTINGS.wavStemPackId;
+  const wavStemPackId = input.wavStemPackId === "auto"
+    ? "auto"
+    : registry[input.wavStemPackId]?.engine === MUSIC_ENGINES.WAV_STEM
+      ? input.wavStemPackId
+      : DEFAULT_MUSIC_SETTINGS.wavStemPackId;
 
   return {
     proceduralPackId,
@@ -158,7 +160,9 @@ export function resolveMusicPack(gameId, engine = MUSIC_ENGINES.PROCEDURAL) {
   let id;
 
   if (engine === MUSIC_ENGINES.WAV_STEM) {
-    id = settings.wavStemPackId;
+    id = settings.wavStemPackId === "auto"
+      ? GAME_DEFAULT_PACKS[gameId]
+      : settings.wavStemPackId;
   } else {
     id = settings.proceduralPackId === "auto"
       ? GAME_DEFAULT_PACKS[gameId]
