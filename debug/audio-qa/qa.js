@@ -26,6 +26,18 @@ const $ = (selector) => document.querySelector(selector);
 const qaBadge = $("#qaBadge");
 const qaPackSelect = $("#qaPackSelect");
 const qaPackDescription = $("#qaPackDescription");
+const hotSwapTargetSelect = $("#hotSwapTargetSelect");
+const hotSwapCurveSelect = $("#hotSwapCurveSelect");
+const scheduleHotSwapButton = $("#scheduleHotSwapButton");
+const cancelHotSwapButton = $("#cancelHotSwapButton");
+const hotSwapStatus = $("#hotSwapStatus");
+const hotSwapRoute = $("#hotSwapRoute");
+const hotSwapProgressValue = $("#hotSwapProgressValue");
+const hotSwapProgressBar = $("#hotSwapProgressBar");
+const hotSwapCurveValue = $("#hotSwapCurveValue");
+const hotSwapOutgoingValue = $("#hotSwapOutgoingValue");
+const hotSwapIncomingValue = $("#hotSwapIncomingValue");
+const hotSwapPowerValue = $("#hotSwapPowerValue");
 const transport = $("#transport");
 const formatLine = $("#formatLine");
 const prePeakValue = $("#prePeakValue");
@@ -63,8 +75,15 @@ const reportRms = $("#reportRms");
 const reportReduction = $("#reportReduction");
 const reportOver3 = $("#reportOver3");
 const reportOver6 = $("#reportOver6");
+const reportHotSwapCount = $("#reportHotSwapCount");
+const reportHotSwapTime = $("#reportHotSwapTime");
+const reportHotSwapPeak = $("#reportHotSwapPeak");
+const reportHotSwapRms = $("#reportHotSwapRms");
+const reportHotSwapReduction = $("#reportHotSwapReduction");
+const reportHotSwapPower = $("#reportHotSwapPower");
 const modeSummary = $("#modeSummary");
 const scenarioStageSummary = $("#scenarioStageSummary");
+const hotSwapSummary = $("#hotSwapSummary");
 const scenarioStatus = $("#scenarioStatus");
 const scenarioTimer = $("#scenarioTimer");
 const scenarioProgressBar = $("#scenarioProgressBar");
@@ -162,6 +181,98 @@ function preloadCurrentQaPack() {
   });
 }
 
+
+function syncHotSwapTargetOptions(activePackId = music.info().id || selectedQaPackId) {
+  const options = [...hotSwapTargetSelect.options];
+  options.forEach((option) => {
+    option.disabled = option.value === activePackId;
+  });
+
+  const selected = hotSwapTargetSelect.selectedOptions?.[0];
+  if (!selected || selected.disabled) {
+    const next = options.find((option) => !option.disabled);
+    if (next) hotSwapTargetSelect.value = next.value;
+  }
+}
+
+function renderHotSwap(meter = music.meter()) {
+  const hot = meter?.hotSwap || null;
+  const scenarioRunning = scenarioRun?.status === "running";
+  const activePackId = meter?.packId || music.info().id || selectedQaPackId;
+  syncHotSwapTargetOptions(activePackId);
+
+  const targetIsActive = hotSwapTargetSelect.value === activePackId;
+  scheduleHotSwapButton.disabled =
+    scenarioRunning ||
+    !music.running ||
+    Boolean(hot) ||
+    targetIsActive;
+  cancelHotSwapButton.disabled = hot?.phase !== "scheduled";
+  hotSwapTargetSelect.disabled = scenarioRunning || Boolean(hot);
+  hotSwapCurveSelect.disabled = scenarioRunning || Boolean(hot);
+
+  if (!hot) {
+    hotSwapStatus.textContent = music.running ? "READY" : "IDLE";
+    hotSwapStatus.className = "hot-swap-status idle";
+    hotSwapRoute.textContent = `${String(activePackId || "—").toUpperCase()} → —`;
+    hotSwapProgressValue.textContent = "0%";
+    hotSwapProgressBar.style.width = "0%";
+    hotSwapCurveValue.textContent = "—";
+    hotSwapOutgoingValue.textContent = "—";
+    hotSwapIncomingValue.textContent = "—";
+    hotSwapPowerValue.textContent = "—";
+    return;
+  }
+
+  const progress = Math.max(0, Math.min(1, Number(hot.progress || 0)));
+  const phase = String(hot.phase || "unknown").toUpperCase();
+  hotSwapStatus.textContent = phase;
+  hotSwapStatus.className =
+    `hot-swap-status ${hot.phase === "crossfading" ? "active" : "scheduled"}`;
+  hotSwapRoute.textContent =
+    `${String(hot.fromId || "—").toUpperCase()} → ${String(hot.toId || "—").toUpperCase()}`;
+  hotSwapProgressValue.textContent = `${Math.round(progress * 100)}%`;
+  hotSwapProgressBar.style.width = `${Math.round(progress * 100)}%`;
+  hotSwapCurveValue.textContent = String(hot.curve || "—").toUpperCase();
+  hotSwapOutgoingValue.textContent = Number(hot.outgoingGain || 0).toFixed(3);
+  hotSwapIncomingValue.textContent = Number(hot.incomingGain || 0).toFixed(3);
+  hotSwapPowerValue.textContent = Number(hot.powerCoefficientSum || 0).toFixed(4);
+}
+
+async function scheduleHotSwap() {
+  if (scenarioRun?.status === "running") return;
+
+  const targetId = hotSwapTargetSelect.value;
+  const activeId = music.info().id || selectedQaPackId;
+  if (!targetId || targetId === activeId) return;
+
+  if (!music.running) {
+    qaBadge.textContent = "STARTING";
+    await music.start("normal");
+    refreshStaticInfo();
+  }
+
+  hotSwapStatus.textContent = "PREPARING";
+  hotSwapStatus.className = "hot-swap-status scheduled";
+
+  try {
+    await music.pack(targetId, {
+      quantize: "bar",
+      crossfadeBeats: 2,
+      crossfadeCurve:
+        hotSwapCurveSelect.value === "exponential"
+          ? "exponential"
+          : "equal-power",
+      mode: music.meter()?.mode || "normal",
+    });
+    renderHotSwap();
+  } catch (error) {
+    console.error("Hot Swap QA failed", error);
+    hotSwapStatus.textContent = "ERROR";
+    hotSwapStatus.className = "hot-swap-status hot";
+  }
+}
+
 async function switchQaPack(packId) {
   if (!["pulse", "fantasy", "neon", "clockwork"].includes(packId)) return;
   if (recordingSession || scenarioRun?.status === "running") {
@@ -188,6 +299,7 @@ async function switchQaPack(packId) {
   renderReportSummary();
   renderComparison();
   renderScenario();
+  syncHotSwapTargetOptions(packId);
   render();
   await preloadCurrentQaPack();
 }
@@ -481,8 +593,15 @@ function renderReportSummary() {
     reportReduction.textContent = "—";
     reportOver3.textContent = "—";
     reportOver6.textContent = "—";
+    reportHotSwapCount.textContent = "—";
+    reportHotSwapTime.textContent = "—";
+    reportHotSwapPeak.textContent = "—";
+    reportHotSwapRms.textContent = "—";
+    reportHotSwapReduction.textContent = "—";
+    reportHotSwapPower.textContent = "—";
     modeSummary.innerHTML = "";
     scenarioStageSummary.innerHTML = "";
+    hotSwapSummary.innerHTML = "";
     return;
   }
 
@@ -496,6 +615,20 @@ function renderReportSummary() {
   reportReduction.textContent = `${Number(summary.maxLimiterReductionMagnitudeDb || 0).toFixed(1)} dB`;
   reportOver3.textContent = `${Number(summary.limiterOver3Seconds || 0).toFixed(1)} s`;
   reportOver6.textContent = `${Number(summary.limiterOver6Seconds || 0).toFixed(1)} s`;
+  reportHotSwapCount.textContent = String(summary.hotSwapCount || 0);
+  reportHotSwapTime.textContent = `${Number(summary.hotSwapCrossfadeSeconds || 0).toFixed(1)} s`;
+  reportHotSwapPeak.textContent = summary.hotSwapMaxOutputPeakDbfs == null
+    ? "—"
+    : formatDb(summary.hotSwapMaxOutputPeakDbfs);
+  reportHotSwapRms.textContent = summary.hotSwapMinOutputRmsDbfs == null
+    ? "—"
+    : formatDb(summary.hotSwapMinOutputRmsDbfs);
+  reportHotSwapReduction.textContent = summary.hotSwapMaxLimiterReductionMagnitudeDb == null
+    ? "—"
+    : `${Number(summary.hotSwapMaxLimiterReductionMagnitudeDb).toFixed(1)} dB`;
+  reportHotSwapPower.textContent = summary.hotSwapMinPowerCoefficientSum == null
+    ? "—"
+    : Number(summary.hotSwapMinPowerCoefficientSum).toFixed(4);
 
   modeSummary.innerHTML = Object.entries(summary.modes || {}).map(([mode, value]) => `
     <div class="mode-report-row">
@@ -514,6 +647,17 @@ function renderReportSummary() {
       <span>RMS ${Number(value.averageOutputRmsDbfs || -180).toFixed(1)}</span>
       <span>PK ${Number(value.maxOutputPeakDbfs || -180).toFixed(1)}</span>
       <span>GR ${Number(value.maxLimiterReductionMagnitudeDb || 0).toFixed(1)}</span>
+    </div>
+  `).join("");
+
+  hotSwapSummary.innerHTML = (summary.hotSwaps || []).map((swap) => `
+    <div class="mode-report-row hot-swap-report-row">
+      <strong>SWAP ${String(swap.fromId || "—").toUpperCase()} → ${String(swap.toId || "—").toUpperCase()}</strong>
+      <span>${Number(swap.durationSeconds || 0).toFixed(1)}s</span>
+      <span>RMS MIN ${swap.minOutputRmsDbfs == null ? "—" : Number(swap.minOutputRmsDbfs).toFixed(1)}</span>
+      <span>PK ${swap.maxOutputPeakDbfs == null ? "—" : Number(swap.maxOutputPeakDbfs).toFixed(1)}</span>
+      <span>GR ${Number(swap.maxLimiterReductionMagnitudeDb || 0).toFixed(1)}</span>
+      <span>PWR ${swap.minPowerCoefficientSum == null ? "—" : Number(swap.minPowerCoefficientSum).toFixed(4)}</span>
     </div>
   `).join("");
 }
@@ -818,8 +962,30 @@ async function exportComparison(format) {
 }
 
 function render() {
-  const info = staticInfo;
   const meter = music.meter();
+  const runtimeInfo = music.info();
+
+  if (
+    runtimeInfo.id !== staticInfo?.id ||
+    runtimeInfo.masteringProfile !== staticInfo?.masteringProfile
+  ) {
+    staticInfo = runtimeInfo;
+  }
+
+  if (
+    !meter?.hotSwap &&
+    meter?.packId &&
+    meter.packId !== selectedQaPackId &&
+    scenarioRun?.status !== "running"
+  ) {
+    selectedQaPackId = meter.packId;
+    qaPackSelect.value = selectedQaPackId;
+    qaScenario = createPackScenario(selectedQaPackId);
+    updateQaPackLabel();
+    syncHotSwapTargetOptions(selectedQaPackId);
+  }
+
+  const info = staticInfo;
   const mastering = info.mastering;
 
   transport.textContent = music.running ? `BAR ${bar || 1} · BEAT ${beat || 1}` : "BAR — · BEAT —";
@@ -851,6 +1017,7 @@ function render() {
   stingerValue.textContent = eventLabel(meter?.stinger);
   transitionValue.textContent = eventLabel(meter?.transitionCue);
   meterSupportValue.textContent = meter?.supported ? "ACTIVE · 10 FPS UI" : "UNAVAILABLE";
+  renderHotSwap(meter);
   renderStems(meter?.stems || {});
   captureRecorderSample(meter);
   renderReportSummary();
@@ -871,6 +1038,17 @@ function animationFrame(time) {
 
 qaPackSelect.addEventListener("change", () => {
   void switchQaPack(qaPackSelect.value);
+});
+
+
+hotSwapTargetSelect.addEventListener("change", () => renderHotSwap());
+hotSwapCurveSelect.addEventListener("change", () => renderHotSwap());
+scheduleHotSwapButton.addEventListener("click", () => {
+  void scheduleHotSwap();
+});
+cancelHotSwapButton.addEventListener("click", () => {
+  music.cancel("pack");
+  renderHotSwap();
 });
 
 $("#startButton").addEventListener("click", async () => {
