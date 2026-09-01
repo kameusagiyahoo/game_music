@@ -33,7 +33,7 @@
     <section class="resolver-intro">
       <span>AUTO ENGINE + FORMAT SELECTION</span>
       <strong>Music Packだけ選ぶ</strong>
-      <p>RegistryからEngineを、ManifestからAudio Formatを解決します。再生中に別Packを選ぶと、同じAudioContextのまま次小節で2 beat Equal-Power Hot Swapします。Transition Cue、Mastering、Realtime Meter capabilityも確認できます。</p>
+      <p>RegistryからEngineを、ManifestからAudio Formatを解決します。再生中のPack変更は次小節で2 beat Hot Swapします。Equal-Power v1と旧v30 Exponentialを切り替えてA/B比較できます。Transition Cue、Mastering、Realtime Meter capabilityも確認できます。</p>
     </section>
 
     <section class="runtime-panel" aria-label="現在のRuntime">
@@ -59,6 +59,14 @@
 
     <section class="resolver-section controls-section">
       <div class="section-heading"><span>TRANSPORT</span><strong id="statusText">SELECT A PACK</strong></div>
+      <label class="crossfade-control">
+        <span>CROSSFADE CURVE</span>
+        <select id="crossfadeCurve" aria-label="Hot Swap Crossfade Curve">
+          <option value="equal-power">Equal-Power v1 · Production</option>
+          <option value="exponential">Legacy v30 Exponential · A/B</option>
+        </select>
+        <small>通常はEqual-Power。Legacyは比較用です。</small>
+      </label>
       <div class="transport-row">
         <button id="playButton" class="primary-button" type="button">PLAY</button>
         <button id="stopButton" class="secondary-button" type="button">STOP</button>
