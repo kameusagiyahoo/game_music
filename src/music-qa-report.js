@@ -21,6 +21,25 @@ function eventState(event) {
   return "idle";
 }
 
+function hotSwapSnapshot(hotSwap) {
+  if (!hotSwap) return null;
+  return {
+    phase: String(hotSwap.phase || "unknown"),
+    fromId: hotSwap.fromId ? String(hotSwap.fromId) : null,
+    toId: hotSwap.toId ? String(hotSwap.toId) : null,
+    curve: hotSwap.curve ? String(hotSwap.curve) : null,
+    quantize: hotSwap.quantize ? String(hotSwap.quantize) : null,
+    scheduledAt: round(finite(hotSwap.scheduledAt, 0), 6),
+    fadeEnd: round(finite(hotSwap.fadeEnd, 0), 6),
+    crossfadeBeats: round(finite(hotSwap.crossfadeBeats, 0), 3),
+    fadeSeconds: round(finite(hotSwap.fadeSeconds, 0), 6),
+    progress: round(finite(hotSwap.progress, 0), 6),
+    outgoingGain: round(finite(hotSwap.outgoingGain, 0), 6),
+    incomingGain: round(finite(hotSwap.incomingGain, 0), 6),
+    powerCoefficientSum: round(finite(hotSwap.powerCoefficientSum, 0), 6),
+  };
+}
+
 function stemGains(stems = {}) {
   return Object.fromEntries(
     Object.entries(stems).map(([name, value]) => [name, round(finite(value?.gain, 0), 4)])
@@ -56,6 +75,7 @@ export function addQaSample(session, meter, {
     tMs: Math.max(0, finite(capturedAtMs, Date.now()) - session.startedAtMs),
     bar: Math.max(0, Math.floor(finite(bar, 0))),
     beat: Math.max(0, Math.floor(finite(beat, 0))),
+    packId: meter.packId ? String(meter.packId) : null,
     mode: String(meter.mode || "unknown"),
     layerPreset: String(meter.layerPreset || "unknown"),
     scenarioStage: scenarioStage ? String(scenarioStage) : null,
@@ -73,6 +93,7 @@ export function addQaSample(session, meter, {
       name: eventName(meter.transitionCue),
       state: eventState(meter.transitionCue),
     },
+    hotSwap: hotSwapSnapshot(meter.hotSwap),
     stems: stemGains(meter.stems),
   };
 
@@ -189,12 +210,91 @@ function summarizeScenarioStages(samples, durationsMs) {
   );
 }
 
+function summarizeHotSwaps(samples, durationsMs) {
+  const swaps = new Map();
+
+  samples.forEach((sample, index) => {
+    const hot = sample.hotSwap;
+    if (!hot?.fromId || !hot?.toId) return;
+
+    const key = [
+      hot.fromId,
+      hot.toId,
+      Number(hot.scheduledAt || 0).toFixed(6),
+    ].join("->");
+
+    if (!swaps.has(key)) {
+      swaps.set(key, {
+        fromId: hot.fromId,
+        toId: hot.toId,
+        curve: hot.curve || null,
+        quantize: hot.quantize || null,
+        scheduledAt: hot.scheduledAt,
+        fadeEnd: hot.fadeEnd,
+        crossfadeBeats: hot.crossfadeBeats,
+        fadeSeconds: hot.fadeSeconds,
+        scheduledSampleCount: 0,
+        crossfadeSampleCount: 0,
+        durationMs: 0,
+        peak: SILENCE_DB,
+        minRms: Infinity,
+        maxRms: SILENCE_DB,
+        rmsPowerMs: 0,
+        rmsDurationMs: 0,
+        minReductionDb: 0,
+        minPower: Infinity,
+        maxPower: -Infinity,
+      });
+    }
+
+    const item = swaps.get(key);
+    if (hot.phase === "scheduled") item.scheduledSampleCount += 1;
+    if (hot.phase !== "crossfading") return;
+
+    const durationMs = durationsMs[index] || 0;
+    item.crossfadeSampleCount += 1;
+    item.durationMs += durationMs;
+    item.peak = Math.max(item.peak, sample.outputPeakDbfs);
+    item.minRms = Math.min(item.minRms, sample.outputRmsDbfs);
+    item.maxRms = Math.max(item.maxRms, sample.outputRmsDbfs);
+    item.rmsPowerMs += dbToPower(sample.outputRmsDbfs) * durationMs;
+    item.rmsDurationMs += durationMs;
+    item.minReductionDb = Math.min(item.minReductionDb, sample.limiterReductionDb);
+    item.minPower = Math.min(item.minPower, finite(hot.powerCoefficientSum, 0));
+    item.maxPower = Math.max(item.maxPower, finite(hot.powerCoefficientSum, 0));
+  });
+
+  return [...swaps.values()].map((item) => ({
+    fromId: item.fromId,
+    toId: item.toId,
+    curve: item.curve,
+    quantize: item.quantize,
+    scheduledAt: item.scheduledAt,
+    fadeEnd: item.fadeEnd,
+    crossfadeBeats: item.crossfadeBeats,
+    fadeSeconds: item.fadeSeconds,
+    scheduledSampleCount: item.scheduledSampleCount,
+    crossfadeSampleCount: item.crossfadeSampleCount,
+    durationSeconds: round(item.durationMs / 1000),
+    maxOutputPeakDbfs: item.crossfadeSampleCount ? round(item.peak) : null,
+    minOutputRmsDbfs: item.crossfadeSampleCount ? round(item.minRms) : null,
+    maxOutputRmsDbfs: item.crossfadeSampleCount ? round(item.maxRms) : null,
+    averageOutputRmsDbfs: item.rmsDurationMs > 0
+      ? round(powerToDb(item.rmsPowerMs / item.rmsDurationMs))
+      : null,
+    maxLimiterReductionMagnitudeDb: round(Math.abs(item.minReductionDb)),
+    minPowerCoefficientSum: Number.isFinite(item.minPower) ? round(item.minPower, 6) : null,
+    maxPowerCoefficientSum: Number.isFinite(item.maxPower) ? round(item.maxPower, 6) : null,
+  }));
+}
+
 function deriveEvents(samples) {
   const events = [];
   let lastMode = null;
   let lastScenarioStage = null;
   let lastStinger = null;
   let lastTransition = null;
+  let lastHotSwap = null;
 
   for (const sample of samples) {
     if (sample.mode && sample.mode !== lastMode) {
@@ -258,6 +358,57 @@ function deriveEvents(samples) {
       });
     }
     lastTransition = transitionKey;
+
+    const hot = sample.hotSwap;
+    if (hot?.fromId && hot?.toId) {
+      const hotKey = [
+        hot.fromId,
+        hot.toId,
+        hot.scheduledAt,
+        hot.phase,
+      ].join(":");
+      if (!lastHotSwap || hotKey !== lastHotSwap.key) {
+        events.push({
+          tSeconds: round(sample.tMs / 1000),
+          type: "hot-swap",
+          name: `${hot.fromId}->${hot.toId}`,
+          state: hot.phase,
+          fromId: hot.fromId,
+          toId: hot.toId,
+          curve: hot.curve,
+          progress: hot.progress,
+          outgoingGain: hot.outgoingGain,
+          incomingGain: hot.incomingGain,
+          powerCoefficientSum: hot.powerCoefficientSum,
+          bar: sample.bar,
+          beat: sample.beat,
+          outputPeakDbfs: round(sample.outputPeakDbfs),
+          limiterReductionDb: round(sample.limiterReductionDb),
+        });
+      }
+      lastHotSwap = { key: hotKey, ...hot };
+    } else if (lastHotSwap) {
+      if (lastHotSwap.phase !== "complete") {
+        events.push({
+          tSeconds: round(sample.tMs / 1000),
+          type: "hot-swap",
+          name: `${lastHotSwap.fromId}->${lastHotSwap.toId}`,
+          state: "complete",
+          fromId: lastHotSwap.fromId,
+          toId: lastHotSwap.toId,
+          curve: lastHotSwap.curve,
+          progress: 1,
+          outgoingGain: 0,
+          incomingGain: 1,
+          powerCoefficientSum: 1,
+          bar: sample.bar,
+          beat: sample.beat,
+          outputPeakDbfs: round(sample.outputPeakDbfs),
+          limiterReductionDb: round(sample.limiterReductionDb),
+        });
+      }
+      lastHotSwap = null;
+    }
   }
 
   return events;
@@ -323,6 +474,25 @@ export function finalizeQaSession(session, {
     ? Math.min(100, observedDurationSeconds / durationSeconds * 100)
     : 0;
 
+  const hotSwaps = summarizeHotSwaps(samples, durationsMs);
+  const activeHotSwaps = hotSwaps.filter((item) => item.crossfadeSampleCount > 0);
+  const hotSwapDurationSeconds = activeHotSwaps.reduce(
+    (sum, item) => sum + Number(item.durationSeconds || 0),
+    0,
+  );
+  const hotSwapPeakValues = activeHotSwaps
+    .map((item) => item.maxOutputPeakDbfs)
+    .filter((value) => Number.isFinite(Number(value)));
+  const hotSwapRmsValues = activeHotSwaps
+    .map((item) => item.minOutputRmsDbfs)
+    .filter((value) => Number.isFinite(Number(value)));
+  const hotSwapReductionValues = activeHotSwaps
+    .map((item) => item.maxLimiterReductionMagnitudeDb)
+    .filter((value) => Number.isFinite(Number(value)));
+  const hotSwapPowerValues = activeHotSwaps
+    .map((item) => item.minPowerCoefficientSum)
+    .filter((value) => Number.isFinite(Number(value)));
+
   const summary = {
     durationSeconds: round(durationSeconds),
     observedDurationSeconds: round(observedDurationSeconds),
@@ -342,6 +512,17 @@ export function finalizeQaSession(session, {
     clipRiskSeconds: round(clipRiskMs / 1000),
     modes: summarizeModes(samples, durationsMs),
     scenarioStages: summarizeScenarioStages(samples, durationsMs),
+    hotSwapCount: hotSwaps.length,
+    hotSwapCrossfadeSeconds: round(hotSwapDurationSeconds),
+    hotSwapMaxOutputPeakDbfs: hotSwapPeakValues.length ? round(Math.max(...hotSwapPeakValues)) : null,
+    hotSwapMinOutputRmsDbfs: hotSwapRmsValues.length ? round(Math.min(...hotSwapRmsValues)) : null,
+    hotSwapMaxLimiterReductionMagnitudeDb: hotSwapReductionValues.length
+      ? round(Math.max(...hotSwapReductionValues))
+      : null,
+    hotSwapMinPowerCoefficientSum: hotSwapPowerValues.length
+      ? round(Math.min(...hotSwapPowerValues), 6)
+      : null,
+    hotSwaps,
   };
   summary.verdict = qaVerdict({
     ...summary,
@@ -373,10 +554,13 @@ export function qaReportToCsv(report) {
   )].sort();
 
   const header = [
-    "t_seconds", "bar", "beat", "mode", "layer_preset", "scenario_stage", "sample_rate",
+    "t_seconds", "bar", "beat", "pack_id", "mode", "layer_preset", "scenario_stage", "sample_rate",
     "pre_peak_dbfs", "pre_rms_dbfs", "output_peak_dbfs", "output_rms_dbfs",
     "limiter_reduction_db", "stinger", "stinger_state",
     "transition_cue", "transition_state",
+    "hot_swap_phase", "hot_swap_from", "hot_swap_to", "hot_swap_curve",
+    "hot_swap_progress", "hot_swap_outgoing_gain", "hot_swap_incoming_gain",
+    "hot_swap_power_coefficient_sum",
     ...stemNames.map((name) => `stem_${name}_gain`),
   ];
 
@@ -384,6 +568,7 @@ export function qaReportToCsv(report) {
     round(sample.tMs / 1000),
     sample.bar,
     sample.beat,
+    sample.packId,
     sample.mode,
     sample.layerPreset,
     sample.scenarioStage,
@@ -397,6 +582,14 @@ export function qaReportToCsv(report) {
     sample.stinger?.state,
     sample.transitionCue?.name,
     sample.transitionCue?.state,
+    sample.hotSwap?.phase,
+    sample.hotSwap?.fromId,
+    sample.hotSwap?.toId,
+    sample.hotSwap?.curve,
+    sample.hotSwap?.progress,
+    sample.hotSwap?.outgoingGain,
+    sample.hotSwap?.incomingGain,
+    sample.hotSwap?.powerCoefficientSum,
     ...stemNames.map((name) => sample.stems?.[name] ?? ""),
   ]);
 
