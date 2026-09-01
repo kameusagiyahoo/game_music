@@ -4516,6 +4516,248 @@ tools/check_music_qa_baseline_registry.mjs
 
 Facade / Audio Engine APIは変更していないため、Facade API versionは引き続き `1.5.0` です。
 
+### v35 — Automated Hot Swap Route Matrix
+
+v30〜v34でHot Swap / Equal-Power / Realtime QA / Baseline Compare / Device Baselineが揃ったため、v35では4 Pack間の全方向Hot Swapを固定Scenarioとして自動実行します。
+
+```text
+4 Real Audio Packs
+Fantasy
+Neon
+Pulse
+Clockwork
+
+directed routes
+4 × 3
+= 12 routes
+```
+
+Routeは自己遷移を除く完全有向グラフをEulerian circuitとして並べます。
+
+そのため、
+
+- 12方向を重複なく1回ずつ通る
+- 前Routeの到着Packが次Routeの出発Packになる
+- 最後は開始Packへ戻る
+
+という連続した1本の実機Scenarioになります。
+
+既定設定:
+
+```text
+Scenario ID       hot-swap-route-matrix-v1
+First swap        3 sec
+Route interval    5 sec
+Tail              6 sec
+Total             64 sec
+
+Quantize          bar
+Crossfade         2 beats
+Curve             equal-power-v1
+Mode              normal
+```
+
+Audio QA Dashboardの `RUN ALL 12 ROUTES` で実行します。
+
+実行中は、
+
+- QA Pack selector
+- 手動Hot Swap
+- Standard 60s
+- Device Baseline保存
+
+をロックし、12 Routeを1つのQA Reportへ記録します。
+
+### Route Matrix Gate
+
+`src/music-qa-route-matrix.js` はScenario生成だけでなく、完了Report自体も判定します。
+
+PASS条件の中心:
+
+```text
+Scenario completed
+12 / 12 routes completed
+12 Hot Swaps observed
+12 Hot Swap QA evaluations
+12 unique directed routes
+overall QA != FAIL
+Hot Swap QA != FAIL
+Sampling Coverage >= 90%
+```
+
+判定:
+
+```text
+complete + safe
+→ PASS
+
+complete but low coverage / review metrics
+→ REVIEW
+
+missing route / incomplete / Hot Swap FAIL
+→ FAIL
+```
+
+Route Matrix ReportはPack単体のStandard 60sとは目的が違うため、v34 Device Baselineへ誤保存できません。
+
+CI:
+
+```text
+tools/check_music_qa_route_matrix.mjs
+```
+
+仮想schedulerで実時間64秒を待たず、
+
+- 4 Pack / 12 directed routes
+- route uniqueness / continuity
+- start Packへreturn
+- fixed timeline
+- bar / 2 beat / equal-power options
+- timing drift abort
+- 12-route QA aggregation
+- incomplete 11/12 FAIL
+- low coverage REVIEW
+- Pack Standard baseline reuse BLOCK
+
+まで検証します。
+
+### v36 — Device Baseline Compatibility Gate
+
+v34のPack Device BaselineはPack単位で自動ロードできましたが、保存された実機条件とCurrent Runの条件が違っていても、従来はRegression Compare自体を実行できました。
+
+v36ではSaved Device Baselineに**比較契約**を追加します。
+
+```text
+Saved Device Baseline
+        |
+        +-- Pack ID
+        +-- Pack version
+        +-- Audio Format
+        +-- Mastering Profile
+        +-- Scenario ID / version
+        +-- AudioContext Sample Rate
+        +-- Facade API
+        |
+        v
+Current QA Report
+        |
+        v
+Compatibility Gate
+```
+
+判定は3段階です。
+
+```text
+EXACT
+  Pack version same
+  Audio Format same
+  Sample Rate same
+  Mastering same
+  Scenario same
+  → normal regression compare
+
+REVIEW
+  Pack version only changed
+  → regression compare allowed
+  → version-change warning
+
+INCOMPATIBLE
+  Pack ID differs
+  Audio Format differs
+  AudioContext Sample Rate differs
+  Mastering Profile differs
+  Scenario ID/version differs
+  → Saved Device Baseline automatic compare BLOCKED
+```
+
+Pack version差だけを完全ブロックしないのは、`v2.0.0 -> v2.1.0` のような意図的な新versionをBaselineと比較すること自体がRegression QAの主要用途だからです。
+
+一方、
+
+```text
+M4A baseline
+vs
+OGG current
+```
+
+や、
+
+```text
+48 kHz baseline
+vs
+44.1 kHz current
+```
+
+を同一条件の数値差として扱いません。
+
+### Baseline save contract v36
+
+新しくDevice Baselineとして保存するReportは、v34の条件に加えて以下を必須にします。
+
+- Pack version
+- Audio Format
+- Mastering Profile
+- AudioContext Sample Rate
+- Scenario version
+
+したがって、比較条件を証明できないReportはDevice Baselineとして承認できません。
+
+既存v34/v35 Baselineは後方互換です。
+
+旧entryのtop-levelに `audioFormat` や `sampleRate` がなくても、compact report内のmetadataから復元します。
+
+### Audio QA表示
+
+Saved Baseline行は現在、
+
+```text
+SAVED · FANTASY v2.0.0 · M4A · 48.0 kHz · EXACT
+```
+
+のように表示します。
+
+Pack versionだけ違う場合:
+
+```text
+... · REVIEW
+```
+
+Format / Sample Rateなどが違う場合:
+
+```text
+... · INCOMPATIBLE
+```
+
+INCOMPATIBLE時はPeak / RMS / Limiterなどの差分表を出さず、何の契約が違うかを表示します。
+
+手動 `LOAD BASELINE JSON` は探索用途として従来どおり比較可能です。Strict Gateは自動ロードされるSaved Device Baselineに適用します。
+
+実装:
+
+```text
+src/music-qa-baseline-registry.js
+getQaBaselineCompatibility()
+```
+
+CI:
+
+```text
+tools/check_music_qa_baseline_registry.mjs
+```
+
+検証:
+
+- exact same contract -> EXACT
+- Pack version only -> REVIEW + comparable
+- M4A -> OGG -> INCOMPATIBLE
+- 48 kHz -> 44.1 kHz -> INCOMPATIBLE
+- Mastering change -> INCOMPATIBLE
+- Scenario change -> INCOMPATIBLE
+- missing format/rate/version/mastering -> baseline save BLOCK
+- legacy saved-entry metadata fallback -> EXACT
+
+Facade / Audio Engine APIは変更していないため、Facade API versionは引き続き `1.5.0` です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -4600,6 +4842,8 @@ Validation:
 - `src/music-qa-hot-swap-compare.js`
 - `src/music-qa-baseline-registry.js`
 - `tools/check_music_qa_baseline_registry.mjs`
+- `src/music-qa-route-matrix.js`
+- `tools/check_music_qa_route_matrix.mjs`
 - `tools/check_music_qa_scenario.mjs`
 - `tools/music_qa_golden.mjs`
 - `tools/check_music_qa_golden.mjs`
@@ -4704,6 +4948,6 @@ assets/
 
 ## Next candidates
 
-- Hot Swap route matrixの自動実機Scenario
-- Device BaselineのPack version / Audio Format互換性Gate強化
+- Route Matrix専用Device Baseline / 12 Route Regression履歴
+- Device Baselineの複数version履歴と切替
 - Game 06追加
