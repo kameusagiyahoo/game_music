@@ -23,7 +23,10 @@ URL: https://kameusagiyahoo.github.io/game_music/
 
 - `createMusicFacade()` で共通Facadeを生成
 - Normal / Tension / Result
-- Music Registryからprocedural Packを解決
+- Music RegistryからNeon WAV v2.0.0を解決
+- ページ表示後に11 Audio Assetをpreload
+- 残り8秒のOVERDRIVEを次小節へQuantize
+- Result / Stingerも同じ小節境界へ整列
 - 共通BGM / SE設定を利用
 
 URL: https://kameusagiyahoo.github.io/game_music/games/orbit-rush/
@@ -50,7 +53,7 @@ URL: https://kameusagiyahoo.github.io/game_music/games/pulse-forge/
 
 - `createMusicFacade()` で共通Facadeを生成
 - Music PackボタンをRegistryから自動生成
-- Fantasy WAV / Neon / Clockwork / Pulse WAVを選択可能
+- Fantasy WAV / Neon WAV / Clockwork / Pulse WAVを選択可能
 - 同一Engine内のPack変更は次小節頭へ予約
 - procedural ↔ WAV Stemは次のシーケンス境界でRuntime交換
 - WAV Packは選択時にpreload
@@ -64,7 +67,7 @@ URL: https://kameusagiyahoo.github.io/game_music/games/rune-relay/
 9つのノードを追いかける4ウェーブ制の反射ゲーム。
 
 - `createMusicFacade()` だけで再生Facadeを生成
-- Fantasy / Neon / Clockwork / Pulse WAVを同じPack UIから選択
+- Fantasy WAV / Neon WAV / Clockwork / Pulse WAVを同じPack UIから選択
 - Pack変更は次のウェーブ境界へ予約
 - procedural ↔ WAV Stemでもゲームロジックを変更せずRuntime交換
 - ゲーム側は `normal / build / tension / result` の共通Stateだけを送信
@@ -82,9 +85,9 @@ URL: https://kameusagiyahoo.github.io/game_music/games/aether-shift/
 - SE ON / OFF
 - BGM音量
 - SE音量
-- procedural engine: `ゲーム推奨 / Neon / Clockwork`
-- WAV Stem engine: `ゲーム推奨 / Fantasy WAV / Pulse WAV`
-- 旧Pulse-only設定はv27で一度だけAUTOへmigration
+- procedural engine: `ゲーム推奨 / Clockwork`
+- WAV Stem engine: `ゲーム推奨 / Fantasy WAV / Neon WAV / Pulse WAV`
+- v27以前の旧設定をselection version 3へmigration
 - Pack version / states / stems / stingers / formats表示
 - Manifest schema / Facade API version表示
 - 設定初期化
@@ -101,11 +104,12 @@ URL: https://kameusagiyahoo.github.io/game_music/settings/music/
 Music Registry
 │
 ├─ procedural
-│  ├─ Neon Orbit
 │  └─ Clockwork Grove
 │
 └─ wav-stem
    ├─ Fantasy Table WAV v2.0.0
+   │  └─ M4A / OGG / WAV
+   ├─ Neon Orbit WAV v2.0.0
    │  └─ M4A / OGG / WAV
    └─ Pulse Forge WAV v1.4.1
       └─ M4A / OGG / WAV
@@ -137,10 +141,9 @@ Music Asset Resolver
 
 Packの再生方式を意識せず、4つの登録Packを同じ画面から試せる検証ページです。
 
-- Fantasy -> wav-stemを自動選択
-- Pulse -> wav-stemを自動選択
-- Neon / Clockwork -> proceduralを自動選択
-- Fantasy / PulseではM4A / OGG / WAVの選択結果をFORMAT欄に表示
+- Fantasy / Neon / Pulse -> wav-stemを自動選択
+- Clockwork -> proceduralを自動選択
+- 3つのReal Audio PackでM4A / OGG / WAVの選択結果をFORMAT欄に表示
 - Engine capabilitiesを表示
 - PackごとのModeを自動生成
 - WAV Stem PackではStem Mix preset / Stingerも自動表示
@@ -384,6 +387,7 @@ Facade API versionはv14で `1.1.0`、v16で `1.2.0`、v17で `1.3.0`、v20で `
 利用箇所:
 
 - Mystic Match: Fantasy WAVの11 Assetをページ表示後にpreload
+- Orbit Rush: Neon WAVの11 Assetをページ表示後にpreload
 - Pulse Forge: Pulse WAVの11 Assetをページ表示後にpreload
 - Rune Relay: WAV Pack選択時にpreload
 - Aether Shift: wav-stem Packを選択 / 次Waveへ予約した時点でpreload
@@ -2469,6 +2473,272 @@ M4A -> OGG -> WAV
 
 v27は既存Facade操作を増やしていないため、Facade API versionは引き続き `1.5.0` です。
 
+### v28 — Neon Real Audio Pack v2
+
+v27のFantasyに続き、`neon` Packをproceduralから正式な `wav-stem` Engineへ昇格しました。
+
+```text
+Neon Orbit
+procedural
+    |
+    v
+Neon Orbit WAV v2.0.0
+    |
+    +-- 5 synchronized Stems
+    +-- 2 Stingers
+    +-- 4 Transition Cues
+    +-- M4A / OGG / WAV
+    +-- neon-drive-v1 Mastering
+    +-- Golden QA
+    +-- Cross-Format Parity
+```
+
+Pack IDは `neon` のままなので、Orbit Rush側は新しい専用APIを必要としません。
+
+### Neon sound design
+
+元のprocedural NeonのSquare / Saw /高速Pulseという性格を、同期Stemへ展開しました。
+
+```text
+drums    gated electronic kick / clap / hats
+bass     saw + sub hybrid pulses
+chords   wide syncopated synth stabs
+melody   short square/pluck lead
+sparkle  sixteenth arpeggio + digital texture
+```
+
+Audio profile:
+
+```text
+132 BPM
+4 bars
+44,100 Hz
+stereo
+16-bit PCM source WAV
+320,727 frames per synchronized Stem
+7.2727 sec loop
+```
+
+Asset数:
+
+```text
+5 Stems
+2 Stingers
+4 Transition Cues
+-----------------
+11 musical assets
+
+× WAV / M4A / OGG
+-----------------
+33 files
+```
+
+Transition Cues:
+
+- Fill
+- Whoosh
+- Riser
+- Impact
+
+Stingers:
+
+- Victory
+- Game Over
+
+### Neon Mastering
+
+Neon専用profile:
+
+```text
+neon-drive-v1
+```
+
+Runtime contract:
+
+```text
+Master
+  |
+  v
+Headroom -3.0 dB
+  |
+  v
+Limiter
+threshold -1.25 dB
+ratio      20:1
+attack      2.5 ms
+release   100 ms
+```
+
+Fantasyより前へ出るMixですが、GoldenのOVERDRIVE pre-limiter Peakは `-1.60 dBFS` で、Limiter threshold直前へ収めています。
+
+`tools/check_music_neon_mastering.mjs` がMastering metadataとAudio GraphをCIで固定します。
+
+### Neon Golden QA
+
+Neon専用Baseline:
+
+```text
+qa/baselines/neon-standard-v1.json
+```
+
+Canonical 60 sec:
+
+```text
+OVERALL   Peak  -1.60 / RMS -23.48 dBFS
+NORMAL    Peak  -9.40 / RMS -27.04
+BUILD     Peak  -4.26 / RMS -23.88
+OVERDRIVE Peak  -1.60 / RMS -21.28
+RESULT    Peak  -3.20 / RMS -25.25
+```
+
+Source fingerprint:
+
+```text
+0df7d30b100b2d5b...
+```
+
+`tools/music_qa_golden_neon.mjs` がRepository内WAVから毎回再計算します。
+
+Gate:
+
+- Overall / Stage Peak +0.75 dB超でFAIL
+- Overall / Stage RMS +1.5 dB超でFAIL
+- Scenario / Sample Rate / Mastering Profile差でFAIL
+- source fingerprint変更はmetricsが安全ならwarning
+- JSON Artifactを14日保持
+
+### Neon Cross-Format Parity
+
+WAV referenceに対してM4A / OGGをdecode後比較します。
+
+```text
+11 assets × 2 compressed formats
+= 22 comparisons
+```
+
+生成時の初回結果は22/22 PASSです。
+
+代表値:
+
+```text
+drums.m4a   env r 0.99894
+bass.m4a    env r 0.99998
+melody.m4a  env r 0.99977
+whoosh.m4a  env r 0.98446
+impact.m4a  peak delta +2.756 dB / PASS
+```
+
+専用Workflow:
+
+```text
+.github/workflows/neon-format-parity.yml
+```
+
+Generator:
+
+```text
+tools/generate_neon_stems.py
+tools/encode_neon_audio.sh
+.github/workflows/generate-neon-stems.yml
+```
+
+Generator / Encoder変更時だけ自動再生成するため、metadata変更でlossy audioを再encodeしません。
+
+### Orbit Rush integration
+
+Game 02はv28からNeon WAVを既定使用します。
+
+```text
+page load
+   |
+   v
+preload 11 assets
+
+START
+   |
+   v
+Normal / focus mix
+
+remaining 8 sec
+   |
+   v
+NEXT BAR
+   |
+   +-- Fill
+   +-- Overdrive mode
+   +-- Overdrive layer preset
+
+Result
+   |
+   v
+NEXT BAR
+   |
+   +-- Impact
+   +-- Result mix
+   +-- Victory / Game Over Stinger
+```
+
+iOS Autoplay Policyは変更せず、ページ表示時はbytesのpreloadだけを行い、AudioContext再生はユーザーのSTART操作後です。
+
+### Settings migration v3
+
+v27ではNeonがprocedural Packだったため、`proceduralPackId:"neon"` を明示保存しているユーザーが存在できます。
+
+v28では、
+
+```text
+proceduralPackId = neon
+wavStemPackId    = auto
+selectionVersion < 3
+        |
+        v
+proceduralPackId = auto
+wavStemPackId    = neon
+selectionVersion = 3
+```
+
+へ移行します。
+
+一方、v27でFantasy / Pulse WAVを明示選択済みなら、そのWAV設定を優先してNeonで上書きしません。
+
+v26以前のPulse-only既定値をAUTOへ移すmigrationも維持しています。
+
+CI:
+
+```text
+tools/check_music_multi_wav_packs.mjs
+```
+
+### Audio QA / Resolver
+
+Audio QA Dashboard:
+
+```text
+Pulse WAV v1.4.1
+Fantasy WAV v2.0.0
+Neon WAV v2.0.0
+```
+
+Neonを選ぶとScenario IDも、
+
+```text
+neon-standard-v1
+```
+
+へ切り替わります。
+
+Resolver LabではFantasy / Neon / PulseをWAV Stem、Clockworkをproceduralとして自動判定します。
+
+Format Resolver CIも3 Packすべてについて、
+
+```text
+M4A -> OGG -> WAV
+```
+
+の選択とfallback URLを検証します。
+
+v28でも共通Facade API自体は変更していないため、Facade API versionは `1.5.0` のままです。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -2480,6 +2750,7 @@ URL: https://kameusagiyahoo.github.io/game_music/debug/mixer/
 ```text
 tools/generate_pulse_stems.py
 tools/generate_fantasy_stems.py
+tools/generate_neon_stems.py
         |
         v
 WAV sources
@@ -2505,25 +2776,28 @@ WavStemMusicManager
 
 ```text
 assets/
-├── stems/pulse/
-│   ├── drums.{m4a,ogg,wav}
-│   ├── bass.{m4a,ogg,wav}
-│   ├── chords.{m4a,ogg,wav}
-│   ├── melody.{m4a,ogg,wav}
-│   └── sparkle.{m4a,ogg,wav}
-├── stingers/pulse/
-│   ├── victory.{m4a,ogg,wav}
-│   └── gameover.{m4a,ogg,wav}
-└── transitions/pulse/
-    ├── fill.{m4a,ogg,wav}
-    ├── whoosh.{m4a,ogg,wav}
-    ├── riser.{m4a,ogg,wav}
-    └── impact.{m4a,ogg,wav}
+├── stems/
+│   ├── pulse/
+│   ├── fantasy/
+│   └── neon/
+├── stingers/
+│   ├── pulse/
+│   ├── fantasy/
+│   └── neon/
+└── transitions/
+    ├── pulse/
+    ├── fantasy/
+    └── neon/
+
+各Real Audio Pack:
+5 stems + 2 stingers + 4 transitions
+× M4A / OGG / WAV
 ```
 
 Workflows:
 - `.github/workflows/generate-pulse-stems.yml`
 - `.github/workflows/generate-fantasy-stems.yml`
+- `.github/workflows/generate-neon-stems.yml`
 
 Validation:
 - `tools/check_music_boundary.py`
@@ -2545,8 +2819,12 @@ Validation:
 - `tools/check_music_qa_golden_fantasy.mjs`
 - `tools/check_music_multi_wav_packs.mjs`
 - `tools/check_music_fantasy_mastering.mjs`
+- `tools/check_music_neon_mastering.mjs`
+- `tools/music_qa_golden_neon.mjs`
+- `tools/check_music_qa_golden_neon.mjs`
 - `qa/baselines/pulse-standard-v1.json`
 - `qa/baselines/fantasy-standard-v1.json`
+- `qa/baselines/neon-standard-v1.json`
 - `tools/check_pulse_audio_profile.py`
 - `tools/check_pulse_mastering.py`
 - `tools/check_pulse_format_parity.py`
@@ -2558,6 +2836,11 @@ Validation:
 - `tools/check_fantasy_format_parity_semantics.py`
 - `tools/encode_fantasy_audio.sh`
 - `.github/workflows/fantasy-format-parity.yml`
+- `tools/check_neon_audio_profile.py`
+- `tools/check_neon_format_parity.py`
+- `tools/check_neon_format_parity_semantics.py`
+- `tools/encode_neon_audio.sh`
+- `.github/workflows/neon-format-parity.yml`
 - `.github/workflows/music-architecture-check.yml`
 
 ## Structure
@@ -2594,7 +2877,8 @@ debug/
 qa/
 └── baselines/
     ├── pulse-standard-v1.json
-    └── fantasy-standard-v1.json
+    ├── fantasy-standard-v1.json
+    └── neon-standard-v1.json
 games/
 ├── orbit-rush/
 ├── pulse-forge/
@@ -2603,17 +2887,19 @@ games/
 assets/
 ├── stems/
 │   ├── pulse/
-│   └── fantasy/
+│   ├── fantasy/
+│   └── neon/
 ├── stingers/
 │   ├── pulse/
 │   └── fantasy/
 └── transitions/
     ├── pulse/
-    └── fantasy/
+    ├── fantasy/
+    └── neon/
 ```
 
 ## Next candidates
 
-- Neon Packの実Audio Stem版生成
 - Clockwork Packの実Audio Stem版生成
+- Real Audio Pack間のクロスフェードHot Swap改善
 - Game 06追加
