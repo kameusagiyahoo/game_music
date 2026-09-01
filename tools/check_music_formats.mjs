@@ -1,6 +1,7 @@
 import { pulsePack } from "../src/music-packs/pulse.js";
 import { fantasyPack } from "../src/music-packs/fantasy.js";
 import { neonPack } from "../src/music-packs/neon.js";
+import { clockworkPack } from "../src/music-packs/clockwork.js";
 import {
   getAudioFormatCandidates,
   resolvePackAudioFormat,
@@ -11,6 +12,7 @@ const packs = [
   { id: "pulse", pack: pulsePack },
   { id: "fantasy", pack: fantasyPack },
   { id: "neon", pack: neonPack },
+  { id: "clockwork", pack: clockworkPack },
 ];
 
 const cases = [
