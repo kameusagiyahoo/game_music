@@ -8,6 +8,86 @@ const STEPS_PER_BAR = STEPS_PER_BEAT * BEATS_PER_BAR;
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value)));
 const dbToGain = (db) => 10 ** (Number(db) / 20);
 
+export const PACK_CROSSFADE_CURVE = "equal-power-v1";
+export const PACK_CROSSFADE_CURVE_POINTS = 129;
+
+export function buildEqualPowerCrossfadeCurves({
+  points = PACK_CROSSFADE_CURVE_POINTS,
+  outgoingScale = 1,
+} = {}) {
+  const length = Math.max(2, Math.floor(Number(points) || PACK_CROSSFADE_CURVE_POINTS));
+  const scale = Math.max(0, Number(outgoingScale) || 0);
+  const outgoing = new Float32Array(length);
+  const incoming = new Float32Array(length);
+
+  for (let index = 0; index < length; index += 1) {
+    const progress = index / (length - 1);
+    const angle = progress * Math.PI * 0.5;
+    outgoing[index] = Math.cos(angle) * scale;
+    incoming[index] = Math.sin(angle);
+  }
+
+  return { outgoing, incoming };
+}
+
+export function scheduleEqualPowerCrossfade({
+  outgoingParam,
+  incomingParam,
+  now = 0,
+  startTime,
+  duration,
+  outgoingGain = 1,
+  points = PACK_CROSSFADE_CURVE_POINTS,
+} = {}) {
+  if (!outgoingParam || !incomingParam) {
+    return { mode: "unavailable", points: 0 };
+  }
+
+  const currentTime = Math.max(0, Number(now) || 0);
+  const start = Math.max(currentTime, Number(startTime) || currentTime);
+  const seconds = Math.max(0.01, Number(duration) || 0.01);
+  const end = start + seconds;
+  const oldGain = Math.max(0, Number(outgoingGain) || 0);
+
+  outgoingParam.cancelScheduledValues?.(currentTime);
+  incomingParam.cancelScheduledValues?.(currentTime);
+  outgoingParam.setValueAtTime?.(oldGain, currentTime);
+  incomingParam.setValueAtTime?.(0, currentTime);
+
+  const supportsCurves =
+    typeof outgoingParam.setValueCurveAtTime === "function" &&
+    typeof incomingParam.setValueCurveAtTime === "function";
+
+  if (supportsCurves) {
+    const curves = buildEqualPowerCrossfadeCurves({
+      points,
+      outgoingScale: oldGain,
+    });
+    outgoingParam.setValueCurveAtTime(curves.outgoing, start, seconds);
+    incomingParam.setValueCurveAtTime(curves.incoming, start, seconds);
+    return {
+      mode: PACK_CROSSFADE_CURVE,
+      points: curves.outgoing.length,
+      startTime: start,
+      endTime: end,
+      duration: seconds,
+    };
+  }
+
+  const floor = 0.0001;
+  outgoingParam.setValueAtTime?.(Math.max(oldGain, floor), start);
+  outgoingParam.exponentialRampToValueAtTime?.(floor, end);
+  incomingParam.setValueAtTime?.(floor, start);
+  incomingParam.exponentialRampToValueAtTime?.(1, end);
+  return {
+    mode: "exponential-fallback",
+    points: 0,
+    startTime: start,
+    endTime: end,
+    duration: seconds,
+  };
+}
+
 function amplitudeToDb(value) {
   return 20 * Math.log10(Math.max(Number(value) || 0, 1e-9));
 }
@@ -346,6 +426,8 @@ export class WavStemMusicManager {
         scheduledAt: swap.scheduledAt,
         fadeEnd: swap.fadeEnd,
         crossfadeBeats: swap.crossfadeBeats,
+        curve: swap.crossfadeCurve || null,
+        curvePoints: swap.crossfadePoints || 0,
       } : null,
     };
   }
@@ -460,17 +542,14 @@ export class WavStemMusicManager {
     const oldLayerBuses = { ...this.layerBuses };
     const oldGain = Math.max(Number(oldPackGain?.gain?.value || 1), 0.0001);
 
-    if (oldPackGain?.gain) {
-      oldPackGain.gain.cancelScheduledValues(now);
-      oldPackGain.gain.setValueAtTime(oldGain, now);
-      if (scheduledAt > now) oldPackGain.gain.setValueAtTime(oldGain, scheduledAt);
-      oldPackGain.gain.exponentialRampToValueAtTime(0.0001, fadeEnd);
-    }
-
-    nextPackGain.gain.cancelScheduledValues(now);
-    nextPackGain.gain.setValueAtTime(0.0001, now);
-    if (scheduledAt > now) nextPackGain.gain.setValueAtTime(0.0001, scheduledAt);
-    nextPackGain.gain.exponentialRampToValueAtTime(1, fadeEnd);
+    const crossfade = scheduleEqualPowerCrossfade({
+      outgoingParam: oldPackGain?.gain,
+      incomingParam: nextPackGain.gain,
+      now,
+      startTime: scheduledAt,
+      duration: fadeSeconds,
+      outgoingGain: oldGain,
+    });
 
     this.#scheduleMasteringTransition(decoded.pack, scheduledAt, fadeEnd);
 
@@ -497,6 +576,8 @@ export class WavStemMusicManager {
       fadeEnd,
       fadeSeconds,
       crossfadeBeats,
+      crossfadeCurve: crossfade.mode,
+      crossfadePoints: crossfade.points,
       targetMode: target.mode,
       targetPreset: target.preset,
       targetMix: target.mix,
@@ -511,6 +592,8 @@ export class WavStemMusicManager {
       scheduledAt,
       fadeEnd,
       fadeSeconds,
+      crossfadeCurve: crossfade.mode,
+      crossfadePoints: crossfade.points,
     };
   }
 
