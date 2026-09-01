@@ -31,6 +31,7 @@ import {
   HOT_SWAP_ROUTE_MATRIX_PACKS,
   createHotSwapRouteMatrixScenario,
   hotSwapRouteMatrixExecutionSummary,
+  evaluateHotSwapRouteMatrixReport,
 } from "../../src/music-qa-route-matrix.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -957,18 +958,13 @@ function renderRouteMatrix() {
     statusClass = "aborted";
     statusText = `ABORTED · ${matrix.abortReason || "unknown"}`;
   } else if (matrix?.status === "completed") {
-    const observed = Number(reportSummary?.hotSwapCount || 0);
-    const gate = String(reportSummary?.hotSwapQa?.status || "not-applicable");
-    if (observed !== scenario.routeCount || gate === "fail") {
-      status = "FAIL";
-      statusClass = "fail";
-    } else if (gate === "review") {
-      status = "REVIEW";
-      statusClass = "review";
-    } else {
-      status = "PASS";
-      statusClass = "pass";
-    }
+    const evaluation = lastRouteMatrixSummary?.evaluation || null;
+    const observed = Number(evaluation?.observedRouteCount ?? reportSummary?.hotSwapCount ?? 0);
+    const gate = String(
+      evaluation?.hotSwapQaStatus || reportSummary?.hotSwapQa?.status || "not-applicable"
+    );
+    status = String(evaluation?.status || "review").toUpperCase();
+    statusClass = String(evaluation?.status || "review");
     statusText =
       `COMPLETE · OBSERVED ${observed}/${scenario.routeCount} · HOT SWAP QA ${gate.toUpperCase()}`;
   }
@@ -1018,11 +1014,15 @@ function closeRouteMatrix() {
   routeMatrixPreparing = false;
 
   const report = shouldFinishRecording ? finishRecording(Date.now()) : lastReport;
+  const evaluation = report
+    ? evaluateHotSwapRouteMatrixReport(report)
+    : null;
   lastRouteMatrixSummary = {
     scenario,
     generic,
     matrix,
     reportSummary: report?.summary || null,
+    evaluation,
   };
 
   renderRouteMatrix();
@@ -1169,6 +1169,7 @@ function abortRouteMatrix(reason = "cancelled") {
         routes: [],
       },
       reportSummary: null,
+      evaluation: null,
     };
     renderRouteMatrix();
     renderBaselineRegistry();
