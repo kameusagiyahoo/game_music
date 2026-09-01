@@ -53,7 +53,7 @@ URL: https://kameusagiyahoo.github.io/game_music/games/pulse-forge/
 
 - `createMusicFacade()` で共通Facadeを生成
 - Music PackボタンをRegistryから自動生成
-- Fantasy WAV / Neon WAV / Clockwork / Pulse WAVを選択可能
+- Fantasy WAV / Neon WAV / Clockwork WAV / Pulse WAVを選択可能
 - 同一Engine内のPack変更は次小節頭へ予約
 - procedural ↔ WAV Stemは次のシーケンス境界でRuntime交換
 - WAV Packは選択時にpreload
@@ -67,9 +67,9 @@ URL: https://kameusagiyahoo.github.io/game_music/games/rune-relay/
 9つのノードを追いかける4ウェーブ制の反射ゲーム。
 
 - `createMusicFacade()` だけで再生Facadeを生成
-- Fantasy WAV / Neon WAV / Clockwork / Pulse WAVを同じPack UIから選択
+- Fantasy WAV / Neon WAV / Clockwork WAV / Pulse WAVを同じPack UIから選択
 - Pack変更は次のウェーブ境界へ予約
-- procedural ↔ WAV Stemでもゲームロジックを変更せずRuntime交換
+- Pack変更は同一WAV Stem Engine内で次のウェーブ境界へ適用
 - ゲーム側は `normal / build / tension / result` の共通Stateだけを送信
 - WAV EngineではStateがFocus / Build / Overdrive / Result Stem Mixへ自動変換
 - 勝敗演出もStinger対応EngineならAudio Stinger、それ以外はSEへ自動フォールバック
@@ -85,9 +85,9 @@ URL: https://kameusagiyahoo.github.io/game_music/games/aether-shift/
 - SE ON / OFF
 - BGM音量
 - SE音量
-- procedural engine: `ゲーム推奨 / Clockwork`
-- WAV Stem engine: `ゲーム推奨 / Fantasy WAV / Neon WAV / Pulse WAV`
-- v27以前の旧設定をselection version 3へmigration
+- registered procedural Pack: 0
+- WAV Stem engine: `ゲーム推奨 / Fantasy WAV / Neon WAV / Pulse WAV / Clockwork WAV`
+- legacy settingsをselection version 4へmigration
 - Pack version / states / stems / stingers / formats表示
 - Manifest schema / Facade API version表示
 - 設定初期化
@@ -104,14 +104,16 @@ URL: https://kameusagiyahoo.github.io/game_music/settings/music/
 Music Registry
 │
 ├─ procedural
-│  └─ Clockwork Grove
+│  └─ registered packs: 0
 │
 └─ wav-stem
    ├─ Fantasy Table WAV v2.0.0
    │  └─ M4A / OGG / WAV
    ├─ Neon Orbit WAV v2.0.0
    │  └─ M4A / OGG / WAV
-   └─ Pulse Forge WAV v1.4.1
+   ├─ Pulse Forge WAV v1.4.1
+   │  └─ M4A / OGG / WAV
+   └─ Clockwork Grove WAV v2.0.0
       └─ M4A / OGG / WAV
 ```
 
@@ -141,9 +143,9 @@ Music Asset Resolver
 
 Packの再生方式を意識せず、4つの登録Packを同じ画面から試せる検証ページです。
 
-- Fantasy / Neon / Pulse -> wav-stemを自動選択
-- Clockwork -> proceduralを自動選択
-- 3つのReal Audio PackでM4A / OGG / WAVの選択結果をFORMAT欄に表示
+- Fantasy / Neon / Pulse / Clockwork -> wav-stemを自動選択
+- 4つのReal Audio PackでM4A / OGG / WAVの選択結果をFORMAT欄に表示
+- procedural Engine実装はRegistry未登録でも単体fixtureで回帰検証
 - Engine capabilitiesを表示
 - PackごとのModeを自動生成
 - WAV Stem PackではStem Mix preset / Stingerも自動表示
@@ -390,7 +392,7 @@ Facade API versionはv14で `1.1.0`、v16で `1.2.0`、v17で `1.3.0`、v20で `
 - Orbit Rush: Neon WAVの11 Assetをページ表示後にpreload
 - Pulse Forge: Pulse WAVの11 Assetをページ表示後にpreload
 - Rune Relay: WAV Pack選択時にpreload
-- Aether Shift: wav-stem Packを選択 / 次Waveへ予約した時点でpreload
+- Aether Shift: 4つのReal Audio Packを選択 / 次Waveへ予約した時点でStem + Stinger + Transition Cueをpreload
 - Resolver Lab / Audio QA: WAV Pack選択時にpreload
 
 START後に選択形式のdecodeが失敗した場合はv13のRuntime Decode Fallbackがそのまま動作し、次形式のbytesを取得して再試行します。
@@ -2739,6 +2741,270 @@ M4A -> OGG -> WAV
 
 v28でも共通Facade API自体は変更していないため、Facade API versionは `1.5.0` のままです。
 
+### v29 — Clockwork Real Audio Pack v2 / All-Real-Audio Registry
+
+最後に残っていた `clockwork` Packをproceduralから `wav-stem` へ昇格しました。
+
+```text
+Clockwork Grove
+procedural
+    |
+    v
+Clockwork Grove WAV v2.0.0
+    |
+    +-- 5 synchronized Stems
+    +-- 2 Stingers
+    +-- 4 Transition Cues
+    +-- M4A / OGG / WAV
+    +-- clockwork-balanced-v1
+    +-- Golden QA
+    +-- Cross-Format Parity
+```
+
+これにより現在のRegistryは4 PackすべてReal Audioです。
+
+```text
+Fantasy   -> wav-stem
+Neon      -> wav-stem
+Pulse     -> wav-stem
+Clockwork -> wav-stem
+
+registered procedural packs = 0
+```
+
+procedural `MusicManager` 実装そのものは削除していません。将来の軽量Packや互換性検証のため残し、`tools/check_music_quantization.mjs` ではRegistryから独立したfixtureでbeat/bar quantizationを回帰テストします。
+
+### Clockwork sound design
+
+ClockworkはFantasyの柔らかさ、Neonの電子速度感、Pulseのリズム感とは別に、木・金属・歯車・オルゴールを中心にしています。
+
+```text
+drums    wooden thump + metal click + ratchet
+bass     warm triangle / sub drone
+chords   kalimba-like mechanical plucks
+melody   music-box / celesta lead
+sparkle  gear ticks + tiny bells
+```
+
+Audio profile:
+
+```text
+108 BPM
+4 bars
+44,100 Hz
+stereo
+16-bit PCM source WAV
+392,000 frames per synchronized Stem
+8.8889 sec loop
+```
+
+Asset数:
+
+```text
+5 Stems
+2 Stingers
+4 Transition Cues
+-----------------
+11 musical assets
+
+× WAV / M4A / OGG
+-----------------
+33 files
+```
+
+Transition Cues:
+
+- Fill: accelerating ratchet roll
+- Whoosh: wind-up metallic sweep
+- Riser: accelerating gear ticks + music-box ascent
+- Impact: gear slam + low wooden body
+
+### Clockwork Mastering
+
+専用profile:
+
+```text
+clockwork-balanced-v1
+```
+
+Runtime:
+
+```text
+Master
+  |
+  v
+Headroom -3.5 dB
+  |
+  v
+Limiter
+threshold -1.75 dB
+ratio      20:1
+attack      3.5 ms
+release   140 ms
+```
+
+`tools/check_music_clockwork_mastering.mjs` がmetadataとAudio GraphをCIで固定します。
+
+### Clockwork Golden QA
+
+Baseline:
+
+```text
+qa/baselines/clockwork-standard-v1.json
+```
+
+Canonical 60 sec:
+
+```text
+OVERALL   Peak  -3.23 / RMS -25.66 dBFS
+NORMAL    Peak  -9.74 / RMS -28.76
+BUILD     Peak  -7.33 / RMS -26.01
+OVERDRIVE Peak  -5.03 / RMS -23.88
+RESULT    Peak  -3.23 / RMS -26.68
+```
+
+Source fingerprint:
+
+```text
+0eeb4850cda24fb2...
+```
+
+`tools/music_qa_golden_clockwork.mjs` がRepository内WAVから毎回再計算し、Blocking Golden Gateとして動作します。
+
+Gate policy:
+
+- Overall / Stage Peak +0.75 dB超でFAIL
+- Overall / Stage RMS +1.5 dB超でFAIL
+- Scenario / Sample Rate / Mastering Profile差でFAIL
+- JSON Report artifactを14日保持
+
+### Clockwork Cross-Format Parity
+
+WAV referenceに対してM4A / OGGをdecode比較します。
+
+```text
+11 assets × 2 compressed formats
+= 22 comparisons
+```
+
+初回生成結果は22/22 PASSです。
+
+検証:
+
+- Duration
+- RMS
+- Peak
+- active-content RMS Envelope
+- Envelope correlation / MAE
+- wrong Stem / Stinger substitution rejection
+
+Generator / Workflow:
+
+```text
+tools/generate_clockwork_stems.py
+tools/encode_clockwork_audio.sh
+.github/workflows/generate-clockwork-stems.yml
+.github/workflows/clockwork-format-parity.yml
+```
+
+### Aether Shift integration
+
+Game 05の既定Packは引き続き `clockwork` ですが、v29から自動的にClockwork WAV Runtimeになります。
+
+```text
+Aether Shift
+    |
+    v
+GAME_DEFAULT_PACKS
+clockwork
+    |
+    v
+Music Asset Resolver
+    |
+    v
+Clockwork WAV v2.0.0
+```
+
+Pack選択 / 次Wave予約時には11 Assetをpreloadします。
+
+```text
+5 Stems
+2 Stingers
+4 Transition Cues
+```
+
+Wave終盤のTension、Result、Victory / Game Overは既存の共通State APIからWAV StemのOverdrive / Result Mixへ変換されます。
+
+### Settings migration v4
+
+v28ではClockworkが最後のprocedural Packでした。
+
+旧設定:
+
+```text
+proceduralPackId = clockwork
+wavStemPackId    = auto
+selectionVersion = 3
+```
+
+v29:
+
+```text
+proceduralPackId = auto
+wavStemPackId    = clockwork
+selectionVersion = 4
+```
+
+へ移行します。
+
+ただしFantasy / Neon / Pulseなど具体的なWAV Packをすでに明示選択している場合、その選択をClockworkで上書きしません。
+
+過去のPulse-only / Neon procedural migrationも維持しています。
+
+### Zero registered procedural packs
+
+Music Settingsでは空のprocedural欄へ偽のAUTO選択肢を表示しません。
+
+```text
+PROCEDURAL ENGINE
+registered packs: 0
+Engine implementation retained for compatibility tests
+```
+
+WAV Stem側には4 Packすべてを表示します。
+
+### Audio QA / Resolver
+
+Audio QA Dashboard:
+
+```text
+Pulse WAV v1.4.1
+Fantasy WAV v2.0.0
+Neon WAV v2.0.0
+Clockwork WAV v2.0.0
+```
+
+Scenario ID:
+
+```text
+pulse-standard-v1
+fantasy-standard-v1
+neon-standard-v1
+clockwork-standard-v1
+```
+
+Resolver Labでは4 PackすべてをWAV Stemとして解決し、Format / Mastering / Stem / Stinger / Transition capabilityを同じUIから確認できます。
+
+Format Resolver CIも4 Packすべてについて、
+
+```text
+M4A -> OGG -> WAV
+```
+
+を検証します。
+
+v29でもFacade API surfaceは変更していないため、Facade API versionは `1.5.0` のままです。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -2751,6 +3017,7 @@ URL: https://kameusagiyahoo.github.io/game_music/debug/mixer/
 tools/generate_pulse_stems.py
 tools/generate_fantasy_stems.py
 tools/generate_neon_stems.py
+tools/generate_clockwork_stems.py
         |
         v
 WAV sources
@@ -2779,7 +3046,8 @@ assets/
 ├── stems/
 │   ├── pulse/
 │   ├── fantasy/
-│   └── neon/
+│   ├── neon/
+│   └── clockwork/
 ├── stingers/
 │   ├── pulse/
 │   ├── fantasy/
@@ -2787,7 +3055,8 @@ assets/
 └── transitions/
     ├── pulse/
     ├── fantasy/
-    └── neon/
+    ├── neon/
+    └── clockwork/
 
 各Real Audio Pack:
 5 stems + 2 stingers + 4 transitions
@@ -2798,6 +3067,7 @@ Workflows:
 - `.github/workflows/generate-pulse-stems.yml`
 - `.github/workflows/generate-fantasy-stems.yml`
 - `.github/workflows/generate-neon-stems.yml`
+- `.github/workflows/generate-clockwork-stems.yml`
 
 Validation:
 - `tools/check_music_boundary.py`
@@ -2822,9 +3092,13 @@ Validation:
 - `tools/check_music_neon_mastering.mjs`
 - `tools/music_qa_golden_neon.mjs`
 - `tools/check_music_qa_golden_neon.mjs`
+- `tools/music_qa_golden_clockwork.mjs`
+- `tools/check_music_qa_golden_clockwork.mjs`
+- `tools/check_music_clockwork_mastering.mjs`
 - `qa/baselines/pulse-standard-v1.json`
 - `qa/baselines/fantasy-standard-v1.json`
 - `qa/baselines/neon-standard-v1.json`
+- `qa/baselines/clockwork-standard-v1.json`
 - `tools/check_pulse_audio_profile.py`
 - `tools/check_pulse_mastering.py`
 - `tools/check_pulse_format_parity.py`
@@ -2841,6 +3115,11 @@ Validation:
 - `tools/check_neon_format_parity_semantics.py`
 - `tools/encode_neon_audio.sh`
 - `.github/workflows/neon-format-parity.yml`
+- `tools/check_clockwork_audio_profile.py`
+- `tools/check_clockwork_format_parity.py`
+- `tools/check_clockwork_format_parity_semantics.py`
+- `tools/encode_clockwork_audio.sh`
+- `.github/workflows/clockwork-format-parity.yml`
 - `.github/workflows/music-architecture-check.yml`
 
 ## Structure
@@ -2878,7 +3157,8 @@ qa/
 └── baselines/
     ├── pulse-standard-v1.json
     ├── fantasy-standard-v1.json
-    └── neon-standard-v1.json
+    ├── neon-standard-v1.json
+    └── clockwork-standard-v1.json
 games/
 ├── orbit-rush/
 ├── pulse-forge/
@@ -2895,11 +3175,12 @@ assets/
 └── transitions/
     ├── pulse/
     ├── fantasy/
-    └── neon/
+    ├── neon/
+    └── clockwork/
 ```
 
 ## Next candidates
 
-- Clockwork Packの実Audio Stem版生成
 - Real Audio Pack間のクロスフェードHot Swap改善
+- Packごとの実機QA Baseline取り込み
 - Game 06追加
