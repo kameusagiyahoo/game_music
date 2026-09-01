@@ -11,7 +11,7 @@
   <main class="shell">
     <header class="hero">
       <div>
-        <p class="eyebrow">GAME MUSIC LAB / ENGINE v32</p>
+        <p class="eyebrow">GAME MUSIC LAB / ENGINE v33</p>
         <h1>Audio QA Dashboard</h1>
         <p class="lead">Pulse / Fantasy / Neon / Clockworkの4つの実Audio Packを切り替え、Master / Limiter / Stem状態をiPhone上で監視します。</p>
       </div>
@@ -187,6 +187,8 @@
       <div id="compareWarnings" class="compare-warnings"></div>
       <div id="compareModes" class="compare-modes"></div>
       <div id="compareStages" class="compare-modes"></div>
+      <div class="compare-section-label">HOT SWAP REGRESSION</div>
+      <div id="compareHotSwaps" class="compare-hot-swaps"></div>
     </section>
 
     <section class="meter-grid">
@@ -285,6 +287,7 @@
     <section class="panel notes">
       <p><strong>QA目安:</strong> Limiter Reductionが一瞬だけ動くのは正常です。長時間 -6 dB以下が続く場合はMixが強すぎる可能性があります。</p>
       <p><strong>Hot Swap Gate:</strong> Power Σ &lt; 0.80、Output Peak &gt; -0.15 dBFS、Limiter Reduction &gt; 6 dB、またはCrossfade中央RMSが両端平均より9 dB超低下するとFAILです。中間域はREVIEWになります。</p>
+      <p><strong>v33 Baseline Compare:</strong> 同じHot Swap routeをBaselineと比較し、Peak / Mid RMS / Limiter / Power Σ / Crossfade Durationの悪化量もRegression判定します。</p>
       <p>このMeterは0音量の監視branchで、ゲーム本来のMastering経路には加算されません。</p>
       <p>Recorderは約10fpsのMeter値を最大60秒記録し、終了後にJSON / CSVをiPhone共有シートまたはダウンロードへ出力します。</p>
       <p>STANDARD 60sは選択中PackでNORMAL 10s → BUILD 10s → OVERDRIVE 20s → RESULT + VICTORY 20sを自動実行し、Recorderも同時に開始します。</p>
