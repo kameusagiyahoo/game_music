@@ -1,9 +1,12 @@
 import { validateQaReport } from "./music-qa-compare.js";
 
-export const QA_BASELINE_REGISTRY_SCHEMA_VERSION = "1.0.0";
+export const QA_BASELINE_REGISTRY_SCHEMA_VERSION = "2.0.0";
 export const QA_BASELINE_STORAGE_KEY = "game-music-qa-pack-baselines-v1";
 export const QA_BASELINE_MIN_COVERAGE_PERCENT = 90;
 export const QA_BASELINE_COMPATIBILITY_SCHEMA_VERSION = "1.0.0";
+export const QA_BASELINE_HISTORY_LIMIT = 6;
+
+const LEGACY_SCHEMA_VERSION = "1.0.0";
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -21,8 +24,53 @@ function getStorage(explicitStorage) {
 function emptyRegistry() {
   return {
     schemaVersion: QA_BASELINE_REGISTRY_SCHEMA_VERSION,
-    baselines: {},
+    histories: {},
   };
+}
+
+function entryId(entry = {}) {
+  if (entry.id) return String(entry.id);
+  const packId = String(entry.packId || "pack");
+  const approvedAt = String(entry.approvedAt || "unknown");
+  const generatedAt = String(entry.sourceGeneratedAt || entry.report?.generatedAt || "unknown");
+  return [packId, approvedAt, generatedAt]
+    .join("::")
+    .replace(/[^a-zA-Z0-9_.:-]/g, "-");
+}
+
+function normalizeEntry(entry) {
+  if (!entry?.packId || !entry?.report) return null;
+  return {
+    ...clone(entry),
+    id: entryId(entry),
+    schemaVersion: QA_BASELINE_REGISTRY_SCHEMA_VERSION,
+  };
+}
+
+function normalizeHistory(entries = []) {
+  const seen = new Set();
+  return entries
+    .map(normalizeEntry)
+    .filter(Boolean)
+    .sort((a, b) =>
+      String(b.approvedAt || b.sourceGeneratedAt || "")
+        .localeCompare(String(a.approvedAt || a.sourceGeneratedAt || ""))
+    )
+    .filter((entry) => {
+      if (seen.has(entry.id)) return false;
+      seen.add(entry.id);
+      return true;
+    })
+    .slice(0, QA_BASELINE_HISTORY_LIMIT);
+}
+
+function migrateLegacyRegistry(parsed) {
+  const registry = emptyRegistry();
+  for (const [packId, entry] of Object.entries(parsed?.baselines || {})) {
+    const normalized = normalizeEntry({ ...entry, packId: entry?.packId || packId });
+    if (normalized) registry.histories[packId] = [normalized];
+  }
+  return registry;
 }
 
 function readRegistry(storage) {
@@ -30,16 +78,32 @@ function readRegistry(storage) {
 
   try {
     const parsed = JSON.parse(storage.getItem(QA_BASELINE_STORAGE_KEY) || "{}");
+
+    if (
+      parsed?.schemaVersion === LEGACY_SCHEMA_VERSION &&
+      parsed?.baselines &&
+      typeof parsed.baselines === "object"
+    ) {
+      return migrateLegacyRegistry(parsed);
+    }
+
     if (
       parsed?.schemaVersion !== QA_BASELINE_REGISTRY_SCHEMA_VERSION ||
-      !parsed?.baselines ||
-      typeof parsed.baselines !== "object"
+      !parsed?.histories ||
+      typeof parsed.histories !== "object"
     ) {
       return emptyRegistry();
     }
+
+    const histories = {};
+    for (const [packId, entries] of Object.entries(parsed.histories)) {
+      const history = normalizeHistory(Array.isArray(entries) ? entries : []);
+      if (history.length) histories[packId] = history;
+    }
+
     return {
       schemaVersion: QA_BASELINE_REGISTRY_SCHEMA_VERSION,
-      baselines: { ...parsed.baselines },
+      histories,
     };
   } catch (_) {
     return emptyRegistry();
@@ -252,7 +316,7 @@ export function createQaBaselineEntry(report, {
 
   const compactReport = compactQaBaselineReport(report);
   const contract = eligibility.contract;
-  return {
+  const entry = {
     schemaVersion: QA_BASELINE_REGISTRY_SCHEMA_VERSION,
     packId: eligibility.packId,
     packVersion: contract.packVersion,
@@ -268,6 +332,7 @@ export function createQaBaselineEntry(report, {
     approvedAt,
     report: compactReport,
   };
+  return { ...entry, id: entryId(entry) };
 }
 
 export function saveQaPackBaseline(report, {
@@ -277,23 +342,53 @@ export function saveQaPackBaseline(report, {
   const storage = getStorage(explicitStorage);
   const entry = createQaBaselineEntry(report, { approvedAt });
   const registry = readRegistry(storage);
+  const history = normalizeHistory([
+    entry,
+    ...(registry.histories[entry.packId] || []),
+  ]);
 
-  registry.baselines[entry.packId] = entry;
+  registry.histories[entry.packId] = history;
   writeRegistry(storage, registry);
-  return clone(entry);
+  return clone(history.find((item) => item.id === entry.id) || history[0]);
 }
 
-export function loadQaPackBaseline(packId, {
+export function listQaPackBaselineHistory(packId, {
   storage: explicitStorage,
 } = {}) {
   const storage = getStorage(explicitStorage);
   const registry = readRegistry(storage);
-  const entry = registry.baselines[String(packId || "")];
+  return clone(registry.histories[String(packId || "")] || []);
+}
+
+export function loadQaPackBaseline(packId, {
+  storage: explicitStorage,
+  id = null,
+} = {}) {
+  const history = listQaPackBaselineHistory(packId, { storage: explicitStorage });
+  const entry = id
+    ? history.find((item) => item.id === String(id))
+    : history[0];
   if (!entry?.report) return null;
 
   const validation = validateQaReport(entry.report);
   if (!validation.valid) return null;
   return clone(entry);
+}
+
+export function loadQaPackBaselineEntry(id, {
+  storage: explicitStorage,
+} = {}) {
+  const storage = getStorage(explicitStorage);
+  const registry = readRegistry(storage);
+  const targetId = String(id || "");
+
+  for (const history of Object.values(registry.histories)) {
+    const entry = history.find((item) => item.id === targetId);
+    if (!entry?.report) continue;
+    const validation = validateQaReport(entry.report);
+    if (validation.valid) return clone(entry);
+  }
+  return null;
 }
 
 export function listQaPackBaselines({
@@ -302,10 +397,32 @@ export function listQaPackBaselines({
   const storage = getStorage(explicitStorage);
   const registry = readRegistry(storage);
 
-  return Object.values(registry.baselines)
+  return Object.values(registry.histories)
+    .map((history) => history?.[0])
     .filter((entry) => entry?.packId && entry?.report)
     .map((entry) => clone(entry))
     .sort((a, b) => String(a.packId).localeCompare(String(b.packId)));
+}
+
+export function deleteQaPackBaselineEntry(id, {
+  storage: explicitStorage,
+} = {}) {
+  const storage = getStorage(explicitStorage);
+  const registry = readRegistry(storage);
+  const targetId = String(id || "");
+  let deleted = false;
+
+  for (const [packId, history] of Object.entries(registry.histories)) {
+    const next = history.filter((entry) => entry.id !== targetId);
+    if (next.length === history.length) continue;
+    deleted = true;
+    if (next.length) registry.histories[packId] = next;
+    else delete registry.histories[packId];
+    break;
+  }
+
+  if (deleted) writeRegistry(storage, registry);
+  return deleted;
 }
 
 export function deleteQaPackBaseline(packId, {
@@ -314,9 +431,9 @@ export function deleteQaPackBaseline(packId, {
   const storage = getStorage(explicitStorage);
   const registry = readRegistry(storage);
   const key = String(packId || "");
-  if (!registry.baselines[key]) return false;
+  if (!registry.histories[key]?.length) return false;
 
-  delete registry.baselines[key];
+  delete registry.histories[key];
   writeRegistry(storage, registry);
   return true;
 }
