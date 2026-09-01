@@ -4289,6 +4289,233 @@ tools/check_music_qa_compare.mjs
 
 Facade APIは変更していないため、引き続き `1.5.0` です。
 
+### v34 — Pack Device QA Baseline Registry
+
+v21〜v33では実機QA ReportをBaselineとして比較できましたが、Baselineはページ内の一時状態でした。
+
+v34では、iPhoneで承認したStandard 60s ReportをPack単位で永続保存できます。
+
+```text
+iPhone / Safari
+     |
+     v
+RUN STANDARD 60s
+     |
+     v
+QA Report
+     |
+     +--> eligibility check
+     |
+     v
+SAVE PACK BASELINE
+     |
+     v
+localStorage
+game-music-qa-pack-baselines-v1
+```
+
+保存対象:
+
+```text
+Fantasy
+Neon
+Pulse
+Clockwork
+```
+
+各Packは1つの承認済みDevice Baselineを持ちます。
+
+### Baseline eligibility
+
+実測値を自動的にBaseline化しません。
+
+以下をすべて満たすReportだけ保存できます。
+
+```text
+QA report schema valid
+Pack ID一致
+qaScenarioId = <pack>-standard-v1
+qaScenarioStatus = completed
+Sampling Coverage >= 90%
+overall verdict != FAIL
+```
+
+したがって、
+
+- 途中でSafariをbackgroundへ移してABORTした測定
+- Coverage不足の測定
+- 手動60秒Recorder
+- 別PackのReport
+- FAIL判定のReport
+
+を誤って「正常基準」として登録しません。
+
+REVIEW Reportは人間が内容を確認して明示的に保存できます。
+
+### Compact storage
+
+通常QA Reportには約10 fpsのRaw Meter Samplesが入ります。
+
+Pack Baseline保存時はRegression Compareに必要な、
+
+- metadata
+- summary
+- Mode summary
+- Scenario Stage summary
+- Hot Swap summary
+- QA verdict
+
+を残し、Raw `samples[]` と `events[]` は空配列へ縮小します。
+
+```text
+Full device QA report
+  metadata
+  summary
+  events
+  ~600 raw samples
+        |
+        v
+Compact baseline
+  metadata
+  summary
+  events  []
+  samples []
+```
+
+元の完全Reportは従来どおりJSONとして共有できます。
+
+これにより4 Pack分のBaselineをiPhone localStorageへ保持しても容量を使いすぎません。
+
+### Automatic Pack restore
+
+Audio QAでPackを切り替えると対応Baselineを自動ロードします。
+
+```text
+QA PACK = Fantasy
+      |
+      v
+Fantasy saved baseline
+      |
+      v
+QA Compare
+
+QA PACK = Neon
+      |
+      v
+Neon saved baseline
+      |
+      v
+QA Compare
+```
+
+Pack間でBaselineを使い回しません。
+
+手動Hot SwapをRecorder中に実行している場合は、Recording途中でBaselineを勝手に交換しません。
+
+### Audio QA controls
+
+QA Compareへ以下を追加しました。
+
+```text
+LOAD BASELINE JSON
+USE CURRENT AS BASELINE
+SAVE PACK BASELINE
+DELETE SAVED
+SHARE SAVED
+SHARE DIFF JSON
+SHARE DIFF CSV
+```
+
+基本手順:
+
+1. QA PACKを選択
+2. `RUN STANDARD 60s`
+3. Reportを確認
+4. `USE CURRENT AS BASELINE`
+5. `SAVE PACK BASELINE`
+6. 次回以降は同Pack選択時に自動ロード
+
+既存Reportを取り込む場合:
+
+1. `LOAD BASELINE JSON`
+2. eligibilityを確認
+3. `SAVE PACK BASELINE`
+
+保存済みBaselineは `SHARE SAVED` からJSONとして共有できます。
+
+別端末ではそのJSONを `LOAD BASELINE JSON` → `SAVE PACK BASELINE` すれば移行できます。
+
+URL:
+
+https://kameusagiyahoo.github.io/game_music/debug/audio-qa/
+
+### Repository Goldenとの違い
+
+v24以降のGolden QAとDevice Baselineは役割が違います。
+
+```text
+Repository Golden
+  actual WAV files
+  deterministic offline render
+  pre-limiter
+  GitHub Actions
+  every commit
+
+Device QA Baseline
+  iPhone / Safari
+  real AudioContext
+  real limiter
+  selected compressed format
+  user-approved measurement
+  local per device
+```
+
+Device Baselineの数値をRepository側で推測・生成しません。
+
+実機測定した値だけを保存します。
+
+### v34 implementation
+
+新規module:
+
+```text
+src/music-qa-baseline-registry.js
+```
+
+API:
+
+```js
+getQaBaselineEligibility(report)
+saveQaPackBaseline(report)
+loadQaPackBaseline(packId)
+listQaPackBaselines()
+deleteQaPackBaseline(packId)
+clearQaPackBaselines()
+compactQaBaselineReport(report)
+```
+
+CI:
+
+```text
+tools/check_music_qa_baseline_registry.mjs
+```
+
+検証:
+
+- completed Standard 60s -> eligible
+- wrong Scenario -> reject
+- aborted Scenario -> reject
+- Coverage 90%未満 -> reject
+- FAIL Report -> reject
+- Pack mismatch -> reject
+- Pack別save / load
+- 同一Pack overwrite
+- delete / clear
+- Raw Samples / Events compact化
+- corrupted localStorageを安全に空Registryとして扱う
+
+Facade / Audio Engine APIは変更していないため、Facade API versionは引き続き `1.5.0` です。
+
 ## Music Debug / Mixer
 
 ゲームロジックを介さずWAV Stem Music Engineだけを直接操作する検証画面。
@@ -4371,6 +4598,8 @@ Validation:
 - `tools/check_music_qa_report.mjs`
 - `tools/check_music_qa_compare.mjs`
 - `src/music-qa-hot-swap-compare.js`
+- `src/music-qa-baseline-registry.js`
+- `tools/check_music_qa_baseline_registry.mjs`
 - `tools/check_music_qa_scenario.mjs`
 - `tools/music_qa_golden.mjs`
 - `tools/check_music_qa_golden.mjs`
@@ -4427,6 +4656,8 @@ src/
 ├── music-facade.js
 ├── music-qa-report.js
 ├── music-qa-compare.js
+├── music-qa-hot-swap-compare.js
+├── music-qa-baseline-registry.js
 ├── music-qa-scenario.js
 ├── music-pack-manifest.js
 ├── audio-asset-cache.js
@@ -4473,6 +4704,6 @@ assets/
 
 ## Next candidates
 
-- Packごとの実機QA Baseline取り込み
 - Hot Swap route matrixの自動実機Scenario
+- Device BaselineのPack version / Audio Format互換性Gate強化
 - Game 06追加
