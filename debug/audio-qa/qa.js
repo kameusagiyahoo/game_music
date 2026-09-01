@@ -473,11 +473,14 @@ async function switchQaPack(packId) {
   savedBaselineEntry = null;
   comparisonReport = null;
   lastScenarioSummary = null;
+  lastRouteMatrixSummary = null;
+  routeMatrixGrid.dataset.signature = "";
 
   updateQaPackLabel();
   restoreSavedPackBaseline(packId);
   renderReportSummary();
   renderScenario();
+  renderRouteMatrix();
   syncHotSwapTargetOptions(packId);
   render();
   await preloadCurrentQaPack();
