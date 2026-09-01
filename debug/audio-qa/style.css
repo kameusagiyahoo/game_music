@@ -703,3 +703,73 @@ canvas { display: block; width: 100%; height: 190px; margin-top: 14px; border-ra
   .route-matrix-actions { grid-template-columns: 1fr; }
   .route-matrix-grid { grid-template-columns: 1fr 1fr; }
 }
+
+.route-matrix-baseline-panel {
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid #303640;
+  border-radius: 12px;
+  background: rgba(11, 14, 19, .68);
+}
+.route-matrix-baseline-head {
+  display: grid;
+  gap: 5px;
+}
+.route-matrix-baseline-head > span {
+  color: #858f9f;
+  font-size: .62rem;
+  letter-spacing: .10em;
+  font-weight: 800;
+}
+.route-matrix-baseline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.route-matrix-baseline-history {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+.route-baseline-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 46px;
+  padding: 9px 11px;
+  border: 1px solid #303640;
+  border-radius: 10px;
+  background: #11151b;
+  color: #e9edf3;
+  text-align: left;
+}
+.route-baseline-entry.is-selected {
+  border-color: #747f90;
+  background: #171c24;
+}
+.route-baseline-entry strong {
+  display: block;
+  font-size: .75rem;
+}
+.route-baseline-entry small {
+  display: block;
+  margin-top: 3px;
+  color: #8c96a6;
+  font-size: .65rem;
+}
+.route-baseline-entry .route-baseline-contract {
+  color: #a9b3c1;
+  font-size: .62rem;
+  font-weight: 800;
+}
+@media (max-width: 560px) {
+  .route-matrix-baseline-actions > button {
+    flex: 1 1 calc(50% - 8px);
+  }
+  .route-baseline-entry {
+    grid-template-columns: 1fr;
+  }
+}
