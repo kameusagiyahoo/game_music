@@ -46,12 +46,23 @@ for (let index = 0; index < curves.outgoing.length; index += 1) {
 }
 
 const linearMidPower = 0.5 ** 2 + 0.5 ** 2;
+const legacyFloor = 0.0001;
+const legacyExponentialMidGain = Math.sqrt(legacyFloor);
+const legacyExponentialMidPower =
+  legacyExponentialMidGain ** 2 +
+  legacyExponentialMidGain ** 2;
 const equalPowerMid =
   curves.outgoing[mid] ** 2 +
   curves.incoming[mid] ** 2;
+
 if (!(equalPowerMid > linearMidPower + 0.49)) {
   errors.push(
-    `equal-power midpoint did not improve constant-power sum: ${equalPowerMid}`
+    `equal-power midpoint did not preserve constant power: ${equalPowerMid}`
+  );
+}
+if (!(equalPowerMid > legacyExponentialMidPower * 4000)) {
+  errors.push(
+    `equal-power midpoint did not materially improve v30 exponential power: ${equalPowerMid}`
   );
 }
 
@@ -167,7 +178,7 @@ console.log("Equal-Power Pack Crossfade Check PASSED");
 console.log(`- curve: ${PACK_CROSSFADE_CURVE}`);
 console.log(`- points: ${PACK_CROSSFADE_CURVE_POINTS}`);
 console.log(`- midpoint gains: ${curves.outgoing[mid].toFixed(6)} / ${curves.incoming[mid].toFixed(6)}`);
-console.log(`- midpoint power: equal=${equalPowerMid.toFixed(6)} vs linear=${linearMidPower.toFixed(6)}`);
+console.log(`- midpoint power: equal=${equalPowerMid.toFixed(6)} vs linear=${linearMidPower.toFixed(6)} vs v30-exp=${legacyExponentialMidPower.toFixed(6)}`);
 console.log(`- power range: ${minPower.toFixed(6)} .. ${maxPower.toFixed(6)}`);
 console.log("- AudioParam curve timing: matched");
 console.log("- unsupported AudioParam fallback: exponential");
