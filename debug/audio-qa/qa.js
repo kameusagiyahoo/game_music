@@ -14,6 +14,7 @@ import {
 } from "../../src/music-qa-compare.js";
 import {
   getQaBaselineEligibility,
+  getQaBaselineCompatibility,
   saveQaPackBaseline,
   loadQaPackBaseline,
   deleteQaPackBaseline,
@@ -155,6 +156,7 @@ let lastReport = null;
 let baselineReport = null;
 let baselineOrigin = null;
 let savedBaselineEntry = null;
+let baselineCompatibility = null;
 let comparisonReport = null;
 let scenarioRun = null;
 let lastScenarioSummary = null;
@@ -282,10 +284,21 @@ function renderBaselineRegistry() {
   const rate = saved.sampleRate
     ? `${(Number(saved.sampleRate) / 1000).toFixed(1)} kHz`
     : "unknown rate";
+  const format = String(
+    saved.audioFormat || saved.report?.metadata?.audioFormat || "unknown"
+  ).toUpperCase();
+  const compatibility = lastReport
+    ? getQaBaselineCompatibility(saved, lastReport)
+    : null;
+  const compatibilityLabel = compatibility
+    ? ` · ${String(compatibility.status).toUpperCase()}`
+    : "";
 
   baselineRegistryStatus.textContent =
-    `SAVED · ${String(saved.packId).toUpperCase()} v${saved.packVersion || "?"} · ${rate} · ${Number(saved.coveragePercent || 0).toFixed(0)}% · ${approved}`;
-  baselineRegistryStatus.className = "record-status is-saved";
+    `SAVED · ${String(saved.packId).toUpperCase()} v${saved.packVersion || "?"} · ${format} · ${rate}${compatibilityLabel} · ${Number(saved.coveragePercent || 0).toFixed(0)}% · ${approved}`;
+  baselineRegistryStatus.className = compatibility?.status === "incompatible"
+    ? "record-status"
+    : "record-status is-saved";
 }
 
 function restoreSavedPackBaseline(packId = selectedQaPackId) {
@@ -296,6 +309,7 @@ function restoreSavedPackBaseline(packId = selectedQaPackId) {
   } else {
     baselineReport = null;
     baselineOrigin = null;
+    baselineCompatibility = null;
     comparisonReport = null;
     renderComparison();
     renderBaselineRegistry();
@@ -319,7 +333,7 @@ function saveSelectedPackBaseline() {
   try {
     savedBaselineEntry = saveQaPackBaseline(baselineReport);
     baselineOrigin = "saved";
-    renderComparison();
+    runComparison();
     renderBaselineRegistry();
   } catch (error) {
     console.error("Pack QA baseline save failed", error);
@@ -335,6 +349,7 @@ function deleteSelectedPackBaseline() {
   if (baselineOrigin === "saved") {
     baselineReport = null;
     baselineOrigin = null;
+    baselineCompatibility = null;
     comparisonReport = null;
   }
 
@@ -472,6 +487,7 @@ async function switchQaPack(packId) {
   baselineReport = null;
   baselineOrigin = null;
   savedBaselineEntry = null;
+  baselineCompatibility = null;
   comparisonReport = null;
   lastScenarioSummary = null;
   lastRouteMatrixSummary = null;
@@ -1334,8 +1350,13 @@ function renderComparison() {
   }
 
   if (!comparison?.valid) {
-    compareVerdict.textContent = baselineReport && lastReport ? "INVALID" : "—";
-    compareVerdict.className = "compare-verdict idle";
+    const compatibilityStatus = comparison?.compatibility?.status || null;
+    compareVerdict.textContent = baselineReport && lastReport
+      ? compatibilityStatus === "incompatible" ? "INCOMPATIBLE" : "INVALID"
+      : "—";
+    compareVerdict.className = compatibilityStatus === "incompatible"
+      ? "compare-verdict review"
+      : "compare-verdict idle";
     comparePeak.textContent = "—";
     compareRms.textContent = "—";
     compareReduction.textContent = "—";
@@ -1368,6 +1389,9 @@ function renderComparison() {
   compareCurrentCoverage.textContent = `${Number(metrics.coveragePercent.current || 0).toFixed(0)}%`;
 
   compareDirections.innerHTML = [
+    ...(comparison.deviceBaselineCompatibility
+      ? [`DEVICE BASELINE ${String(comparison.deviceBaselineCompatibility.status || "exact").toUpperCase()}`]
+      : []),
     `PEAK ${String(comparison.summary?.peakDirection || "stable").toUpperCase()}`,
     `RMS ${String(comparison.summary?.rmsDirection || "stable").toUpperCase()}`,
     `LIMITER ${String(comparison.summary?.limiterDirection || "stable").toUpperCase()}`,
@@ -1444,12 +1468,53 @@ function renderComparison() {
 
 function runComparison() {
   if (!baselineReport || !lastReport) {
+    baselineCompatibility = null;
     comparisonReport = null;
     renderComparison();
+    renderBaselineRegistry();
     return null;
   }
+
+  baselineCompatibility = baselineOrigin === "saved" && savedBaselineEntry
+    ? getQaBaselineCompatibility(savedBaselineEntry, lastReport)
+    : null;
+
+  if (baselineCompatibility && !baselineCompatibility.comparable) {
+    comparisonReport = {
+      valid: false,
+      compatibility: baselineCompatibility,
+      errors: [
+        "Saved Device Baseline is incompatible with the current run.",
+        ...baselineCompatibility.failures,
+      ],
+    };
+    renderComparison();
+    renderBaselineRegistry();
+    return comparisonReport;
+  }
+
   comparisonReport = compareQaReports(baselineReport, lastReport);
+
+  if (baselineCompatibility) {
+    comparisonReport.deviceBaselineCompatibility = baselineCompatibility;
+
+    if (baselineCompatibility.status === "review") {
+      comparisonReport.warnings = [
+        ...(comparisonReport.warnings || []),
+        ...baselineCompatibility.warnings.map((warning) => ({
+          code: "device-baseline-" + warning.code,
+          severity: "review",
+          message: "Device Baseline: " + warning.message,
+        })),
+      ];
+      if (!["fail", "review"].includes(comparisonReport.status)) {
+        comparisonReport.status = "review";
+      }
+    }
+  }
+
   renderComparison();
+  renderBaselineRegistry();
   return comparisonReport;
 }
 
@@ -1458,6 +1523,7 @@ function setBaseline(report, { origin = "baseline" } = {}) {
   if (!validation.valid) {
     baselineReport = null;
     baselineOrigin = null;
+    baselineCompatibility = null;
     comparisonReport = {
       valid: false,
       errors: validation.errors.map((message) => `baseline: ${message}`),
