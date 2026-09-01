@@ -40,7 +40,7 @@ export const GAME_DEFAULT_PACKS = Object.freeze({
   [GAME_IDS.AETHER_SHIFT]: "clockwork",
 });
 
-const WAV_STEM_SELECTION_VERSION = 3;
+const WAV_STEM_SELECTION_VERSION = 4;
 
 export const DEFAULT_MUSIC_SETTINGS = Object.freeze({
   proceduralPackId: "auto",
@@ -91,6 +91,15 @@ function normalizeSettings(input = {}) {
     input.proceduralPackId === "neon" &&
     (!requestedWavPackId || requestedWavPackId === "auto");
   if (migrateNeonToWav) requestedWavPackId = "neon";
+
+  // v28 still exposed Clockwork as the last registered procedural pack.
+  // Preserve an explicit Clockwork choice when upgrading to v29, unless
+  // the user already selected a concrete WAV pack.
+  const migrateClockworkToWav =
+    selectionVersion < 4 &&
+    input.proceduralPackId === "clockwork" &&
+    (!requestedWavPackId || requestedWavPackId === "auto");
+  if (migrateClockworkToWav) requestedWavPackId = "clockwork";
 
   const wavStemPackId = requestedWavPackId === "auto"
     ? "auto"
