@@ -1,4 +1,4 @@
-import { createMusicFacade } from "../../src/music-facade.js";
+import { createMusicFacade, preloadMusicAssets } from "../../src/music-facade.js";
 import {
   createQaSession,
   addQaSample,
@@ -481,7 +481,10 @@ async function scheduleQaHotSwap() {
   hotSwapStatus.className = "hot-swap-status scheduled";
 
   try {
-    await music.preload({ stingers: true, transitions: true });
+    await preloadMusicAssets({
+      packId: targetId,
+      preloadOptions: { stingers: true, transitions: true },
+    });
     await music.pack(targetId, {
       quantize: "bar",
       crossfadeBeats: 2,
