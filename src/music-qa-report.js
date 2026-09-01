@@ -1,6 +1,18 @@
 const REPORT_SCHEMA_VERSION = "1.0.0";
 const SILENCE_DB = -180;
 
+export const HOT_SWAP_QA_POLICY = Object.freeze({
+  failMinPowerCoefficientSum: 0.80,
+  reviewMinPowerCoefficientSum: 0.95,
+  failMaxOutputPeakDbfs: -0.15,
+  reviewMaxOutputPeakDbfs: -0.50,
+  failMaxLimiterReductionMagnitudeDb: 6.0,
+  reviewMaxLimiterReductionMagnitudeDb: 3.0,
+  failMidRmsDipDb: -9.0,
+  reviewMidRmsDipDb: -5.0,
+  minimumCrossfadeSamples: 3,
+});
+
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const round = (value, digits = 3) => {
   if (!Number.isFinite(Number(value))) return null;
@@ -244,6 +256,10 @@ function summarizeHotSwaps(samples, durationsMs) {
         minReductionDb: 0,
         minPower: Infinity,
         maxPower: -Infinity,
+        edgeRmsPowerMs: 0,
+        edgeRmsDurationMs: 0,
+        midRmsPowerMs: 0,
+        midRmsDurationMs: 0,
       });
     }
 
@@ -262,30 +278,172 @@ function summarizeHotSwaps(samples, durationsMs) {
     item.minReductionDb = Math.min(item.minReductionDb, sample.limiterReductionDb);
     item.minPower = Math.min(item.minPower, finite(hot.powerCoefficientSum, 0));
     item.maxPower = Math.max(item.maxPower, finite(hot.powerCoefficientSum, 0));
+    const progress = Math.max(0, Math.min(1, finite(hot.progress, 0)));
+    if (progress <= 0.20 || progress >= 0.80) {
+      item.edgeRmsPowerMs += dbToPower(sample.outputRmsDbfs) * durationMs;
+      item.edgeRmsDurationMs += durationMs;
+    }
+    if (progress >= 0.35 && progress <= 0.65) {
+      item.midRmsPowerMs += dbToPower(sample.outputRmsDbfs) * durationMs;
+      item.midRmsDurationMs += durationMs;
+    }
   });
 
-  return [...swaps.values()].map((item) => ({
-    fromId: item.fromId,
-    toId: item.toId,
-    curve: item.curve,
-    quantize: item.quantize,
-    scheduledAt: item.scheduledAt,
-    fadeEnd: item.fadeEnd,
-    crossfadeBeats: item.crossfadeBeats,
-    fadeSeconds: item.fadeSeconds,
-    scheduledSampleCount: item.scheduledSampleCount,
-    crossfadeSampleCount: item.crossfadeSampleCount,
-    durationSeconds: round(item.durationMs / 1000),
-    maxOutputPeakDbfs: item.crossfadeSampleCount ? round(item.peak) : null,
-    minOutputRmsDbfs: item.crossfadeSampleCount ? round(item.minRms) : null,
-    maxOutputRmsDbfs: item.crossfadeSampleCount ? round(item.maxRms) : null,
-    averageOutputRmsDbfs: item.rmsDurationMs > 0
-      ? round(powerToDb(item.rmsPowerMs / item.rmsDurationMs))
-      : null,
-    maxLimiterReductionMagnitudeDb: round(Math.abs(item.minReductionDb)),
-    minPowerCoefficientSum: Number.isFinite(item.minPower) ? round(item.minPower, 6) : null,
-    maxPowerCoefficientSum: Number.isFinite(item.maxPower) ? round(item.maxPower, 6) : null,
-  }));
+  return [...swaps.values()].map((item) => {
+    const edgeRmsDbfs = item.edgeRmsDurationMs > 0
+      ? powerToDb(item.edgeRmsPowerMs / item.edgeRmsDurationMs)
+      : null;
+    const midRmsDbfs = item.midRmsDurationMs > 0
+      ? powerToDb(item.midRmsPowerMs / item.midRmsDurationMs)
+      : null;
+    const midRmsDeltaDb = Number.isFinite(edgeRmsDbfs) && Number.isFinite(midRmsDbfs)
+      ? midRmsDbfs - edgeRmsDbfs
+      : null;
+
+    return {
+      fromId: item.fromId,
+      toId: item.toId,
+      curve: item.curve,
+      quantize: item.quantize,
+      scheduledAt: item.scheduledAt,
+      fadeEnd: item.fadeEnd,
+      crossfadeBeats: item.crossfadeBeats,
+      fadeSeconds: item.fadeSeconds,
+      scheduledSampleCount: item.scheduledSampleCount,
+      crossfadeSampleCount: item.crossfadeSampleCount,
+      durationSeconds: round(item.durationMs / 1000),
+      maxOutputPeakDbfs: item.crossfadeSampleCount ? round(item.peak) : null,
+      minOutputRmsDbfs: item.crossfadeSampleCount ? round(item.minRms) : null,
+      maxOutputRmsDbfs: item.crossfadeSampleCount ? round(item.maxRms) : null,
+      averageOutputRmsDbfs: item.rmsDurationMs > 0
+        ? round(powerToDb(item.rmsPowerMs / item.rmsDurationMs))
+        : null,
+      edgeAverageOutputRmsDbfs: Number.isFinite(edgeRmsDbfs) ? round(edgeRmsDbfs) : null,
+      midpointAverageOutputRmsDbfs: Number.isFinite(midRmsDbfs) ? round(midRmsDbfs) : null,
+      midpointRmsDeltaDb: Number.isFinite(midRmsDeltaDb) ? round(midRmsDeltaDb) : null,
+      maxLimiterReductionMagnitudeDb: round(Math.abs(item.minReductionDb)),
+      minPowerCoefficientSum: Number.isFinite(item.minPower) ? round(item.minPower, 6) : null,
+      maxPowerCoefficientSum: Number.isFinite(item.maxPower) ? round(item.maxPower, 6) : null,
+    };
+  });
+}
+
+export function evaluateHotSwapQa(
+  hotSwaps = [],
+  policy = HOT_SWAP_QA_POLICY,
+) {
+  const active = hotSwaps.filter((swap) => Number(swap?.crossfadeSampleCount || 0) > 0);
+
+  if (!active.length) {
+    return {
+      status: "not-applicable",
+      evaluatedCount: 0,
+      failures: [],
+      warnings: [],
+      policy: { ...policy },
+      swaps: [],
+    };
+  }
+
+  const evaluations = active.map((swap) => {
+    const failures = [];
+    const warnings = [];
+    const sampleCount = Number(swap.crossfadeSampleCount || 0);
+    const minPower = Number(swap.minPowerCoefficientSum);
+    const peak = Number(swap.maxOutputPeakDbfs);
+    const reduction = Number(swap.maxLimiterReductionMagnitudeDb);
+    const midRmsDelta = Number(swap.midpointRmsDeltaDb);
+
+    if (sampleCount < policy.minimumCrossfadeSamples) {
+      warnings.push(
+        `crossfade samples ${sampleCount} < ${policy.minimumCrossfadeSamples}`
+      );
+    }
+
+    if (Number.isFinite(minPower)) {
+      if (minPower < policy.failMinPowerCoefficientSum) {
+        failures.push(
+          `power coefficient sum ${minPower.toFixed(4)} < ${policy.failMinPowerCoefficientSum.toFixed(2)}`
+        );
+      } else if (minPower < policy.reviewMinPowerCoefficientSum) {
+        warnings.push(
+          `power coefficient sum ${minPower.toFixed(4)} < ${policy.reviewMinPowerCoefficientSum.toFixed(2)}`
+        );
+      }
+    }
+
+    if (Number.isFinite(peak)) {
+      if (peak > policy.failMaxOutputPeakDbfs) {
+        failures.push(
+          `output peak ${peak.toFixed(2)} dBFS > ${policy.failMaxOutputPeakDbfs.toFixed(2)} dBFS`
+        );
+      } else if (peak > policy.reviewMaxOutputPeakDbfs) {
+        warnings.push(
+          `output peak ${peak.toFixed(2)} dBFS > ${policy.reviewMaxOutputPeakDbfs.toFixed(2)} dBFS`
+        );
+      }
+    }
+
+    if (Number.isFinite(reduction)) {
+      if (reduction > policy.failMaxLimiterReductionMagnitudeDb) {
+        failures.push(
+          `limiter reduction ${reduction.toFixed(2)} dB > ${policy.failMaxLimiterReductionMagnitudeDb.toFixed(1)} dB`
+        );
+      } else if (reduction > policy.reviewMaxLimiterReductionMagnitudeDb) {
+        warnings.push(
+          `limiter reduction ${reduction.toFixed(2)} dB > ${policy.reviewMaxLimiterReductionMagnitudeDb.toFixed(1)} dB`
+        );
+      }
+    }
+
+    if (Number.isFinite(midRmsDelta)) {
+      if (midRmsDelta < policy.failMidRmsDipDb) {
+        failures.push(
+          `midpoint RMS delta ${midRmsDelta.toFixed(2)} dB < ${policy.failMidRmsDipDb.toFixed(1)} dB`
+        );
+      } else if (midRmsDelta < policy.reviewMidRmsDipDb) {
+        warnings.push(
+          `midpoint RMS delta ${midRmsDelta.toFixed(2)} dB < ${policy.reviewMidRmsDipDb.toFixed(1)} dB`
+        );
+      }
+    }
+
+    const status = failures.length ? "fail" : warnings.length ? "review" : "pass";
+    return {
+      fromId: swap.fromId,
+      toId: swap.toId,
+      curve: swap.curve,
+      status,
+      failures,
+      warnings,
+      metrics: {
+        crossfadeSampleCount: sampleCount,
+        maxOutputPeakDbfs: swap.maxOutputPeakDbfs,
+        maxLimiterReductionMagnitudeDb: swap.maxLimiterReductionMagnitudeDb,
+        minPowerCoefficientSum: swap.minPowerCoefficientSum,
+        edgeAverageOutputRmsDbfs: swap.edgeAverageOutputRmsDbfs,
+        midpointAverageOutputRmsDbfs: swap.midpointAverageOutputRmsDbfs,
+        midpointRmsDeltaDb: swap.midpointRmsDeltaDb,
+      },
+    };
+  });
+
+  const failures = evaluations.flatMap((item) =>
+    item.failures.map((message) => `${item.fromId}->${item.toId}: ${message}`)
+  );
+  const warnings = evaluations.flatMap((item) =>
+    item.warnings.map((message) => `${item.fromId}->${item.toId}: ${message}`)
+  );
+  const status = failures.length ? "fail" : warnings.length ? "review" : "pass";
+
+  return {
+    status,
+    evaluatedCount: evaluations.length,
+    failures,
+    warnings,
+    policy: { ...policy },
+    swaps: evaluations,
+  };
 }
 
 function deriveEvents(samples) {
@@ -419,13 +577,21 @@ function qaVerdict({
   limiterOver6Seconds,
   limiterOver3Seconds,
   durationSeconds,
+  hotSwapQaStatus = "not-applicable",
 }) {
   const duration = Math.max(0.001, durationSeconds);
 
-  if (clipRiskSeconds >= 0.1 || limiterOver6Seconds >= Math.max(1, duration * 0.10)) {
+  if (
+    hotSwapQaStatus === "fail" ||
+    clipRiskSeconds >= 0.1 ||
+    limiterOver6Seconds >= Math.max(1, duration * 0.10)
+  ) {
     return "fail";
   }
-  if (limiterOver3Seconds >= Math.max(1, duration * 0.10)) {
+  if (
+    hotSwapQaStatus === "review" ||
+    limiterOver3Seconds >= Math.max(1, duration * 0.10)
+  ) {
     return "review";
   }
   return "pass";
@@ -493,6 +659,8 @@ export function finalizeQaSession(session, {
     .map((item) => item.minPowerCoefficientSum)
     .filter((value) => Number.isFinite(Number(value)));
 
+  const hotSwapQa = evaluateHotSwapQa(hotSwaps);
+
   const summary = {
     durationSeconds: round(durationSeconds),
     observedDurationSeconds: round(observedDurationSeconds),
@@ -522,11 +690,13 @@ export function finalizeQaSession(session, {
     hotSwapMinPowerCoefficientSum: hotSwapPowerValues.length
       ? round(Math.min(...hotSwapPowerValues), 6)
       : null,
+    hotSwapQa,
     hotSwaps,
   };
   summary.verdict = qaVerdict({
     ...summary,
     durationSeconds: observedDurationSeconds,
+    hotSwapQaStatus: hotSwapQa.status,
   });
 
   return {
