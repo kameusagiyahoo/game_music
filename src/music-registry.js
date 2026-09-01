@@ -40,7 +40,7 @@ export const GAME_DEFAULT_PACKS = Object.freeze({
   [GAME_IDS.AETHER_SHIFT]: "clockwork",
 });
 
-const WAV_STEM_SELECTION_VERSION = 2;
+const WAV_STEM_SELECTION_VERSION = 3;
 
 export const DEFAULT_MUSIC_SETTINGS = Object.freeze({
   proceduralPackId: "auto",
@@ -67,6 +67,8 @@ function storage() {
 }
 
 function normalizeSettings(input = {}) {
+  const selectionVersion = Number(input.wavStemSelectionVersion || 0);
+
   const proceduralPackId = input.proceduralPackId === "auto"
     ? "auto"
     : registry[input.proceduralPackId]?.engine === MUSIC_ENGINES.PROCEDURAL
@@ -75,13 +77,20 @@ function normalizeSettings(input = {}) {
 
   // v26 and earlier had only Pulse as a WAV pack, so stored "pulse"
   // was effectively the default rather than a meaningful multi-pack choice.
-  // Migrate that legacy value to AUTO once. New explicit choices carry v2.
-  const legacyWavSelection =
-    Number(input.wavStemSelectionVersion || 0) < WAV_STEM_SELECTION_VERSION;
-  const requestedWavPackId =
-    legacyWavSelection && input.wavStemPackId === "pulse"
-      ? "auto"
-      : input.wavStemPackId;
+  const legacyPulseOnlySelection =
+    selectionVersion < 2 && input.wavStemPackId === "pulse";
+  let requestedWavPackId = legacyPulseOnlySelection
+    ? "auto"
+    : input.wavStemPackId;
+
+  // v27 still exposed Neon as a procedural choice. When that explicit
+  // selection is upgraded to v28, preserve the user's intent by moving
+  // it to Neon WAV only when the WAV side was not already explicitly set.
+  const migrateNeonToWav =
+    selectionVersion < 3 &&
+    input.proceduralPackId === "neon" &&
+    (!requestedWavPackId || requestedWavPackId === "auto");
+  if (migrateNeonToWav) requestedWavPackId = "neon";
 
   const wavStemPackId = requestedWavPackId === "auto"
     ? "auto"
