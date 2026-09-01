@@ -887,7 +887,7 @@ function renderRouteMatrix() {
     ? `${Number(generic.maxDriftMs || 0)} ms`
     : "—";
 
-  const hot = music.meter()?.hotSwap || null;
+  const hot = music.info()?.hotSwap || null;
   const nextStep = progress?.nextStep || null;
   const currentRouteLabel = hot?.fromId && hot?.toId
     ? `${String(hot.fromId).toUpperCase()} → ${String(hot.toId).toUpperCase()}`
@@ -908,7 +908,7 @@ function renderRouteMatrix() {
     ? `${hot.fromId}->${hot.toId}`
     : null;
 
-  routeMatrixGrid.innerHTML = scenario.routes.map((route) => {
+  const gridRows = scenario.routes.map((route) => {
     const execution = executions.get(route.id);
     const key = `${route.fromId}->${route.toId}`;
     const active = key === activeKey;
@@ -921,13 +921,21 @@ function renderRouteMatrix() {
       failed ? "failed" : "",
     ].filter(Boolean).join(" ");
 
-    return `
-      <div class="${className}">
-        <strong>${String(route.fromId).toUpperCase()} → ${String(route.toId).toUpperCase()}</strong>
-        <span>#${String(route.index + 1).padStart(2, "0")} · ${formatTimeMs(scenario.steps[route.index]?.atMs || 0)}</span>
-      </div>
-    `;
-  }).join("");
+    return {
+      signature: `${route.id}:${className}`,
+      html: `
+        <div class="${className}">
+          <strong>${String(route.fromId).toUpperCase()} → ${String(route.toId).toUpperCase()}</strong>
+          <span>#${String(route.index + 1).padStart(2, "0")} · ${formatTimeMs(scenario.steps[route.index]?.atMs || 0)}</span>
+        </div>
+      `,
+    };
+  });
+  const gridSignature = gridRows.map((row) => row.signature).join("|");
+  if (routeMatrixGrid.dataset.signature !== gridSignature) {
+    routeMatrixGrid.dataset.signature = gridSignature;
+    routeMatrixGrid.innerHTML = gridRows.map((row) => row.html).join("");
+  }
 
   let status = "IDLE";
   let statusClass = "idle";
@@ -1071,6 +1079,18 @@ async function startHotSwapRouteMatrix() {
   baselineOrigin = null;
   comparisonReport = null;
   music.cancel("all");
+
+  if (music.info().id !== startId) {
+    if (music.running) music.stop();
+    music = createQaMusic(startId);
+    staticInfo = music.info();
+    selectedQaPackId = startId;
+    qaPackSelect.value = startId;
+    qaScenario = createPackScenario(startId);
+    bar = 0;
+    beat = 0;
+    updateQaPackLabel();
+  }
 
   renderComparison();
   renderBaselineRegistry();
