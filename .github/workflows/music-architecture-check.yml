@@ -4,53 +4,12 @@ on:
   push:
     paths:
       - "src/**"
-      - "src/music-qa-hot-swap-compare.js"
       - "games/**"
       - "debug/**"
       - "settings/**"
-      - "tools/check_music_boundary.py"
-      - "tools/check_music_manifests.mjs"
-      - "tools/check_music_formats.mjs"
-      - "tools/check_music_multi_wav_packs.mjs"
-      - "tools/check_music_runtime_fallback.mjs"
-      - "tools/check_music_preload_cache.mjs"
-      - "tools/check_music_persistent_cache.mjs"
-      - "tools/check_music_quantization.mjs"
-      - "tools/check_music_pack_hot_swap.mjs"
-      - "tools/check_music_equal_power_crossfade.mjs"
-      - "tools/check_music_hot_swap_qa.mjs"
-      - "tools/check_music_transition_cues.mjs"
-      - "tools/check_music_mastering.mjs"
-      - "tools/check_music_fantasy_mastering.mjs"
-      - "tools/check_music_metering.mjs"
-      - "tools/check_music_qa_report.mjs"
-      - "tools/check_music_qa_compare.mjs"
-      - "tools/check_music_qa_scenario.mjs"
-      - "tools/check_music_qa_baseline_registry.mjs"
-      - "tools/music_qa_golden.mjs"
-      - "tools/music_qa_golden_fantasy.mjs"
-      - "tools/check_music_qa_golden.mjs"
-      - "tools/check_music_qa_golden_fantasy.mjs"
+      - "tools/**"
       - "qa/baselines/**"
-      - "tools/check_pulse_mastering.py"
-      - "tools/check_pulse_audio_profile.py"
-      - "tools/check_fantasy_audio_profile.py"
-      - "tools/encode_fantasy_audio.sh"
-      - "tools/encode_pulse_audio.sh"
-      - "tools/music_qa_golden_neon.mjs"
-      - "tools/check_music_qa_golden_neon.mjs"
-      - "tools/check_music_neon_mastering.mjs"
-      - "tools/check_neon_audio_profile.py"
-      - "tools/encode_neon_audio.sh"
-      - "tools/music_qa_golden_clockwork.mjs"
-      - "tools/check_music_qa_golden_clockwork.mjs"
-      - "tools/check_music_clockwork_mastering.mjs"
-      - "tools/check_clockwork_audio_profile.py"
-      - "tools/encode_clockwork_audio.sh"
-      - "src/music-qa-route-matrix.js"
-      - "src/music-qa-route-baseline-registry.js"
-      - "tools/check_music_qa_route_matrix.mjs"
-      - "tools/check_music_qa_route_baseline_registry.mjs"
+      - "music-sw.js"
       - ".github/workflows/music-architecture-check.yml"
   pull_request:
     paths:
@@ -58,48 +17,9 @@ on:
       - "games/**"
       - "debug/**"
       - "settings/**"
-      - "tools/check_music_boundary.py"
-      - "tools/check_music_manifests.mjs"
-      - "tools/check_music_formats.mjs"
-      - "tools/check_music_multi_wav_packs.mjs"
-      - "tools/check_music_runtime_fallback.mjs"
-      - "tools/check_music_preload_cache.mjs"
-      - "tools/check_music_persistent_cache.mjs"
-      - "tools/check_music_quantization.mjs"
-      - "tools/check_music_pack_hot_swap.mjs"
-      - "tools/check_music_equal_power_crossfade.mjs"
-      - "tools/check_music_hot_swap_qa.mjs"
-      - "tools/check_music_transition_cues.mjs"
-      - "tools/check_music_mastering.mjs"
-      - "tools/check_music_fantasy_mastering.mjs"
-      - "tools/check_music_metering.mjs"
-      - "tools/check_music_qa_report.mjs"
-      - "tools/check_music_qa_compare.mjs"
-      - "tools/check_music_qa_scenario.mjs"
-      - "tools/check_music_qa_baseline_registry.mjs"
-      - "tools/music_qa_golden.mjs"
-      - "tools/check_music_qa_golden.mjs"
-      - "tools/check_music_qa_golden_fantasy.mjs"
+      - "tools/**"
       - "qa/baselines/**"
-      - "tools/check_pulse_mastering.py"
-      - "tools/check_pulse_audio_profile.py"
-      - "tools/check_fantasy_audio_profile.py"
-      - "tools/encode_fantasy_audio.sh"
-      - "tools/encode_pulse_audio.sh"
-      - "tools/music_qa_golden_neon.mjs"
-      - "tools/check_music_qa_golden_neon.mjs"
-      - "tools/check_music_neon_mastering.mjs"
-      - "tools/check_neon_audio_profile.py"
-      - "tools/encode_neon_audio.sh"
-      - "tools/music_qa_golden_clockwork.mjs"
-      - "tools/check_music_qa_golden_clockwork.mjs"
-      - "tools/check_music_clockwork_mastering.mjs"
-      - "tools/check_clockwork_audio_profile.py"
-      - "tools/encode_clockwork_audio.sh"
-      - "src/music-qa-route-matrix.js"
-      - "src/music-qa-route-baseline-registry.js"
-      - "tools/check_music_qa_route_matrix.mjs"
-      - "tools/check_music_qa_route_baseline_registry.mjs"
+      - "music-sw.js"
       - ".github/workflows/music-architecture-check.yml"
 
 jobs:
@@ -122,52 +42,7 @@ jobs:
           bash -n tools/encode_neon_audio.sh
           bash -n tools/encode_clockwork_audio.sh
       - name: Check JavaScript syntax
-        run: |
-          node --check src/music-pack-manifest.js
-          node --check src/audio-asset-cache.js
-          node --check src/music-service-worker.js
-          node --check music-sw.js
-          node --check src/music-format-resolver.js
-          node --check src/wav-stem-manager.js
-          node --check src/music-registry.js
-          node --check src/music-asset-resolver.js
-          node --check src/music-facade.js
-          node --check src/music-qa-report.js
-          node --check src/music-qa-compare.js
-          node --check src/music-qa-hot-swap-compare.js
-          node --check src/music-qa-baseline-registry.js
-          node --check src/music-qa-scenario.js
-          node --check src/music-qa-route-matrix.js
-          node --check src/music-qa-route-baseline-registry.js
-          node --check tools/music_qa_golden.mjs
-          node --check tools/music_qa_golden_fantasy.mjs
-          node --check tools/check_music_qa_golden_fantasy.mjs
-          node --check tools/music_qa_golden_neon.mjs
-          node --check tools/check_music_qa_golden_neon.mjs
-          node --check tools/check_music_neon_mastering.mjs
-          node --check tools/music_qa_golden_clockwork.mjs
-          node --check tools/check_music_qa_golden_clockwork.mjs
-          node --check tools/check_music_clockwork_mastering.mjs
-          node --check tools/check_music_multi_wav_packs.mjs
-          node --check tools/check_music_volume_controls.mjs
-          node --check tools/check_music_result_sync.mjs
-          node --check tools/check_game_pack_preferences.mjs
-          node --check tools/check_music_qa_route_matrix.mjs
-          node --check tools/check_music_qa_route_baseline_registry.mjs
-          node --check tools/check_music_pack_hot_swap.mjs
-          node --check tools/check_music_equal_power_crossfade.mjs
-          node --check tools/check_music_hot_swap_qa.mjs
-          node --check tools/check_music_qa_baseline_registry.mjs
-          node --check tools/check_music_fantasy_mastering.mjs
-          node --check src/game.js
-          node --check games/orbit-rush/game.js
-          node --check games/pulse-forge/game.js
-          node --check games/rune-relay/game.js
-          node --check games/aether-shift/game.js
-          node --check debug/resolver/resolver.js
-          node --check debug/mixer/mixer.js
-          node --check debug/audio-qa/qa.js
-          node --check settings/music/settings.js
+        run: python tools/check_js_syntax.py
       - name: Check Music Pack manifests
         run: node tools/check_music_manifests.mjs
       - name: Check Music Format Resolver
