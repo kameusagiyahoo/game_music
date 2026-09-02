@@ -18,6 +18,7 @@ export class MusicFacade {
   constructor(runtime) {
     if (!runtime?.manager) throw new Error("MusicFacade requires a valid runtime");
     this.runtime = runtime;
+    this.pendingResultState = null;
   }
 
   get entry() { return this.runtime.entry; }
@@ -33,9 +34,39 @@ export class MusicFacade {
     return this.info();
   }
 
-  async state(name, options = {}) { return applyMusicState(this.runtime, name, options); }
+  async state(name, options = {}) {
+    const statePromise = applyMusicState(this.runtime, name, options);
+    if (name !== "result") {
+      this.pendingResultState = null;
+      return statePromise;
+    }
+
+    this.pendingResultState = statePromise;
+    try {
+      return await statePromise;
+    } finally {
+      if (this.pendingResultState === statePromise) this.pendingResultState = null;
+    }
+  }
+
   cue(name) { this.runtime.manager?.sfx?.(name); }
-  async outcome(value, options = {}) { return playMusicOutcome(this.runtime, normalizeOutcome(value), options); }
+
+  async outcome(value, options = {}) {
+    const syncedOptions = { ...options };
+    const pendingResultState = this.pendingResultState;
+
+    if (pendingResultState) {
+      const result = await pendingResultState;
+      if (syncedOptions.scheduledAt === undefined && result?.scheduledAt) {
+        syncedOptions.scheduledAt = result.scheduledAt;
+      }
+      if (syncedOptions.quantize === undefined && result?.quantize) {
+        syncedOptions.quantize = result.quantize;
+      }
+    }
+
+    return playMusicOutcome(this.runtime, normalizeOutcome(value), syncedOptions);
+  }
 
   async transitionCue(name, options = {}) {
     const manager = this.runtime.manager;
@@ -62,7 +93,10 @@ export class MusicFacade {
     };
   }
 
-  stop() { stopMusicRuntime(this.runtime); }
+  stop() {
+    this.pendingResultState = null;
+    stopMusicRuntime(this.runtime);
+  }
 
   async audio({ musicEnabled, sfxEnabled, musicVolume, sfxVolume } = {}) {
     const manager = this.runtime.manager;
@@ -119,6 +153,7 @@ export class MusicFacade {
   cancel(kind = "all") {
     const manager = this.runtime.manager;
     if ((kind === "all" || kind === "pack") && typeof manager.cancelPendingPackSwitch === "function") manager.cancelPendingPackSwitch();
+    if (kind === "all" || kind === "state") this.pendingResultState = null;
     if ((kind === "all" || kind === "state") && typeof manager.cancelPendingTransition === "function") manager.cancelPendingTransition();
     if ((kind === "all" || kind === "layer") && typeof manager.cancelPendingLayerMix === "function") manager.cancelPendingLayerMix();
     if ((kind === "all" || kind === "stinger") && typeof manager.cancelPendingStinger === "function") manager.cancelPendingStinger();
