@@ -15,14 +15,11 @@ const bgmVolume = $("#bgmVolume");
 const sfxVolume = $("#sfxVolume");
 const bgmVolumeValue = $("#bgmVolumeValue");
 const sfxVolumeValue = $("#sfxVolumeValue");
-const proceduralPacks = $("#proceduralPacks");
 const wavPacks = $("#wavPacks");
-const proceduralSummary = $("#proceduralSummary");
 const wavSummary = $("#wavSummary");
 const saveState = $("#saveState");
 const resetButton = $("#resetButton");
 const packCount = $("#packCount");
-const proceduralCount = $("#proceduralCount");
 const wavCount = $("#wavCount");
 const manifestSchema = $("#manifestSchema");
 const facadeApi = $("#facadeApi");
@@ -62,32 +59,7 @@ function render() {
   const snapshot = getMusicRegistrySnapshot();
   applyMusicSettingsToControls(controls, settings);
 
-  const procedural = listMusicPacks({ engine: MUSIC_ENGINES.PROCEDURAL });
   const wav = listMusicPacks({ engine: MUSIC_ENGINES.WAV_STEM });
-
-  proceduralPacks.innerHTML = "";
-  if (procedural.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "registry-pack is-disabled";
-    empty.innerHTML = `
-      <span class="registry-pack-main">
-        <strong>登録Packなし</strong>
-        <small>v29で全Music PackをReal Audio / WAV Stemへ移行しました。Engine実装は互換テスト用に残しています。</small>
-      </span>
-      <span class="registry-engine">0 PACKS</span>
-    `;
-    proceduralPacks.appendChild(empty);
-  } else {
-    const auto = document.createElement("label");
-    auto.className = `registry-pack registry-auto${settings.proceduralPackId === "auto" ? " is-selected" : ""}`;
-    auto.innerHTML = `
-      <input type="radio" name="${MUSIC_ENGINES.PROCEDURAL}" value="auto" ${settings.proceduralPackId === "auto" ? "checked" : ""} />
-      <span class="registry-pack-main"><strong>ゲーム推奨</strong><small>procedural対応ゲームの既定Packを使用</small></span>
-      <span class="registry-engine">AUTO</span>
-    `;
-    proceduralPacks.appendChild(auto);
-    procedural.forEach((entry) => proceduralPacks.appendChild(packButton(entry, settings.proceduralPackId === entry.id)));
-  }
 
   wavPacks.innerHTML = "";
   const wavAuto = document.createElement("label");
@@ -100,14 +72,9 @@ function render() {
   wavPacks.appendChild(wavAuto);
   wav.forEach((entry) => wavPacks.appendChild(packButton(entry, settings.wavStemPackId === entry.id)));
 
-  const selected = procedural.find((entry) => entry.id === settings.proceduralPackId);
   const selectedWav = wav.find((entry) => entry.id === settings.wavStemPackId);
-  proceduralSummary.textContent = procedural.length === 0
-    ? "NO REGISTERED PACKS"
-    : settings.proceduralPackId === "auto" ? "GAME DEFAULT" : selected?.name || "AUTO";
   wavSummary.textContent = settings.wavStemPackId === "auto" ? "GAME DEFAULT" : selectedWav?.name || "AUTO";
   packCount.textContent = String(snapshot.packCount);
-  proceduralCount.textContent = String(procedural.length);
   wavCount.textContent = String(wav.length);
   manifestSchema.textContent = `v${snapshot.schemaVersion}`;
   facadeApi.textContent = `v${snapshot.facadeApi}`;
@@ -129,14 +96,6 @@ bgmToggle.addEventListener("change", saveAudioSettings);
 sfxToggle.addEventListener("change", saveAudioSettings);
 bgmVolume.addEventListener("input", saveAudioSettings);
 sfxVolume.addEventListener("input", saveAudioSettings);
-
-proceduralPacks.addEventListener("change", (event) => {
-  const input = event.target.closest('input[type="radio"]');
-  if (!input) return;
-  saveMusicSettings({ proceduralPackId: input.value });
-  render();
-  flashSaved();
-});
 
 wavPacks.addEventListener("change", (event) => {
   const input = event.target.closest('input[type="radio"]');
