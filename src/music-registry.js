@@ -11,7 +11,6 @@ import {
 const STORAGE_KEY = "game-music-global-settings-v1";
 
 export const MUSIC_ENGINES = Object.freeze({
-  PROCEDURAL: "procedural",
   WAV_STEM: "wav-stem",
 });
 
@@ -43,7 +42,6 @@ export const GAME_DEFAULT_PACKS = Object.freeze({
 const WAV_STEM_SELECTION_VERSION = 4;
 
 export const DEFAULT_MUSIC_SETTINGS = Object.freeze({
-  proceduralPackId: "auto",
   wavStemPackId: "auto",
   wavStemSelectionVersion: WAV_STEM_SELECTION_VERSION,
   bgmEnabled: true,
@@ -68,12 +66,6 @@ function storage() {
 
 function normalizeSettings(input = {}) {
   const selectionVersion = Number(input.wavStemSelectionVersion || 0);
-
-  const proceduralPackId = input.proceduralPackId === "auto"
-    ? "auto"
-    : registry[input.proceduralPackId]?.engine === MUSIC_ENGINES.PROCEDURAL
-      ? input.proceduralPackId
-      : DEFAULT_MUSIC_SETTINGS.proceduralPackId;
 
   // v26 and earlier had only Pulse as a WAV pack, so stored "pulse"
   // was effectively the default rather than a meaningful multi-pack choice.
@@ -108,7 +100,6 @@ function normalizeSettings(input = {}) {
       : DEFAULT_MUSIC_SETTINGS.wavStemPackId;
 
   return {
-    proceduralPackId,
     wavStemPackId,
     wavStemSelectionVersion: WAV_STEM_SELECTION_VERSION,
     bgmEnabled: input.bgmEnabled === undefined ? DEFAULT_MUSIC_SETTINGS.bgmEnabled : Boolean(input.bgmEnabled),
@@ -187,19 +178,13 @@ export function resetMusicSettings() {
   return saveMusicSettings(DEFAULT_MUSIC_SETTINGS);
 }
 
-export function resolveMusicPack(gameId, engine = MUSIC_ENGINES.PROCEDURAL) {
-  const settings = getMusicSettings();
-  let id;
+export function resolveMusicPack(gameId, engine = MUSIC_ENGINES.WAV_STEM) {
+  if (engine !== MUSIC_ENGINES.WAV_STEM) return null;
 
-  if (engine === MUSIC_ENGINES.WAV_STEM) {
-    id = settings.wavStemPackId === "auto"
-      ? GAME_DEFAULT_PACKS[gameId]
-      : settings.wavStemPackId;
-  } else {
-    id = settings.proceduralPackId === "auto"
-      ? GAME_DEFAULT_PACKS[gameId]
-      : settings.proceduralPackId;
-  }
+  const settings = getMusicSettings();
+  const id = settings.wavStemPackId === "auto"
+    ? GAME_DEFAULT_PACKS[gameId]
+    : settings.wavStemPackId;
 
   const entry = registry[id];
   if (entry?.engine === engine) return entry;
