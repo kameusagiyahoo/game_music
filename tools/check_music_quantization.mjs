@@ -1,4 +1,4 @@
-import { MusicManager } from "../src/music-manager.js";
+import { MusicManager } from "./fixtures/legacy-procedural-music-manager.js";
 import { WavStemMusicManager } from "../src/wav-stem-manager.js";
 import { pulsePack } from "../src/music-packs/pulse.js";
 
@@ -221,7 +221,7 @@ if (wav.getStingerInfo().pending) errors.push("Pending Stinger remained after ca
 
 wav.stop();
 
-// Procedural engine: beat boundary transition.
+// Legacy procedural fixture: beat boundary transition.
 let proceduralMode = "normal";
 const procedural = new MusicManager({
   pack: proceduralTestPack,
@@ -259,4 +259,4 @@ console.log(`- WAV beat: ${nextBeat.toFixed(4)}s`);
 console.log(`- WAV bar: ${nextBar.toFixed(4)}s`);
 console.log(`- Stinger bar start: ${stinger.scheduledAt.toFixed(4)}s`);
 console.log("- WAV mode/layer beat quantization: OK");
-console.log("- procedural mode beat quantization: OK");
+console.log("- legacy procedural fixture beat quantization: OK");
