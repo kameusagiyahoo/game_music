@@ -73,7 +73,7 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     preload: true,
     memoryAssetCache: true,
     persistentAudioCache: true,
-    serviceWorkerCache: true,
+    serviceWorkerCache: false,
     mastering: true,
     realtimeMeter: true,
   }),
