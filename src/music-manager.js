@@ -243,12 +243,12 @@ export class MusicManager {
   }
 
   setMusicVolume(value) {
-    this.musicVolume = Math.max(0.01, Math.min(1, Number(value)));
+    this.musicVolume = Math.max(0, Math.min(1, Number(value)));
     if (this.context && this.musicEnabled) this.#ramp(this.musicRoot.gain, this.musicVolume, 0.04);
   }
 
   setSfxVolume(value) {
-    this.sfxVolume = Math.max(0.01, Math.min(1, Number(value)));
+    this.sfxVolume = Math.max(0, Math.min(1, Number(value)));
     if (this.context && this.sfxEnabled) this.#ramp(this.sfxBus.gain, this.sfxVolume, 0.04);
   }
 
