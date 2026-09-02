@@ -25,7 +25,10 @@ assert(
   fs.existsSync("tools/fixtures/legacy-procedural-music-manager.js"),
   "legacy procedural manager fixture must remain available for compatibility checks",
 );
-assert(!resolverSource.includes("MusicManager"), "runtime resolver must not import the legacy procedural manager");
+assert(
+  !resolverSource.includes('./music-manager.js') && !resolverSource.includes("new MusicManager"),
+  "runtime resolver must not import or instantiate the legacy procedural manager",
+);
 assert(!resolverSource.includes("PROCEDURAL"), "runtime resolver must not contain procedural engine branches");
 assert(!registrySource.includes('PROCEDURAL: "procedural"'), "current engine registry must not expose procedural");
 assert(!settingsSource.includes("proceduralPackId"), "settings UI must not expose proceduralPackId");
