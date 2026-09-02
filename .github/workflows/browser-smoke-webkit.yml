@@ -1,0 +1,55 @@
+name: Browser Smoke WebKit
+
+on:
+  push:
+    paths:
+      - "index.html"
+      - "styles.css"
+      - "ui-enhancements.css"
+      - "music-sw.js"
+      - "src/**"
+      - "games/**"
+      - "settings/**"
+      - "tests/browser/**"
+      - "playwright.config.mjs"
+      - "package.json"
+      - ".github/workflows/browser-smoke-webkit.yml"
+  pull_request:
+    paths:
+      - "index.html"
+      - "styles.css"
+      - "ui-enhancements.css"
+      - "music-sw.js"
+      - "src/**"
+      - "games/**"
+      - "settings/**"
+      - "tests/browser/**"
+      - "playwright.config.mjs"
+      - "package.json"
+      - ".github/workflows/browser-smoke-webkit.yml"
+
+jobs:
+  webkit-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Playwright Test
+        run: npm install --no-audit --no-fund
+      - name: Install WebKit
+        run: npx playwright install --with-deps webkit
+      - name: Run WebKit iPhone smoke tests
+        run: npm run test:browser
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-webkit-report
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 14
