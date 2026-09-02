@@ -1,0 +1,122 @@
+name: Audio Format Parity
+
+on:
+  workflow_dispatch:
+    inputs:
+      pack:
+        description: Music Pack to validate
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - pulse
+          - fantasy
+          - neon
+          - clockwork
+  push:
+    paths:
+      - "assets/stems/**"
+      - "assets/stingers/**"
+      - "assets/transitions/**"
+      - "tools/check_*_format_parity.py"
+      - "tools/check_*_format_parity_semantics.py"
+      - ".github/workflows/audio-format-parity.yml"
+  pull_request:
+    paths:
+      - "assets/stems/**"
+      - "assets/stingers/**"
+      - "assets/transitions/**"
+      - "tools/check_*_format_parity.py"
+      - "tools/check_*_format_parity_semantics.py"
+      - ".github/workflows/audio-format-parity.yml"
+
+concurrency:
+  group: audio-format-parity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      packs: ${{ steps.packs.outputs.packs }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: packs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_PACK: ${{ inputs.pack || '' }}
+          BEFORE_SHA: ${{ github.event.before || github.event.pull_request.base.sha || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          selected=()
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "$DISPATCH_PACK" = "all" ]; then
+              selected=(pulse fantasy neon clockwork)
+            else
+              selected=("$DISPATCH_PACK")
+            fi
+          else
+            before="$BEFORE_SHA"
+            if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+              before="$(git rev-parse "$HEAD_SHA^" 2>/dev/null || true)"
+            fi
+            if [ -n "$before" ]; then
+              files="$(git diff --name-only "$before" "$HEAD_SHA")"
+            else
+              files="$(git show --pretty="" --name-only "$HEAD_SHA")"
+            fi
+
+            if printf '%s\n' "$files" | grep -Eq "^\.github/workflows/audio-format-parity\.yml$|^tools/check_pulse_format_parity\.py$"; then
+              selected=(pulse fantasy neon clockwork)
+            else
+              for pack in pulse fantasy neon clockwork; do
+                if printf '%s\n' "$files" | grep -Eq "^assets/(stems|stingers|transitions)/${pack}/|^tools/check_${pack}_format_parity(_semantics)?\\.py$"; then
+                  selected+=("$pack")
+                fi
+              done
+            fi
+          fi
+
+          json="$(printf '%s\n' "${selected[@]-}" | python -c 'import json,sys; print(json.dumps([line.strip() for line in sys.stdin if line.strip()]))')"
+          echo "packs=$json" >> "$GITHUB_OUTPUT"
+          echo "Selected packs: $json"
+
+  parity:
+    needs: detect
+    if: needs.detect.outputs.packs != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        pack: ${{ fromJSON(needs.detect.outputs.packs) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - name: Check decoded cross-format parity
+        env:
+          PACK: ${{ matrix.pack }}
+        run: python "tools/check_${PACK}_format_parity.py"
+      - name: Check parity gate semantics
+        env:
+          PACK: ${{ matrix.pack }}
+        run: python "tools/check_${PACK}_format_parity_semantics.py"
+      - name: Upload Format Parity Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.pack }}-format-parity-report
+          path: qa/out/${{ matrix.pack }}-format-parity.json
+          if-no-files-found: ignore
+          retention-days: 14
