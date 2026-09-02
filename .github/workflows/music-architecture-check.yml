@@ -57,6 +57,8 @@ jobs:
         run: node tools/check_music_preload_cache.mjs
       - name: Check Persistent Audio Cache
         run: node tools/check_music_persistent_cache.mjs
+      - name: Check Audio Cache Ownership
+        run: node tools/check_music_cache_ownership.mjs
       - name: Check Music Volume Controls
         run: node tools/check_music_volume_controls.mjs
       - name: Check Result State and Stinger Sync
