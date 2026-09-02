@@ -1,12 +1,11 @@
 import { createMusicFacade, preloadMusicAssets } from "../../src/music-facade.js";
+import { bindGameAudioControls } from "../../src/game-audio-controls.js";
 import { resolveMusicAsset } from "../../src/music-asset-resolver.js";
 import {
   GAME_IDS,
   getMusicSettings,
-  saveMusicSettings,
   listMusicPacks,
   getMusicPackEntry,
-  applyMusicSettingsToControls,
 } from "../../src/music-registry.js";
 
 const GAME_TIME = 45;
@@ -59,7 +58,6 @@ let inputIndex = 0;
 let acceptingInput = false;
 let playbackToken = 0;
 let tensionRequested = false;
-let masterSoundEnabled = true;
 
 function renderPackRegistry() {
   packButtonsContainer.innerHTML = packEntries.map((entry) => `
@@ -120,7 +118,17 @@ function createRuntime(packId = selectedPackId) {
 
 music = createRuntime();
 selectedPackId = music.entry.id;
-applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
+bindGameAudioControls({
+  getMusic: () => music,
+  soundButton,
+  bgmToggle,
+  sfxToggle,
+  bgmVolume,
+  sfxVolume,
+  bgmVolumeValue,
+  sfxVolumeValue,
+  settings: sharedSettings,
+});
 
 function warmPack(packId) {
   const entry = PACKS[packId];
@@ -382,45 +390,13 @@ async function choosePack(id) {
   renderPackButtons(music.info());
 }
 
-async function applyAudioState() {
-  await music.audio({
-    musicEnabled: masterSoundEnabled && bgmToggle.checked,
-    sfxEnabled: masterSoundEnabled && sfxToggle.checked,
-  });
-  soundButton.setAttribute("aria-pressed", String(masterSoundEnabled));
-  soundButton.textContent = masterSoundEnabled ? "♪" : "×";
-}
-
 pads.forEach((pad, index) => pad.addEventListener("click", () => tapPad(index, pad)));
 packButtonsContainer.addEventListener("click", (event) => {
   const button = event.target.closest(".pack-button");
   if (button) void choosePack(button.dataset.pack);
 });
 
-soundButton.addEventListener("click", async () => {
-  masterSoundEnabled = !masterSoundEnabled;
-  await applyAudioState();
-  if (masterSoundEnabled && sfxToggle.checked) music.cue("toggle");
-});
 
-bgmToggle.addEventListener("change", async () => {
-  saveMusicSettings({ bgmEnabled: bgmToggle.checked });
-  await applyAudioState();
-});
-sfxToggle.addEventListener("change", async () => {
-  saveMusicSettings({ sfxEnabled: sfxToggle.checked });
-  await applyAudioState();
-});
-bgmVolume.addEventListener("input", () => {
-  bgmVolumeValue.textContent = bgmVolume.value;
-  void music.audio({ musicVolume: Number(bgmVolume.value) / 100 });
-  saveMusicSettings({ bgmVolume: Number(bgmVolume.value) / 100 });
-});
-sfxVolume.addEventListener("input", () => {
-  sfxVolumeValue.textContent = sfxVolume.value;
-  void music.audio({ sfxVolume: Number(sfxVolume.value) / 100 });
-  saveMusicSettings({ sfxVolume: Number(sfxVolume.value) / 100 });
-});
 startButton.addEventListener("click", startGame);
 retryButton.addEventListener("click", startGame);
 
