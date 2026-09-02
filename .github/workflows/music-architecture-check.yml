@@ -11,6 +11,8 @@ on:
       - "qa/baselines/**"
       - "music-sw.js"
       - ".github/workflows/music-architecture-check.yml"
+      - ".github/workflows/generate-audio.yml"
+      - ".github/workflows/audio-format-parity.yml"
   pull_request:
     paths:
       - "src/**"
@@ -21,6 +23,8 @@ on:
       - "qa/baselines/**"
       - "music-sw.js"
       - ".github/workflows/music-architecture-check.yml"
+      - ".github/workflows/generate-audio.yml"
+      - ".github/workflows/audio-format-parity.yml"
 
 jobs:
   check:
@@ -35,6 +39,8 @@ jobs:
           node-version: "22"
       - name: Enforce Music Facade boundary
         run: python tools/check_music_boundary.py
+      - name: Check Audio Workflow Consolidation
+        run: python tools/check_audio_workflow_consolidation.py
       - name: Check audio encoder shell syntax
         run: |
           bash -n tools/encode_pulse_audio.sh
