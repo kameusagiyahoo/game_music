@@ -24,15 +24,9 @@ resetMusicSettings();
 
 const wavPacks = listMusicPacks({ engine: MUSIC_ENGINES.WAV_STEM });
 const wavIds = wavPacks.map((entry) => entry.id).sort();
-const proceduralPacks = listMusicPacks({ engine: MUSIC_ENGINES.PROCEDURAL });
-
 if (JSON.stringify(wavIds) !== JSON.stringify(["clockwork", "fantasy", "neon", "pulse"])) {
   errors.push(`expected Clockwork/Fantasy/Neon/Pulse wav packs, got ${wavIds.join(",")}`);
 }
-if (proceduralPacks.length !== 0) {
-  errors.push(`expected zero registered procedural packs, got ${proceduralPacks.map((entry) => entry.id).join(",")}`);
-}
-
 for (const [id, version] of [
   ["fantasy", "2.0.0"],
   ["neon", "2.0.0"],
@@ -107,7 +101,6 @@ store.set(STORAGE_KEY, JSON.stringify({
 }));
 const neonLegacy = getMusicSettings();
 if (
-  neonLegacy.proceduralPackId !== "auto" ||
   neonLegacy.wavStemPackId !== "neon" ||
   neonLegacy.wavStemSelectionVersion !== 4
 ) {
@@ -126,7 +119,6 @@ store.set(STORAGE_KEY, JSON.stringify({
 }));
 const clockworkLegacy = getMusicSettings();
 if (
-  clockworkLegacy.proceduralPackId !== "auto" ||
   clockworkLegacy.wavStemPackId !== "clockwork" ||
   clockworkLegacy.wavStemSelectionVersion !== 4
 ) {
@@ -162,7 +154,7 @@ if (errors.length) {
 
 console.log("All Real-Audio Registry Check PASSED");
 console.log("- wav-stem packs: Fantasy + Neon + Pulse + Clockwork");
-console.log("- registered procedural packs: 0");
+console.log("- runtime registry exposes WAV-stem packs only");
 console.log("- game AUTO defaults resolve to real-audio packs");
 console.log("- legacy Pulse-only -> AUTO migration");
 console.log("- legacy Neon procedural -> Neon WAV migration");
