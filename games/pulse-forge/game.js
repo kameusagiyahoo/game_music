@@ -1,9 +1,8 @@
 import { createMusicFacade } from "../../src/music-facade.js";
+import { bindGameAudioControls } from "../../src/game-audio-controls.js";
 import {
   GAME_IDS,
   getMusicSettings,
-  saveMusicSettings,
-  applyMusicSettingsToControls,
 } from "../../src/music-registry.js";
 
 const GAME_TIME = 40;
@@ -72,7 +71,6 @@ let beatResolved = true;
 let lastBeatKey = "";
 let currentLayerPreset = "focus";
 let pendingLayerPreset = null;
-let masterSoundEnabled = true;
 
 function renderStemMix(mix, preset = currentLayerPreset) {
   Object.entries(stemUi).forEach(([name, ui]) => {
@@ -117,7 +115,17 @@ const music = createMusicFacade({
 });
 const packEntry = music.entry;
 pulsePack = music.entry.pack;
-applyMusicSettingsToControls({ bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue }, sharedSettings);
+bindGameAudioControls({
+  getMusic: () => music,
+  soundButton,
+  bgmToggle,
+  sfxToggle,
+  bgmVolume,
+  sfxVolume,
+  bgmVolumeValue,
+  sfxVolumeValue,
+  settings: sharedSettings,
+});
 
 function setMessage(title, body, kicker = "RHYTHM / WAV STEM MIXER") {
   gameMessage.innerHTML = `<span class="message-kicker">${kicker}</span><strong>${title}</strong><span>${body}</span>`;
@@ -333,39 +341,7 @@ function endGame() {
   startButton.textContent = "ゲーム開始";
 }
 
-async function applyAudioState() {
-  await music.audio({
-    musicEnabled: masterSoundEnabled && bgmToggle.checked,
-    sfxEnabled: masterSoundEnabled && sfxToggle.checked,
-  });
-  soundButton.setAttribute("aria-pressed", String(masterSoundEnabled));
-  soundButton.textContent = masterSoundEnabled ? "♪" : "×";
-}
-
 pads.forEach((pad, index) => pad.addEventListener("click", () => tapPad(index, pad)));
-soundButton.addEventListener("click", async () => {
-  masterSoundEnabled = !masterSoundEnabled;
-  await applyAudioState();
-  if (masterSoundEnabled && sfxToggle.checked) music.cue("toggle");
-});
-bgmToggle.addEventListener("change", async () => {
-  saveMusicSettings({ bgmEnabled: bgmToggle.checked });
-  await applyAudioState();
-});
-sfxToggle.addEventListener("change", async () => {
-  saveMusicSettings({ sfxEnabled: sfxToggle.checked });
-  await applyAudioState();
-});
-bgmVolume.addEventListener("input", () => {
-  bgmVolumeValue.textContent = bgmVolume.value;
-  void music.audio({ musicVolume: Number(bgmVolume.value) / 100 });
-  saveMusicSettings({ bgmVolume: Number(bgmVolume.value) / 100 });
-});
-sfxVolume.addEventListener("input", () => {
-  sfxVolumeValue.textContent = sfxVolume.value;
-  void music.audio({ sfxVolume: Number(sfxVolume.value) / 100 });
-  saveMusicSettings({ sfxVolume: Number(sfxVolume.value) / 100 });
-});
 startButton.addEventListener("click", startGame);
 retryButton.addEventListener("click", startGame);
 
