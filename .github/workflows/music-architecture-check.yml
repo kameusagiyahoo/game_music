@@ -49,6 +49,8 @@ jobs:
         run: node tools/check_music_formats.mjs
       - name: Check Multi WAV Pack Registry
         run: node tools/check_music_multi_wav_packs.mjs
+      - name: Check Procedural Runtime Isolation
+        run: node tools/check_procedural_runtime_isolation.mjs
       - name: Check Runtime Decode Fallback
         run: node tools/check_music_runtime_fallback.mjs
       - name: Check Audio Preload Cache
