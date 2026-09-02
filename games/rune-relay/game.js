@@ -1,7 +1,7 @@
 import { createMusicFacade, preloadMusicAssets } from "../../src/music-facade.js";
+import { resolveMusicAsset } from "../../src/music-asset-resolver.js";
 import {
   GAME_IDS,
-  GAME_DEFAULT_PACKS,
   getMusicSettings,
   saveMusicSettings,
   listMusicPacks,
@@ -84,8 +84,9 @@ function renderPackButtons(info = {}) {
 
 renderPackRegistry();
 const sharedSettings = getMusicSettings();
+const fallbackEntry = resolveMusicAsset({ gameId: GAME_IDS.RUNE_RELAY });
 const storedPackId = localStorage.getItem(STORAGE_KEY);
-let selectedPackId = getMusicPackEntry(storedPackId)?.id || GAME_DEFAULT_PACKS[GAME_IDS.RUNE_RELAY];
+let selectedPackId = getMusicPackEntry(storedPackId)?.id || fallbackEntry.id;
 let music;
 
 function runtimeCallbacks() {
@@ -346,7 +347,6 @@ async function choosePack(id) {
   selectedPackId = id;
   localStorage.setItem(STORAGE_KEY, id);
   warmPack(id);
-  saveMusicSettings({ wavStemPackId: id });
 
   const info = music.info();
   if (state === "playing") {
