@@ -1,12 +1,11 @@
 import { createMusicFacade, preloadMusicAssets } from "../../src/music-facade.js";
+import { bindGameAudioControls } from "../../src/game-audio-controls.js";
 import { resolveMusicAsset } from "../../src/music-asset-resolver.js";
 import {
   GAME_IDS,
   listMusicPacks,
   getMusicPackEntry,
   getMusicSettings,
-  saveMusicSettings,
-  applyMusicSettingsToControls,
 } from "../../src/music-registry.js";
 
 const WAVE_SECONDS = 8;
@@ -68,7 +67,6 @@ let waveStartedAt = 0;
 let targetDeadline = 0;
 let timerId = null;
 let tensionTriggered = false;
-let masterSoundEnabled = true;
 
 function setMessage(title, body, kicker = "REACTION / ENGINE HOT-SWAP") {
   gameMessage.innerHTML = `<span class="message-kicker">${kicker}</span><strong>${title}</strong><span>${body}</span>`;
@@ -439,50 +437,22 @@ async function startGame() {
   await startWave();
 }
 
-async function applyAudioState() {
-  if (!music) return;
-  await music.audio({
-    musicEnabled: masterSoundEnabled && bgmToggle.checked,
-    sfxEnabled: masterSoundEnabled && sfxToggle.checked,
-  });
-  soundButton.setAttribute("aria-pressed", String(masterSoundEnabled));
-  soundButton.textContent = masterSoundEnabled ? "♪" : "×";
-}
 
-soundButton.addEventListener("click", async () => {
-  masterSoundEnabled = !masterSoundEnabled;
-  await applyAudioState();
-  if (masterSoundEnabled && sfxToggle.checked) music?.cue("toggle");
-});
-
-bgmToggle.addEventListener("change", async () => {
-  saveMusicSettings({ bgmEnabled: bgmToggle.checked });
-  await applyAudioState();
-});
-sfxToggle.addEventListener("change", async () => {
-  saveMusicSettings({ sfxEnabled: sfxToggle.checked });
-  await applyAudioState();
-});
-bgmVolume.addEventListener("input", () => {
-  const value = Number(bgmVolume.value) / 100;
-  bgmVolumeValue.textContent = bgmVolume.value;
-  saveMusicSettings({ bgmVolume: value });
-  void music?.audio({ musicVolume: value });
-});
-sfxVolume.addEventListener("input", () => {
-  const value = Number(sfxVolume.value) / 100;
-  sfxVolumeValue.textContent = sfxVolume.value;
-  saveMusicSettings({ sfxVolume: value });
-  void music?.audio({ sfxVolume: value });
-});
 
 startButton.addEventListener("click", startGame);
 retryButton.addEventListener("click", startGame);
 
 renderGrid();
 renderPackButtons();
-applyMusicSettingsToControls(
-  { bgmToggle, sfxToggle, bgmVolume, sfxVolume, bgmVolumeValue, sfxVolumeValue },
-  getMusicSettings()
-);
+bindGameAudioControls({
+  getMusic: () => music,
+  soundButton,
+  bgmToggle,
+  sfxToggle,
+  bgmVolume,
+  sfxVolume,
+  bgmVolumeValue,
+  sfxVolumeValue,
+  settings: getMusicSettings(),
+});
 resetGame();
