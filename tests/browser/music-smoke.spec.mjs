@@ -96,12 +96,14 @@ test("Rune Relay and Aether Shift can change game-local packs before play", asyn
   const runeButtons = page.locator("#packButtons [data-pack]");
   await expect(runeButtons).toHaveCount(4);
   const runeInitial = await page.locator("#currentPack").textContent();
-  const runeTarget = runeButtons.filter({ hasNotText: runeInitial || "__none__" }).first();
-  if (await runeTarget.count()) {
-    await runeTarget.click();
-  } else {
-    await runeButtons.nth(1).click();
-  }
+  const runeActiveId = await page.locator("#packButtons .pack-button.is-active").getAttribute("data-pack");
+  const runeTarget = page.locator("#packButtons .pack-button:not(.is-active)").first();
+  const runeTargetId = await runeTarget.getAttribute("data-pack");
+  expect(runeActiveId).toBeTruthy();
+  expect(runeTargetId).toBeTruthy();
+  expect(runeTargetId).not.toBe(runeActiveId);
+  await runeTarget.click();
+  await expect(page.locator("#packButtons .pack-button.is-active")).toHaveAttribute("data-pack", runeTargetId);
   await expect(page.locator("#currentPack")).not.toHaveText(runeInitial || "");
 
   await page.goto("/games/aether-shift/", { waitUntil: "networkidle" });
@@ -109,12 +111,14 @@ test("Rune Relay and Aether Shift can change game-local packs before play", asyn
   const aetherButtons = page.locator("#packButtons [data-pack]");
   await expect(aetherButtons).toHaveCount(4);
   const aetherInitial = await page.locator("#currentPack").textContent();
-  const aetherTarget = aetherButtons.filter({ hasNotText: aetherInitial || "__none__" }).first();
-  if (await aetherTarget.count()) {
-    await aetherTarget.click();
-  } else {
-    await aetherButtons.nth(1).click();
-  }
+  const aetherActiveId = await page.locator("#packButtons .pack-button.is-active").getAttribute("data-pack");
+  const aetherTarget = page.locator("#packButtons .pack-button:not(.is-active)").first();
+  const aetherTargetId = await aetherTarget.getAttribute("data-pack");
+  expect(aetherActiveId).toBeTruthy();
+  expect(aetherTargetId).toBeTruthy();
+  expect(aetherTargetId).not.toBe(aetherActiveId);
+  await aetherTarget.click();
+  await expect(page.locator("#packButtons .pack-button.is-active")).toHaveAttribute("data-pack", aetherTargetId);
   await expect(page.locator("#currentPack")).not.toHaveText(aetherInitial || "");
   await expect(page.locator("#engineState")).toHaveText("WAV-STEM");
 
