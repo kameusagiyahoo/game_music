@@ -61,6 +61,8 @@ jobs:
         run: node tools/check_music_result_sync.mjs
       - name: Check Game Pack Preference Policy
         run: node tools/check_game_pack_preferences.mjs
+      - name: Check Shared Game Audio Controls
+        run: node tools/check_game_audio_controls.mjs
       - name: Check Beat and Bar Quantization
         run: node tools/check_music_quantization.mjs
       - name: Check Real Audio Pack Hot Swap
