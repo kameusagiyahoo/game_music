@@ -151,6 +151,7 @@ jobs:
           node --check tools/check_music_multi_wav_packs.mjs
           node --check tools/check_music_volume_controls.mjs
           node --check tools/check_music_result_sync.mjs
+          node --check tools/check_game_pack_preferences.mjs
           node --check tools/check_music_qa_route_matrix.mjs
           node --check tools/check_music_qa_route_baseline_registry.mjs
           node --check tools/check_music_pack_hot_swap.mjs
@@ -183,6 +184,8 @@ jobs:
         run: node tools/check_music_volume_controls.mjs
       - name: Check Result State and Stinger Sync
         run: node tools/check_music_result_sync.mjs
+      - name: Check Game Pack Preference Policy
+        run: node tools/check_game_pack_preferences.mjs
       - name: Check Beat and Bar Quantization
         run: node tools/check_music_quantization.mjs
       - name: Check Real Audio Pack Hot Swap
