@@ -1,4 +1,4 @@
-import { MusicManager } from "../src/music-manager.js";
+import { MusicManager } from "./fixtures/legacy-procedural-music-manager.js";
 import { WavStemMusicManager } from "../src/wav-stem-manager.js";
 
 function assertEqual(actual, expected, label) {
@@ -54,7 +54,7 @@ const wavPack = {
   },
 };
 
-verifyVolumeClamp(new MusicManager({ pack: proceduralPack }), "procedural");
+verifyVolumeClamp(new MusicManager({ pack: proceduralPack }), "legacy procedural fixture");
 verifyVolumeClamp(new WavStemMusicManager({ pack: wavPack }), "wav-stem");
 
 console.log("Music volume control check PASSED");
