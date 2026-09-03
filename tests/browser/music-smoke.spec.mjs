@@ -6,6 +6,7 @@ const games = [
   { name: "Pulse Forge", path: "/games/pulse-forge/", title: "Pulse Forge" },
   { name: "Rune Relay", path: "/games/rune-relay/", title: "Rune Relay" },
   { name: "Aether Shift", path: "/games/aether-shift/", title: "Aether Shift" },
+  { name: "Beat Claim", path: "/games/beat-claim/", title: "Beat Claim" },
 ];
 
 function watchRuntimeErrors(page) {
@@ -65,7 +66,7 @@ test("MusicFacade resolves every game to the production WAV-stem engine in WebKi
     });
   });
 
-  expect(descriptors).toHaveLength(5);
+  expect(descriptors).toHaveLength(6);
   for (const descriptor of descriptors) {
     expect(descriptor.engine).toBe("wav-stem");
     expect(descriptor.packId).toBeTruthy();
@@ -121,6 +122,21 @@ test("Rune Relay and Aether Shift can change game-local packs before play", asyn
   await expect(page.locator("#packButtons .pack-button.is-active")).toHaveAttribute("data-pack", aetherTargetId);
   await expect(page.locator("#currentPack")).not.toHaveText(aetherInitial || "");
   await expect(page.locator("#engineState")).toHaveText("WAV-STEM");
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+
+test("Beat Claim exposes 2-4 player local multiplayer controls", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "networkidle" });
+
+  await expect(page.locator("#playerCount")).toHaveValue("2");
+  await expect(page.locator(".claim-pad:not([hidden])")).toHaveCount(2);
+
+  await page.locator("#playerCount").selectOption("4");
+  await expect(page.locator(".claim-pad:not([hidden])")).toHaveCount(4);
+  await expect(page.locator("#playerCountValue")).toHaveText("4");
 
   expect(errors, errors.join("\n")).toEqual([]);
 });
