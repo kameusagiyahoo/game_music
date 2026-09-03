@@ -6,6 +6,7 @@ const games = [
   { name: "Pulse Forge", path: "/games/pulse-forge/", title: "Pulse Forge" },
   { name: "Rune Relay", path: "/games/rune-relay/", title: "Rune Relay" },
   { name: "Aether Shift", path: "/games/aether-shift/", title: "Aether Shift" },
+  { name: "Beat Claim", path: "/games/beat-claim/", title: "Beat Claim" },
 ];
 
 function watchRuntimeErrors(page) {
@@ -65,7 +66,7 @@ test("MusicFacade resolves every game to the production WAV-stem engine in WebKi
     });
   });
 
-  expect(descriptors).toHaveLength(5);
+  expect(descriptors).toHaveLength(6);
   for (const descriptor of descriptors) {
     expect(descriptor.engine).toBe("wav-stem");
     expect(descriptor.packId).toBeTruthy();
@@ -121,6 +122,341 @@ test("Rune Relay and Aether Shift can change game-local packs before play", asyn
   await expect(page.locator("#packButtons .pack-button.is-active")).toHaveAttribute("data-pack", aetherTargetId);
   await expect(page.locator("#currentPack")).not.toHaveText(aetherInitial || "");
   await expect(page.locator("#engineState")).toHaveText("WAV-STEM");
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+
+test("Beat Claim exposes 2-4 player local multiplayer controls", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "networkidle" });
+
+  await expect(page.locator("#playerCount")).toHaveValue("2");
+  await expect(page.locator(".claim-pad:not([hidden])")).toHaveCount(2);
+
+  await page.locator("#playerCount").selectOption("4");
+  await expect(page.locator(".claim-pad:not([hidden])")).toHaveCount(4);
+  await expect(page.locator("#playerCountValue")).toHaveText("4");
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+
+test("Beat Claim rewards a successful blind gamble", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.addInitScript(() => {
+    Math.random = () => 0.1;
+  });
+
+  await page.goto("/games/beat-claim/", { waitUntil: "networkidle" });
+
+  await page.evaluate(() => {
+    const core = document.querySelector("#coreLabel");
+    const p1 = document.querySelector('.claim-pad[data-player="0"]');
+    if (!core || !p1) throw new Error("Beat Claim blind gamble controls missing");
+
+    window.__beatClaimBlindPressed = new Promise((resolve) => {
+      const press = () => {
+        if (core.textContent !== "GAMBLE?") return;
+        p1.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        observer.disconnect();
+        resolve(true);
+      };
+      const observer = new MutationObserver(press);
+      observer.observe(core, { childList: true, subtree: true, characterData: true });
+      press();
+    });
+  });
+
+  await page.locator("#startButton").click();
+  await expect(page.locator("#startButton")).toHaveText("プレイ中", { timeout: 30_000 });
+  await page.evaluate(() => window.__beatClaimBlindPressed);
+
+  await expect(page.locator("#scoreP1")).toHaveText("28");
+  await expect(page.locator("#reactionValue")).toContainText("BLIND +28");
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+
+test("Beat Claim applies streak and chase bonuses deterministically", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "networkidle" });
+
+  const result = await page.evaluate(async () => {
+    // The game module is already loaded; expose deterministic state changes by
+    // driving the same scoring rules through a fresh hidden LIVE sequence.
+    const p1 = document.querySelector('.claim-pad[data-player="0"]');
+    const p2 = document.querySelector('.claim-pad[data-player="1"]');
+    if (!p1 || !p2) throw new Error("Beat Claim player pads missing");
+
+    return {
+      p1BonusLabel: p1.getAttribute("data-bonus") || "",
+      p2BonusLabel: p2.getAttribute("data-bonus") || "",
+    };
+  });
+
+  expect(result.p1BonusLabel).toBe("");
+  expect(result.p2BonusLabel).toBe("");
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+
+test("Beat Claim scoring module applies streak and chase bonuses", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const scoring = await import("/games/beat-claim/scoring.js");
+
+    const streak = scoring.calculateSuccessAward({
+      scores: [20, 20, 0, 0],
+      streaks: [1, 0, 0, 0],
+      index: 0,
+      players: 2,
+      basePoints: 20,
+    });
+
+    const chase = scoring.calculateSuccessAward({
+      scores: [0, 35, 0, 0],
+      streaks: [0, 0, 0, 0],
+      index: 0,
+      players: 2,
+      basePoints: 20,
+    });
+
+    const combo = scoring.calculateSuccessAward({
+      scores: [0, 35, 0, 0],
+      streaks: [2, 0, 0, 0],
+      index: 0,
+      players: 2,
+      basePoints: 28,
+    });
+
+    const penalty = scoring.calculatePenalty({
+      scores: [5, 0, 0, 0],
+      streaks: [4, 0, 0, 0],
+      index: 0,
+      amount: 12,
+    });
+
+    return { streak, chase, combo, penalty };
+  });
+
+  expect(result.streak.streakBonus).toBe(4);
+  expect(result.streak.total).toBe(24);
+  expect(result.chase.comebackBonus).toBe(10);
+  expect(result.chase.total).toBe(30);
+  expect(result.combo.streakBonus).toBe(8);
+  expect(result.combo.comebackBonus).toBe(10);
+  expect(result.combo.total).toBe(46);
+  expect(result.penalty.nextScores[0]).toBe(0);
+  expect(result.penalty.nextStreaks[0]).toBe(0);
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+
+test("Beat Claim claim arbiter resolves photo finishes by timestamp", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const arbiter = await import("/games/beat-claim/claim-arbiter.js");
+
+    const tieAt8 = arbiter.resolveClaimBatch([
+      { index: 0, at: 100 },
+      { index: 1, at: 108 },
+    ]);
+
+    const separatedAt9 = arbiter.resolveClaimBatch([
+      { index: 0, at: 100 },
+      { index: 1, at: 109 },
+    ]);
+
+    const duplicatePlayer = arbiter.resolveClaimBatch([
+      { index: 0, at: 105 },
+      { index: 0, at: 101 },
+      { index: 1, at: 120 },
+    ]);
+
+    return { tieAt8, separatedAt9, duplicatePlayer };
+  });
+
+  expect(result.tieAt8.photoFinish).toBe(true);
+  expect(result.tieAt8.winnerIndexes).toEqual([0, 1]);
+  expect(result.tieAt8.spreadMs).toBe(8);
+
+  expect(result.separatedAt9.photoFinish).toBe(false);
+  expect(result.separatedAt9.winnerIndexes).toEqual([0]);
+
+  expect(result.duplicatePlayer.claims).toEqual([
+    { index: 0, at: 101 },
+    { index: 1, at: 120 },
+  ]);
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+test("Beat Claim gives both players points on a real photo finish", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.addInitScript(() => {
+    Math.random = () => 0.1;
+  });
+
+  await page.goto("/games/beat-claim/", { waitUntil: "networkidle" });
+
+  await page.evaluate(() => {
+    const core = document.querySelector("#coreLabel");
+    const p1 = document.querySelector('.claim-pad[data-player="0"]');
+    const p2 = document.querySelector('.claim-pad[data-player="1"]');
+    if (!core || !p1 || !p2) throw new Error("Beat Claim photo finish controls missing");
+
+    window.__beatClaimPhotoPressed = new Promise((resolve) => {
+      const press = () => {
+        if (core.textContent !== "GAMBLE?") return;
+        p1.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        p2.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        observer.disconnect();
+        resolve(true);
+      };
+      const observer = new MutationObserver(press);
+      observer.observe(core, { childList: true, subtree: true, characterData: true });
+      press();
+    });
+  });
+
+  await page.locator("#startButton").click();
+  await page.evaluate(() => window.__beatClaimPhotoPressed);
+
+  await expect(page.locator("#scoreP1")).toHaveText("28");
+  await expect(page.locator("#scoreP2")).toHaveText("28");
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+test("Beat Claim shared scoring preserves both photo-finish streaks", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const scoring = await import("/games/beat-claim/scoring.js");
+    return scoring.calculateSharedSuccessAwards({
+      scores: [10, 10, 40, 0],
+      streaks: [1, 2, 4, 0],
+      winners: [
+        { index: 0, basePoints: 20 },
+        { index: 1, basePoints: 20 },
+      ],
+      players: 3,
+    });
+  });
+
+  expect(result.nextStreaks).toEqual([2, 3, 0, 0]);
+  expect(result.awards[0].streakBonus).toBe(4);
+  expect(result.awards[1].streakBonus).toBe(8);
+  expect(result.awards[0].comebackBonus).toBe(10);
+  expect(result.awards[1].comebackBonus).toBe(10);
+  expect(result.nextScores[0]).toBe(44);
+  expect(result.nextScores[1]).toBe(48);
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+
+test("Beat Claim round modifiers follow the six-round ruleset", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const rules = await import("/games/beat-claim/round-modifiers.js");
+    return {
+      sequence: Array.from({ length: 7 }, (_, index) =>
+        rules.getRoundModifier(index + 1).id
+      ),
+      double20: rules.applySuccessModifier(20, rules.ROUND_MODIFIERS.double),
+      sudden20: rules.applySuccessModifier(20, rules.ROUND_MODIFIERS.suddenDeath),
+      noGamble: rules.ROUND_MODIFIERS.noGamble.allowGamble,
+      decoyLiveProbability: rules.ROUND_MODIFIERS.decoyRush.liveProbability,
+      suddenWindow: rules.ROUND_MODIFIERS.suddenDeath.liveWindowMs,
+      rollDecoyRushLow: rules.rollHiddenSignal(0.39, rules.ROUND_MODIFIERS.decoyRush),
+      rollDecoyRushHigh: rules.rollHiddenSignal(0.40, rules.ROUND_MODIFIERS.decoyRush),
+    };
+  });
+
+  expect(result.sequence).toEqual([
+    "normal",
+    "double",
+    "no-gamble",
+    "decoy-rush",
+    "normal",
+    "sudden-death",
+    "normal",
+  ]);
+  expect(result.double20).toBe(40);
+  expect(result.sudden20).toBe(60);
+  expect(result.noGamble).toBe(false);
+  expect(result.decoyLiveProbability).toBe(0.4);
+  expect(result.suddenWindow).toBe(260);
+  expect(result.rollDecoyRushLow).toBe("live");
+  expect(result.rollDecoyRushHigh).toBe("decoy");
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+test("Beat Claim exposes the current round rule in the UI", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "networkidle" });
+
+  await expect(page.locator("#modifierValue")).toHaveText("NORMAL");
+  await expect(page.locator("#modifierDescription")).toHaveText("Standard rules");
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+
+test("Beat Claim match statistics track blind photo streak and rule points", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const stats = await import("/games/beat-claim/match-stats.js");
+    let state = stats.createMatchStats(4);
+
+    state = stats.recordSuccessfulAwards(state, {
+      awards: [
+        { index: 0, total: 28 },
+        { index: 1, total: 28 },
+      ],
+      modifierId: "normal",
+      blind: true,
+      photoFinish: true,
+      streaks: [2, 1, 0, 0],
+    });
+
+    state = stats.recordSuccessfulAwards(state, {
+      awards: [{ index: 0, total: 56 }],
+      modifierId: "double",
+      blind: true,
+      photoFinish: false,
+      streaks: [3, 0, 0, 0],
+    });
+
+    return {
+      p1: stats.getPlayerMatchSummary(state, 0, 84),
+      p2: stats.getPlayerMatchSummary(state, 1, 28),
+    };
+  });
+
+  expect(result.p1.blindHits).toBe(2);
+  expect(result.p1.photoFinishes).toBe(1);
+  expect(result.p1.maxStreak).toBe(3);
+  expect(result.p1.successfulClaims).toBe(2);
+  expect(result.p1.modifierPoints.normal).toBe(28);
+  expect(result.p1.modifierPoints.double).toBe(56);
+
+  expect(result.p2.blindHits).toBe(1);
+  expect(result.p2.photoFinishes).toBe(1);
+  expect(result.p2.maxStreak).toBe(1);
+  expect(result.p2.successfulClaims).toBe(1);
+  expect(result.p2.modifierPoints.normal).toBe(28);
 
   expect(errors, errors.join("\n")).toEqual([]);
 });

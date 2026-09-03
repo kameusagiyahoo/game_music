@@ -113,6 +113,7 @@ Default Pack mapping:
 | Pulse Forge | pulse |
 | Rune Relay | fantasy |
 | Aether Shift | clockwork |
+| Beat Claim | pulse |
 
 Global Settings can override the default Pack. Rune Relay and Aether Shift additionally support game-local Pack selection. Local selection takes priority for that game without mutating the Global Pack preference.
 

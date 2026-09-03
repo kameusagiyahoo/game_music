@@ -20,6 +20,7 @@ export const GAME_IDS = Object.freeze({
   PULSE_FORGE: "pulse-forge",
   RUNE_RELAY: "rune-relay",
   AETHER_SHIFT: "aether-shift",
+  BEAT_CLAIM: "beat-claim",
 });
 
 const entries = [
@@ -37,6 +38,7 @@ export const GAME_DEFAULT_PACKS = Object.freeze({
   [GAME_IDS.PULSE_FORGE]: "pulse",
   [GAME_IDS.RUNE_RELAY]: "fantasy",
   [GAME_IDS.AETHER_SHIFT]: "clockwork",
+  [GAME_IDS.BEAT_CLAIM]: "pulse",
 });
 
 const WAV_STEM_SELECTION_VERSION = 4;

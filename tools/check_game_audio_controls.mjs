@@ -110,6 +110,7 @@ const gameFiles = [
   "games/pulse-forge/game.js",
   "games/rune-relay/game.js",
   "games/aether-shift/game.js",
+  "games/beat-claim/game.js",
 ];
 
 for (const path of gameFiles) {
