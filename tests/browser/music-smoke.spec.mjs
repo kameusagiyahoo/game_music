@@ -553,3 +553,39 @@ test("Sync Circuit engine produces deterministic single and chord pulses", async
 
   expect(errors, errors.join("\n")).toEqual([]);
 });
+
+
+test("Sync Circuit can complete a cooperative pulse", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.addInitScript(() => {
+    Math.random = () => 0.1;
+  });
+
+  await page.goto("/games/sync-circuit/", { waitUntil: "networkidle" });
+
+  await page.evaluate(() => {
+    const p1 = document.querySelector('.sync-pad[data-player="0"]');
+    if (!p1) throw new Error("Sync Circuit P1 pad missing");
+
+    window.__syncCircuitPulsePressed = new Promise((resolve) => {
+      const press = () => {
+        if (!p1.classList.contains("is-target")) return;
+        p1.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        observer.disconnect();
+        resolve(true);
+      };
+      const observer = new MutationObserver(press);
+      observer.observe(p1, { attributes: true, attributeFilter: ["class"] });
+      press();
+    });
+  });
+
+  await page.locator("#startButton").click();
+  await expect(page.locator("#startButton")).toHaveText("プレイ中", { timeout: 30_000 });
+  await page.evaluate(() => window.__syncCircuitPulsePressed);
+
+  await expect(page.locator("#stabilityValue")).toHaveText("77");
+  await expect(page.locator("#syncValue")).toHaveText("1");
+  await expect(page.locator("#comboValue")).toHaveText("×1");
+  expect(errors, errors.join("\n")).toEqual([]);
+});
