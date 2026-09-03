@@ -3,7 +3,7 @@ export const PHOTO_FINISH_MS = 8;
 
 function normalizeTimestamp(value) {
   const number = Number(value);
-  return Number.isFinite(number) && number >= 0 ? number : 0;
+  return Number.isFinite(number) && number >= 0 ? number : null;
 }
 
 export function resolveClaimBatch(
@@ -17,6 +17,8 @@ export function resolveClaimBatch(
     if (!Number.isInteger(index) || index < 0) continue;
 
     const at = normalizeTimestamp(claim?.at);
+    if (at === null) continue;
+
     const current = earliestByPlayer.get(index);
     if (!current || at < current.at) {
       earliestByPlayer.set(index, { index, at });
