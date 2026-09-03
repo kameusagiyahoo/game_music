@@ -111,6 +111,7 @@ const gameFiles = [
   "games/rune-relay/game.js",
   "games/aether-shift/game.js",
   "games/beat-claim/game.js",
+  "games/sync-circuit/game.js",
 ];
 
 for (const path of gameFiles) {
