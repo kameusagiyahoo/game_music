@@ -410,3 +410,53 @@ test("Beat Claim exposes the current round rule in the UI", async ({ page }) => 
   await expect(page.locator("#modifierDescription")).toHaveText("Standard rules");
   expect(errors, errors.join("\n")).toEqual([]);
 });
+
+
+test("Beat Claim match statistics track blind photo streak and rule points", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const stats = await import("/games/beat-claim/match-stats.js");
+    let state = stats.createMatchStats(4);
+
+    state = stats.recordSuccessfulAwards(state, {
+      awards: [
+        { index: 0, total: 28 },
+        { index: 1, total: 28 },
+      ],
+      modifierId: "normal",
+      blind: true,
+      photoFinish: true,
+      streaks: [2, 1, 0, 0],
+    });
+
+    state = stats.recordSuccessfulAwards(state, {
+      awards: [{ index: 0, total: 56 }],
+      modifierId: "double",
+      blind: true,
+      photoFinish: false,
+      streaks: [3, 0, 0, 0],
+    });
+
+    return {
+      p1: stats.getPlayerMatchSummary(state, 0, 84),
+      p2: stats.getPlayerMatchSummary(state, 1, 28),
+    };
+  });
+
+  expect(result.p1.blindHits).toBe(2);
+  expect(result.p1.photoFinishes).toBe(1);
+  expect(result.p1.maxStreak).toBe(3);
+  expect(result.p1.successfulClaims).toBe(2);
+  expect(result.p1.modifierPoints.normal).toBe(28);
+  expect(result.p1.modifierPoints.double).toBe(56);
+
+  expect(result.p2.blindHits).toBe(1);
+  expect(result.p2.photoFinishes).toBe(1);
+  expect(result.p2.maxStreak).toBe(1);
+  expect(result.p2.successfulClaims).toBe(1);
+  expect(result.p2.modifierPoints.normal).toBe(28);
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
