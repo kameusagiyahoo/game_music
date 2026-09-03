@@ -1068,7 +1068,7 @@ export class WavStemMusicManager {
   }
 
   setMusicVolume(value) {
-    this.musicVolume = Math.max(0.01, Math.min(1, Number(value)));
+    this.musicVolume = Math.max(0, Math.min(1, Number(value)));
     if (!this.context || !this.musicEnabled) return;
     this.#applyMusicRootGain(0.04);
     this.#ramp(this.stingerBus.gain, this.musicVolume, 0.04);
@@ -1076,7 +1076,7 @@ export class WavStemMusicManager {
   }
 
   setSfxVolume(value) {
-    this.sfxVolume = Math.max(0.01, Math.min(1, Number(value)));
+    this.sfxVolume = Math.max(0, Math.min(1, Number(value)));
     if (this.context && this.sfxEnabled) this.#ramp(this.sfxBus.gain, this.sfxVolume, 0.04);
   }
 

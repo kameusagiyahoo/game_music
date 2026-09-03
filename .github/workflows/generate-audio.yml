@@ -1,0 +1,147 @@
+name: Generate multi-format audio
+
+on:
+  workflow_dispatch:
+    inputs:
+      pack:
+        description: Music Pack to generate
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - pulse
+          - fantasy
+          - neon
+          - clockwork
+  push:
+    paths:
+      - "tools/generate_*_stems.py"
+      - "tools/encode_*_audio.sh"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: audio-generation
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      packs: ${{ steps.packs.outputs.packs }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: packs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_PACK: ${{ inputs.pack || '' }}
+          BEFORE_SHA: ${{ github.event.before || '' }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          selected=()
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "$DISPATCH_PACK" = "all" ]; then
+              selected=(pulse fantasy neon clockwork)
+            else
+              selected=("$DISPATCH_PACK")
+            fi
+          else
+            before="$BEFORE_SHA"
+            if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+              before="$(git rev-parse "$CURRENT_SHA^" 2>/dev/null || true)"
+            fi
+            if [ -n "$before" ]; then
+              files="$(git diff --name-only "$before" "$CURRENT_SHA")"
+            else
+              files="$(git show --pretty="" --name-only "$CURRENT_SHA")"
+            fi
+
+            for pack in pulse fantasy neon clockwork; do
+              if printf '%s\n' "$files" | grep -Eq "^tools/(generate_${pack}_stems\\.py|encode_${pack}_audio\\.sh)$"; then
+                selected+=("$pack")
+              fi
+            done
+          fi
+
+          json="$(printf '%s\n' "${selected[@]-}" | python -c 'import json,sys; print(json.dumps([line.strip() for line in sys.stdin if line.strip()]))')"
+          echo "packs=$json" >> "$GITHUB_OUTPUT"
+          echo "Selected packs: $json"
+
+  generate:
+    needs: detect
+    if: needs.detect.outputs.packs != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        pack: ${{ fromJSON(needs.detect.outputs.packs) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Generate WAV stems, stingers and transitions
+        env:
+          PACK: ${{ matrix.pack }}
+        run: python "tools/generate_${PACK}_stems.py"
+      - name: Validate WAV profile
+        env:
+          PACK: ${{ matrix.pack }}
+        run: python "tools/check_${PACK}_audio_profile.py"
+      - name: Validate Pulse mastering targets
+        if: matrix.pack == 'pulse'
+        run: python tools/check_pulse_mastering.py
+      - name: Encode OGG and AAC/M4A variants
+        env:
+          PACK: ${{ matrix.pack }}
+        run: bash "tools/encode_${PACK}_audio.sh"
+      - name: Validate generated format profile
+        env:
+          PACK: ${{ matrix.pack }}
+        run: |
+          set -euo pipefail
+          for src in assets/stems/"$PACK"/*.{wav,ogg,m4a} assets/stingers/"$PACK"/*.{wav,ogg,m4a} assets/transitions/"$PACK"/*.{wav,ogg,m4a}; do
+            sample_rate="$(ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of default=noprint_wrappers=1:nokey=1 "$src")"
+            channels="$(ffprobe -v error -select_streams a:0 -show_entries stream=channels -of default=noprint_wrappers=1:nokey=1 "$src")"
+            if [ "$sample_rate" != "44100" ] || [ "$channels" != "2" ]; then
+              echo "Invalid $PACK audio profile: $src sample_rate=$sample_rate channels=$channels"
+              exit 1
+            fi
+          done
+          echo "All $PACK audio assets are 44.1 kHz stereo"
+      - name: Validate decoded cross-format parity
+        env:
+          PACK: ${{ matrix.pack }}
+        run: python "tools/check_${PACK}_format_parity.py"
+      - name: Validate format parity gate semantics
+        env:
+          PACK: ${{ matrix.pack }}
+        run: python "tools/check_${PACK}_format_parity_semantics.py"
+      - name: Commit generated audio
+        env:
+          PACK: ${{ matrix.pack }}
+        run: |
+          set -euo pipefail
+          label="${PACK^}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "assets/stems/$PACK" "assets/stingers/$PACK" "assets/transitions/$PACK"
+          if git diff --cached --quiet; then
+            echo "$label audio already up to date"
+            exit 0
+          fi
+          git commit -m "Generate $label multi-format audio"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main

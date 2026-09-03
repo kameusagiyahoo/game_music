@@ -1,4 +1,3 @@
-import { MusicManager } from "./music-manager.js";
 import { WavStemMusicManager } from "./wav-stem-manager.js";
 import { resolvePackAudioFormat } from "./music-format-resolver.js";
 import {
@@ -59,23 +58,6 @@ export function versionPackAudioAssets(pack, version) {
 }
 
 export const MUSIC_CAPABILITIES = Object.freeze({
-  [MUSIC_ENGINES.PROCEDURAL]: Object.freeze({
-    quantizedModeTransition: true,
-    quantizedPackSwitch: true,
-    layerMix: true,
-    wavStems: false,
-    stingers: false,
-    quantizedStingers: false,
-    transitionCues: false,
-    formatResolver: false,
-    runtimeDecodeFallback: false,
-    preload: false,
-    memoryAssetCache: false,
-    persistentAudioCache: false,
-    serviceWorkerCache: false,
-    mastering: false,
-    realtimeMeter: false,
-  }),
   [MUSIC_ENGINES.WAV_STEM]: Object.freeze({
     quantizedModeTransition: true,
     quantizedPackSwitch: true,
@@ -91,7 +73,7 @@ export const MUSIC_CAPABILITIES = Object.freeze({
     preload: true,
     memoryAssetCache: true,
     persistentAudioCache: true,
-    serviceWorkerCache: true,
+    serviceWorkerCache: false,
     mastering: true,
     realtimeMeter: true,
   }),
@@ -99,10 +81,12 @@ export const MUSIC_CAPABILITIES = Object.freeze({
 
 export function prepareMusicPackForRuntime(entry, formatOptions = {}) {
   if (!entry) throw new Error("Music Pack entry is required");
+  if (entry.engine !== MUSIC_ENGINES.WAV_STEM) {
+    throw new Error(`Unsupported music engine: ${entry.engine}`);
+  }
+
   const versionedPack = versionPackAudioAssets(entry.pack, entry.version);
-  const formatResolution = entry.engine === MUSIC_ENGINES.WAV_STEM
-    ? resolvePackAudioFormat(versionedPack, formatOptions)
-    : { pack: versionedPack, selection: null, candidates: [] };
+  const formatResolution = resolvePackAudioFormat(versionedPack, formatOptions);
 
   return {
     entry,
@@ -124,11 +108,7 @@ export function resolveMusicAsset({ gameId, packId, engine } = {}) {
 
   if (!gameId) throw new Error("gameId or packId is required");
 
-  let targetEngine = engine;
-  if (!targetEngine) {
-    const defaultPackId = GAME_DEFAULT_PACKS[gameId];
-    targetEngine = getMusicPackEntry(defaultPackId)?.engine || MUSIC_ENGINES.PROCEDURAL;
-  }
+  const targetEngine = engine || MUSIC_ENGINES.WAV_STEM;
 
   const entry = resolveMusicPack(gameId, targetEngine);
   if (!entry) throw new Error(`No compatible Music Pack for ${gameId}`);
@@ -166,14 +146,10 @@ export function createMusicRuntime({
     onFormatChange: callbacks.onFormatChange,
   };
 
-  let manager;
-  if (entry.engine === MUSIC_ENGINES.PROCEDURAL) {
-    manager = new MusicManager(options);
-  } else if (entry.engine === MUSIC_ENGINES.WAV_STEM) {
-    manager = new WavStemMusicManager(options);
-  } else {
+  if (entry.engine !== MUSIC_ENGINES.WAV_STEM) {
     throw new Error(`Unsupported music engine: ${entry.engine}`);
   }
+  const manager = new WavStemMusicManager(options);
 
   configureMusicManager(manager, settings);
 
@@ -192,27 +168,15 @@ export function createMusicRuntime({
 }
 
 const STATE_MAP = Object.freeze({
-  normal: Object.freeze({
-    [MUSIC_ENGINES.PROCEDURAL]: { mode: "normal", preset: null },
-    [MUSIC_ENGINES.WAV_STEM]: { mode: "normal", preset: "focus" },
-  }),
-  build: Object.freeze({
-    [MUSIC_ENGINES.PROCEDURAL]: { mode: "tension", preset: null },
-    [MUSIC_ENGINES.WAV_STEM]: { mode: "build", preset: "build" },
-  }),
-  tension: Object.freeze({
-    [MUSIC_ENGINES.PROCEDURAL]: { mode: "tension", preset: null },
-    [MUSIC_ENGINES.WAV_STEM]: { mode: "overdrive", preset: "overdrive" },
-  }),
-  result: Object.freeze({
-    [MUSIC_ENGINES.PROCEDURAL]: { mode: "result", preset: null },
-    [MUSIC_ENGINES.WAV_STEM]: { mode: "result", preset: "result" },
-  }),
+  normal: Object.freeze({ mode: "normal", preset: "focus" }),
+  build: Object.freeze({ mode: "build", preset: "build" }),
+  tension: Object.freeze({ mode: "overdrive", preset: "overdrive" }),
+  result: Object.freeze({ mode: "result", preset: "result" }),
 });
 
 export async function applyMusicState(runtime, state, options = {}) {
   if (!runtime?.manager) return null;
-  const mapping = STATE_MAP[state]?.[runtime.engine];
+  const mapping = STATE_MAP[state];
   if (!mapping) throw new Error(`Unsupported music state: ${state}`);
 
   const manager = runtime.manager;
@@ -243,7 +207,7 @@ export async function applyMusicState(runtime, state, options = {}) {
     }
   }
 
-  if (!scheduledAt && runtime.engine === MUSIC_ENGINES.WAV_STEM && typeof manager.getQuantizedTime === "function") {
+  if (!scheduledAt && typeof manager.getQuantizedTime === "function") {
     scheduledAt = manager.getQuantizedTime(quantize);
   }
 
@@ -265,19 +229,11 @@ export async function applyMusicState(runtime, state, options = {}) {
     runtime.entry?.pack?.modes?.[mapping.mode] &&
     typeof manager.transitionTo === "function"
   ) {
-    if (runtime.engine === MUSIC_ENGINES.PROCEDURAL) {
-      await manager.transitionTo(mapping.mode, {
-        quantize,
-        crossfadeBeats: Number(options.crossfadeBeats ?? 1.5),
-        seconds: options.seconds,
-      });
-    } else {
-      await manager.transitionTo(mapping.mode, {
-        quantize,
-        scheduledAt,
-        seconds: options.seconds,
-      });
-    }
+    await manager.transitionTo(mapping.mode, {
+      quantize,
+      scheduledAt,
+      seconds: options.seconds,
+    });
   }
 
   if (scheduledAt) runtime.lastTransitionAt = scheduledAt;

@@ -10,7 +10,12 @@ export function isMusicServiceWorkerSupported() {
 
 export async function ensureMusicServiceWorker() {
   if (!isMusicServiceWorkerSupported()) {
-    return { supported: false, registered: false };
+    return {
+      supported: false,
+      registered: false,
+      audioCacheOwner: "application",
+      interceptsAudioFetch: false,
+    };
   }
 
   if (!registrationPromise) {
@@ -20,12 +25,16 @@ export async function ensureMusicServiceWorker() {
         supported: true,
         registered: true,
         scope: registration.scope,
+        audioCacheOwner: "application",
+        interceptsAudioFetch: false,
       }))
       .catch((error) => {
         registrationPromise = null;
         return {
           supported: true,
           registered: false,
+          audioCacheOwner: "application",
+          interceptsAudioFetch: false,
           error: error?.message || String(error),
         };
       });

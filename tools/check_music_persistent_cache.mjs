@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import {
   AUDIO_PERSISTENT_CACHE_NAME,
+  AUDIO_PERSISTENT_CACHE_OWNER,
   clearAudioAssetCache,
   clearPersistentAudioCache,
   getAudioAssetCacheInfo,
@@ -122,8 +123,17 @@ if (!versionedUrl.includes("gmv=1.4.1")) {
   errors.push(`runtime asset URL is not Pack-versioned: ${versionedUrl}`);
 }
 
+if (AUDIO_PERSISTENT_CACHE_OWNER !== "application") {
+  errors.push(`expected application cache ownership, got ${AUDIO_PERSISTENT_CACHE_OWNER}`);
+}
 if (!serviceWorkerSource.includes(AUDIO_PERSISTENT_CACHE_NAME)) {
-  errors.push("Service Worker cache name does not match audio cache module");
+  errors.push("Compatibility Service Worker must preserve the current application-owned cache name");
+}
+if (serviceWorkerSource.includes('addEventListener("fetch"') || serviceWorkerSource.includes("respondWith(")) {
+  errors.push("Service Worker must not intercept audio fetches");
+}
+if (serviceWorkerSource.includes("cache.put(")) {
+  errors.push("Service Worker must not write persistent audio cache entries");
 }
 
 const persistentStore = stores.get(AUDIO_PERSISTENT_CACHE_NAME);
@@ -143,3 +153,5 @@ console.log(`- network fetches after memory reset: ${networkAfterSecondLoad}`);
 console.log(`- persistent hits: ${secondCache.persistentHits}`);
 console.log(`- versioned URL: ${versionedUrl}`);
 console.log(`- cache name: ${AUDIO_PERSISTENT_CACHE_NAME}`);
+console.log(`- cache owner: ${AUDIO_PERSISTENT_CACHE_OWNER}`);
+console.log("- service worker: pass-through compatibility shell");

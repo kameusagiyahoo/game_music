@@ -1,4 +1,5 @@
 export const AUDIO_PERSISTENT_CACHE_NAME = "game-music-audio-v15";
+export const AUDIO_PERSISTENT_CACHE_OWNER = "application";
 
 const byteCache = new Map();
 
@@ -269,5 +270,6 @@ export function getAudioAssetCacheInfo() {
     persistentWrites,
     fetchedBytes: totalFetchedBytes,
     persistentCacheName: AUDIO_PERSISTENT_CACHE_NAME,
+    persistentCacheOwner: AUDIO_PERSISTENT_CACHE_OWNER,
   };
 }

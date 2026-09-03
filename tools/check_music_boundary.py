@@ -1,13 +1,8 @@
 from pathlib import Path
 import sys
 
-GAME_FILES = [
-    Path("src/game.js"),
-    Path("games/orbit-rush/game.js"),
-    Path("games/pulse-forge/game.js"),
-    Path("games/rune-relay/game.js"),
-    Path("games/aether-shift/game.js"),
-]
+ROOT_GAME_FILE = Path("src/game.js")
+GAME_DIRECTORY = Path("games")
 
 FORBIDDEN = (
     "music-manager.js",
@@ -31,12 +26,29 @@ FORBIDDEN = (
 
 REQUIRED = "createMusicFacade"
 
-errors = []
-for path in GAME_FILES:
-    if not path.exists():
-        errors.append(f"{path}: missing")
-        continue
 
+def discover_game_files():
+    files = []
+    if ROOT_GAME_FILE.is_file():
+        files.append(ROOT_GAME_FILE)
+
+    if GAME_DIRECTORY.is_dir():
+        files.extend(
+            path
+            for path in GAME_DIRECTORY.rglob("game.js")
+            if path.is_file()
+        )
+
+    return sorted(set(files), key=lambda path: path.as_posix())
+
+
+GAME_FILES = discover_game_files()
+
+errors = []
+if not GAME_FILES:
+    errors.append("no game entry files discovered")
+
+for path in GAME_FILES:
     text = path.read_text(encoding="utf-8")
     for token in FORBIDDEN:
         if token in text:
@@ -52,5 +64,6 @@ if errors:
     sys.exit(1)
 
 print("Music facade boundary check PASSED")
+print(f"Discovered {len(GAME_FILES)} game entry file(s)")
 for path in GAME_FILES:
     print(f"- {path}")
