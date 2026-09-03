@@ -262,3 +262,57 @@ body.is-tension .status-panel { border-color: rgba(255,101,127,.35); }
   .beat-core { width: min(40vh, 210px); }
   .claim-pad { min-height: 72px; }
 }
+
+
+.modifier-banner {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 16px;
+  background: rgba(18,22,37,.86);
+}
+
+.modifier-banner span {
+  grid-row: 1 / span 2;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .16em;
+  color: var(--muted);
+}
+
+.modifier-banner strong {
+  font-size: 15px;
+  letter-spacing: .08em;
+}
+
+.modifier-banner small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+body[data-round-modifier="double"] .modifier-banner {
+  border-color: rgba(255,215,120,.55);
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+
+body[data-round-modifier="no-gamble"] .modifier-banner {
+  border-color: rgba(102,231,255,.46);
+  box-shadow: inset 3px 0 0 var(--live);
+}
+
+body[data-round-modifier="decoy-rush"] .modifier-banner {
+  border-color: rgba(255,101,127,.55);
+  box-shadow: inset 3px 0 0 var(--decoy);
+}
+
+body[data-round-modifier="sudden-death"] .modifier-banner {
+  border-color: rgba(255,101,127,.8);
+  box-shadow: inset 3px 0 0 var(--decoy), 0 0 22px rgba(255,101,127,.12);
+}
+
+body[data-round-modifier="sudden-death"] #modifierValue {
+  color: var(--decoy);
+}
