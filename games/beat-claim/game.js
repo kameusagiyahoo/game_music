@@ -14,6 +14,7 @@ const LIVE_WINDOW_MS = 390;
 const DECOY_WINDOW_MS = 460;
 const BLIND_LIVE_POINTS = 28;
 const BLIND_DECOY_PENALTY = 12;
+const STREAK_BONUSES = Object.freeze([0, 0, 4, 8, 12]);
 
 const $ = (selector) => document.querySelector(selector);
 const playerPads = [...document.querySelectorAll(".claim-pad")];
@@ -45,6 +46,7 @@ const sfxVolumeValue = $("#sfxVolumeValue");
 let state = "ready";
 let players = 2;
 let scores = [0, 0, 0, 0];
+let streaks = [0, 0, 0, 0];
 let rounds = 0;
 let beatIndex = 0;
 let signal = "idle";
@@ -90,12 +92,38 @@ function clearCoreClasses() {
   beatCore.classList.remove("is-beat", "is-preview", "is-live", "is-decoy", "is-claimed");
 }
 
+function getLeaderScore() {
+  return Math.max(...scores.slice(0, players));
+}
+
+function getComebackBonus(index) {
+  const gap = getLeaderScore() - scores[index];
+  if (gap >= 30) return 10;
+  if (gap >= 15) return 5;
+  return 0;
+}
+
+function getStreakBonus(streak) {
+  return STREAK_BONUSES[Math.min(streak, STREAK_BONUSES.length - 1)] || 0;
+}
+
 function renderPlayers() {
   playerCountValue.textContent = String(players);
+  const leaderScore = getLeaderScore();
+
   playerPads.forEach((pad, index) => {
     pad.hidden = index >= players;
     const score = pad.querySelector("small");
     if (score) score.textContent = String(scores[index]);
+
+    const gap = leaderScore - scores[index];
+    const chase = index < players && gap >= 15;
+    pad.classList.toggle("is-chasing", chase);
+
+    const parts = [];
+    if (streaks[index] >= 2) parts.push(`STREAK ×${streaks[index]}`);
+    if (chase) parts.push(`CHASE +${gap >= 30 ? 10 : 5}`);
+    pad.dataset.bonus = parts.join(" · ");
   });
 }
 
@@ -109,6 +137,39 @@ function animatePad(index, className) {
   const pad = playerPads[index];
   pad.classList.add(className);
   window.setTimeout(() => pad.classList.remove(className), 180);
+}
+
+function resetOtherStreaks(winnerIndex) {
+  streaks = streaks.map((streak, index) => index === winnerIndex ? streak : 0);
+}
+
+function awardSuccess(index, basePoints, label) {
+  const comebackBonus = getComebackBonus(index);
+  resetOtherStreaks(index);
+  streaks[index] += 1;
+  const streakBonus = getStreakBonus(streaks[index]);
+  const total = basePoints + comebackBonus + streakBonus;
+  scores[index] += total;
+
+  const extras = [];
+  if (streakBonus) extras.push(`STREAK +${streakBonus}`);
+  if (comebackBonus) extras.push(`CHASE +${comebackBonus}`);
+  const suffix = extras.length ? ` · ${extras.join(" · ")}` : "";
+
+  animatePad(index, "is-winner");
+  reactionValue.textContent = `P${index + 1} · ${label} +${total}${suffix}`;
+  music.cue("hit");
+  renderPlayers();
+  return total;
+}
+
+function penalize(index, amount, label) {
+  streaks[index] = 0;
+  scores[index] = Math.max(0, scores[index] - amount);
+  animatePad(index, "is-penalty");
+  reactionValue.textContent = `P${index + 1} · ${label} -${amount}`;
+  music.cue("miss");
+  renderPlayers();
 }
 
 function closeSignal(label = "WAIT") {
@@ -176,29 +237,21 @@ function claim(index) {
     if (hiddenSignal === "live") {
       signal = "claimed";
       signalClaimed = true;
-      scores[index] += BLIND_LIVE_POINTS;
-      animatePad(index, "is-winner");
+      awardSuccess(index, BLIND_LIVE_POINTS, "BLIND");
       clearCoreClasses();
       beatCore.classList.add("is-live", "is-claimed");
       coreLabel.textContent = "BLIND HIT";
-      reactionValue.textContent = `P${index + 1} · BLIND +${BLIND_LIVE_POINTS}`;
-      music.cue("hit");
-      renderPlayers();
       renderStatus();
       signalTimerId = window.setTimeout(() => closeSignal("WAIT"), 300);
       return;
     }
 
-    scores[index] = Math.max(0, scores[index] - BLIND_DECOY_PENALTY);
-    animatePad(index, "is-penalty");
+    penalize(index, BLIND_DECOY_PENALTY, "TRAP");
     signal = "decoy";
     signalStartedAt = performance.now();
     clearCoreClasses();
     beatCore.classList.add("is-decoy");
     coreLabel.textContent = "TRAP";
-    reactionValue.textContent = `P${index + 1} · TRAP -${BLIND_DECOY_PENALTY}`;
-    music.cue("miss");
-    renderPlayers();
     renderStatus();
     signalTimerId = window.setTimeout(() => closeSignal("SAFE"), DECOY_WINDOW_MS);
     return;
@@ -209,32 +262,20 @@ function claim(index) {
     const reaction = Math.max(0, performance.now() - signalStartedAt);
     const bonus = Math.max(0, Math.round((LIVE_WINDOW_MS - reaction) / 40));
     const points = 10 + Math.min(10, bonus);
-    scores[index] += points;
-    animatePad(index, "is-winner");
+    awardSuccess(index, points, `${Math.round(reaction)}ms`);
     beatCore.classList.add("is-claimed");
-    reactionValue.textContent = `P${index + 1} · ${Math.round(reaction)}ms · +${points}`;
-    music.cue("hit");
-    renderPlayers();
     clearTimeout(signalTimerId);
     signalTimerId = window.setTimeout(() => closeSignal("WAIT"), 260);
     return;
   }
 
   if (signal === "decoy") {
-    scores[index] = Math.max(0, scores[index] - 5);
-    animatePad(index, "is-penalty");
-    reactionValue.textContent = `P${index + 1} · DECOY -5`;
-    music.cue("miss");
-    renderPlayers();
+    penalize(index, 5, "DECOY");
     return;
   }
 
   if (signal === "idle") {
-    scores[index] = Math.max(0, scores[index] - 2);
-    animatePad(index, "is-penalty");
-    reactionValue.textContent = `P${index + 1} · EARLY -2`;
-    music.cue("miss");
-    renderPlayers();
+    penalize(index, 2, "EARLY");
   }
 }
 
@@ -247,6 +288,7 @@ function resetGame() {
   state = "ready";
   players = Number(playerCount.value);
   scores = [0, 0, 0, 0];
+  streaks = [0, 0, 0, 0];
   rounds = 0;
   beatIndex = 0;
   signal = "idle";
@@ -338,6 +380,7 @@ playerCount.addEventListener("change", () => {
   if (state !== "ready") return;
   players = Number(playerCount.value);
   scores = [0, 0, 0, 0];
+  streaks = [0, 0, 0, 0];
   renderPlayers();
   renderStatus();
   setMessage("見るか、賭けるか。", `${players}人対戦。GAMBLE?で先読みするか、安全にLIVEを待とう。`);
