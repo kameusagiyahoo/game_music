@@ -149,11 +149,28 @@ test("Beat Claim rewards a successful blind gamble", async ({ page }) => {
   });
 
   await page.goto("/games/beat-claim/", { waitUntil: "networkidle" });
+
+  await page.evaluate(() => {
+    const core = document.querySelector("#coreLabel");
+    const p1 = document.querySelector('.claim-pad[data-player="0"]');
+    if (!core || !p1) throw new Error("Beat Claim blind gamble controls missing");
+
+    window.__beatClaimBlindPressed = new Promise((resolve) => {
+      const press = () => {
+        if (core.textContent !== "GAMBLE?") return;
+        p1.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        observer.disconnect();
+        resolve(true);
+      };
+      const observer = new MutationObserver(press);
+      observer.observe(core, { childList: true, subtree: true, characterData: true });
+      press();
+    });
+  });
+
   await page.locator("#startButton").click();
   await expect(page.locator("#startButton")).toHaveText("プレイ中", { timeout: 30_000 });
-  await expect(page.locator("#coreLabel")).toHaveText("GAMBLE?", { timeout: 12_000 });
-
-  await page.locator('.claim-pad[data-player="0"]').dispatchEvent("pointerdown");
+  await page.evaluate(() => window.__beatClaimBlindPressed);
 
   await expect(page.locator("#scoreP1")).toHaveText("28");
   await expect(page.locator("#reactionValue")).toContainText("BLIND +28");
