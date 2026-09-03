@@ -36,6 +36,12 @@
       <div class="status-item"><span class="status-label">STATE</span><strong id="signalValue">READY</strong></div>
     </section>
 
+    <section class="modifier-banner" aria-label="ラウンド特殊ルール">
+      <span>ROUND RULE</span>
+      <strong id="modifierValue">NORMAL</strong>
+      <small id="modifierDescription">Standard rules</small>
+    </section>
+
     <section class="audio-panel" aria-label="音楽設定">
       <div class="now-playing"><span>NOW PLAYING</span><strong id="musicState">READY · music stopped</strong></div>
       <div class="audio-row">
@@ -57,7 +63,7 @@
         <option value="3">3 Players</option>
         <option value="4">4 Players</option>
       </select>
-      <p>GAMBLE・STREAK・CHASEに加えてPHOTO FINISH対応。36ms以内の入力をまとめ、8ms以内の差は同着として両者に得点します。</p>
+      <p>6ラウンド周期でNORMAL → DOUBLE SCORE → NO GAMBLE → DECOY RUSH → NORMAL → SUDDEN DEATH。ROUND RULEを見て戦略を変えます。</p>
     </section>
 
     <section class="game-area claim-arena">
@@ -92,7 +98,7 @@
 
     <footer class="controls">
       <button id="startButton" class="primary-button" type="button">ゲーム開始</button>
-      <p class="hint">PHOTO FINISH ≤8ms · 判定窓36ms · STREAK +4/+8/+12 · CHASE +5/+10</p>
+      <p class="hint">DOUBLE ×2 · NO GAMBLE · DECOY 60% · SUDDEN ×3/260ms · PHOTO ≤8ms</p>
     </footer>
   </main>
 
