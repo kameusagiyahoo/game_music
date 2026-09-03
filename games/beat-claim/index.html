@@ -57,7 +57,7 @@
         <option value="3">3 Players</option>
         <option value="4">4 Players</option>
       </select>
-      <p>白いGAMBLE?で先読みすると高得点。ただしTRAPなら大減点。安全に色を見てから押すか、先に賭けるか。</p>
+      <p>GAMBLEに加えてSTREAKとCHASEあり。連勝で加点、首位から離れたプレイヤーには逆転ボーナスが入ります。</p>
     </section>
 
     <section class="game-area claim-arena">
@@ -75,16 +75,16 @@
       </div>
 
       <div id="playerGrid" class="player-grid" aria-label="プレイヤーCLAIMボタン">
-        <button class="claim-pad player-1" type="button" data-player="0">
+        <button class="claim-pad player-1" type="button" data-player="0" data-bonus="">
           <span>P1</span><strong>CLAIM</strong><small id="scoreP1">0</small>
         </button>
-        <button class="claim-pad player-2" type="button" data-player="1">
+        <button class="claim-pad player-2" type="button" data-player="1" data-bonus="">
           <span>P2</span><strong>CLAIM</strong><small id="scoreP2">0</small>
         </button>
-        <button class="claim-pad player-3" type="button" data-player="2" hidden>
+        <button class="claim-pad player-3" type="button" data-player="2" data-bonus="" hidden>
           <span>P3</span><strong>CLAIM</strong><small id="scoreP3">0</small>
         </button>
-        <button class="claim-pad player-4" type="button" data-player="3" hidden>
+        <button class="claim-pad player-4" type="button" data-player="3" data-bonus="" hidden>
           <span>P4</span><strong>CLAIM</strong><small id="scoreP4">0</small>
         </button>
       </div>
@@ -92,7 +92,7 @@
 
     <footer class="controls">
       <button id="startButton" class="primary-button" type="button">ゲーム開始</button>
-      <p class="hint">BLIND LIVE +28 / TRAP -12 / LIVE +10〜20 / DECOY -5 / 空振り -2</p>
+      <p class="hint">STREAK +0/+4/+8/+12 · CHASE +5/+10 · BLIND +28 · TRAP -12</p>
     </footer>
   </main>
 
