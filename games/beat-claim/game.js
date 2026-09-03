@@ -6,10 +6,13 @@ import {
 } from "../../src/music-registry.js";
 import {
   calculatePenalty,
-  calculateSuccessAward,
-  getComebackBonus,
+  calculateSharedSuccessAwards,
   getScoreGap,
 } from "./scoring.js";
+import {
+  CLAIM_ARBITRATION_MS,
+  resolveClaimBatch,
+} from "./claim-arbiter.js";
 
 const GAME_TIME = 36;
 const TENSION_TIME = 8;
@@ -58,11 +61,13 @@ let signal = "idle";
 let signalStartedAt = 0;
 let signalClaimed = false;
 let hiddenSignal = "live";
-let previewClaimed = false;
 let startedAt = 0;
 let timerId = null;
 let beatTimerId = null;
 let signalTimerId = null;
+let claimArbitrationTimerId = null;
+let claimQueue = [];
+let claimContext = null;
 
 const sharedSettings = getMusicSettings();
 const music = createMusicFacade({
@@ -94,7 +99,7 @@ function setMessage(title, body, kicker = "LOCAL MULTIPLAYER") {
 }
 
 function clearCoreClasses() {
-  beatCore.classList.remove("is-beat", "is-preview", "is-live", "is-decoy", "is-claimed");
+  beatCore.classList.remove("is-beat", "is-preview", "is-live", "is-decoy", "is-claimed", "is-photo");
 }
 
 function renderPlayers() {
@@ -127,42 +132,179 @@ function animatePad(index, className) {
   window.setTimeout(() => pad.classList.remove(className), 180);
 }
 
-function awardSuccess(index, basePoints, label) {
-  const award = calculateSuccessAward({
-    scores,
-    streaks,
-    index,
-    players,
-    basePoints,
-  });
-  scores = award.nextScores;
-  streaks = award.nextStreaks;
-
+function formatAwardExtras(award) {
   const extras = [];
   if (award.streakBonus) extras.push(`STREAK +${award.streakBonus}`);
   if (award.comebackBonus) extras.push(`CHASE +${award.comebackBonus}`);
-  const suffix = extras.length ? ` · ${extras.join(" · ")}` : "";
+  return extras.length ? ` · ${extras.join(" · ")}` : "";
+}
 
-  animatePad(index, "is-winner");
-  reactionValue.textContent = `P${index + 1} · ${label} +${award.total}${suffix}`;
+function awardWinners(winnerClaims, basePointsForClaim, label, photoFinish = false) {
+  const result = calculateSharedSuccessAwards({
+    scores,
+    streaks,
+    players,
+    winners: winnerClaims.map((claim) => ({
+      index: claim.index,
+      basePoints: basePointsForClaim(claim),
+    })),
+  });
+
+  scores = result.nextScores;
+  streaks = result.nextStreaks;
+
+  result.awards.forEach((award) => animatePad(award.index, "is-winner"));
+
+  if (result.awards.length === 1) {
+    const award = result.awards[0];
+    reactionValue.textContent =
+      `P${award.index + 1} · ${label} +${award.total}${formatAwardExtras(award)}`;
+  } else {
+    reactionValue.textContent = `PHOTO · ${result.awards
+      .map((award) => `P${award.index + 1} +${award.total}`)
+      .join(" / ")}`;
+  }
+
+  if (photoFinish) beatCore.classList.add("is-photo");
   music.cue("hit");
   renderPlayers();
-  return award.total;
+  return result;
+}
+
+function penalizeMany(indexes, amount, label) {
+  const uniqueIndexes = [...new Set(indexes)];
+  uniqueIndexes.forEach((index) => {
+    const penalty = calculatePenalty({ scores, streaks, index, amount });
+    scores = penalty.nextScores;
+    streaks = penalty.nextStreaks;
+    animatePad(index, "is-penalty");
+  });
+
+  reactionValue.textContent =
+    `${uniqueIndexes.map((index) => `P${index + 1}`).join("/")} · ${label} -${amount}`;
+  music.cue("miss");
+  renderPlayers();
 }
 
 function penalize(index, amount, label) {
-  const penalty = calculatePenalty({ scores, streaks, index, amount });
-  scores = penalty.nextScores;
-  streaks = penalty.nextStreaks;
-  animatePad(index, "is-penalty");
-  reactionValue.textContent = `P${index + 1} · ${label} -${amount}`;
-  music.cue("miss");
-  renderPlayers();
+  penalizeMany([index], amount, label);
+}
+
+function clearClaimArbitration() {
+  clearTimeout(claimArbitrationTimerId);
+  claimArbitrationTimerId = null;
+  claimQueue = [];
+  claimContext = null;
+}
+
+function resolveQueuedClaims() {
+  const context = claimContext;
+  const batch = resolveClaimBatch(claimQueue);
+  claimArbitrationTimerId = null;
+  claimQueue = [];
+  claimContext = null;
+
+  if (!context || batch.claims.length === 0) return;
+
+  if (context.signal === "preview") {
+    if (context.hiddenSignal === "live") {
+      signal = "claimed";
+      signalClaimed = true;
+      clearCoreClasses();
+      beatCore.classList.add("is-live", "is-claimed");
+      if (batch.photoFinish) beatCore.classList.add("is-photo");
+      coreLabel.textContent = batch.photoFinish ? "PHOTO FINISH" : "BLIND HIT";
+      awardWinners(
+        batch.winnerClaims,
+        () => BLIND_LIVE_POINTS,
+        "BLIND",
+        batch.photoFinish,
+      );
+      renderStatus();
+      signalTimerId = window.setTimeout(() => closeSignal("WAIT"), 320);
+      return;
+    }
+
+    signal = "decoy";
+    signalStartedAt = performance.now();
+    clearCoreClasses();
+    beatCore.classList.add("is-decoy");
+    coreLabel.textContent = batch.claims.length > 1 ? "MULTI TRAP" : "TRAP";
+    penalizeMany(
+      batch.claims.map((claim) => claim.index),
+      BLIND_DECOY_PENALTY,
+      "TRAP",
+    );
+    renderStatus();
+    signalTimerId = window.setTimeout(() => closeSignal("SAFE"), DECOY_WINDOW_MS);
+    return;
+  }
+
+  if (context.signal === "live") {
+    signalClaimed = true;
+    clearCoreClasses();
+    beatCore.classList.add("is-live", "is-claimed");
+    if (batch.photoFinish) beatCore.classList.add("is-photo");
+
+    const firstReaction = Math.max(0, batch.earliestAt - context.signalStartedAt);
+    coreLabel.textContent = batch.photoFinish ? "PHOTO FINISH" : "CLAIMED";
+    awardWinners(
+      batch.winnerClaims,
+      (claim) => {
+        const reaction = Math.max(0, claim.at - context.signalStartedAt);
+        const bonus = Math.max(0, Math.round((LIVE_WINDOW_MS - reaction) / 40));
+        return 10 + Math.min(10, bonus);
+      },
+      `${Math.round(firstReaction)}ms`,
+      batch.photoFinish,
+    );
+    signalTimerId = window.setTimeout(() => closeSignal("WAIT"), 280);
+  }
+}
+
+function queueClaim(index, event) {
+  if (!["playing", "tension"].includes(state) || index >= players) return;
+
+  if (signal === "preview" || (signal === "live" && !signalClaimed)) {
+    if (!claimContext) {
+      claimContext = {
+        signal,
+        hiddenSignal,
+        signalStartedAt,
+      };
+      clearTimeout(signalTimerId);
+      signalTimerId = null;
+      claimQueue = [];
+      claimArbitrationTimerId = window.setTimeout(
+        resolveQueuedClaims,
+        CLAIM_ARBITRATION_MS,
+      );
+    }
+
+    claimQueue.push({
+      index,
+      at: Number.isFinite(event?.timeStamp) ? event.timeStamp : performance.now(),
+    });
+
+    const uniquePlayers = new Set(claimQueue.map((claim) => claim.index)).size;
+    reactionValue.textContent = `JUDGING · ${uniquePlayers} CLAIM${uniquePlayers === 1 ? "" : "S"}`;
+    return;
+  }
+
+  if (signal === "decoy") {
+    penalize(index, 5, "DECOY");
+    return;
+  }
+
+  if (signal === "idle") {
+    penalize(index, 2, "EARLY");
+  }
 }
 
 function closeSignal(label = "WAIT") {
   clearTimeout(signalTimerId);
   signalTimerId = null;
+  clearClaimArbitration();
   signal = "idle";
   signalClaimed = false;
   clearCoreClasses();
@@ -192,8 +334,8 @@ function openSignal() {
   if (!["playing", "tension"].includes(state) || signal !== "idle") return;
 
   rounds += 1;
+  clearClaimArbitration();
   signalClaimed = false;
-  previewClaimed = false;
   hiddenSignal = Math.random() < 0.72 ? "live" : "decoy";
   signal = "preview";
   clearCoreClasses();
@@ -215,62 +357,11 @@ function tickBeat() {
   if (beatIndex % 2 === 0 && signal === "idle") openSignal();
 }
 
-function claim(index) {
-  if (!["playing", "tension"].includes(state) || index >= players) return;
-
-  if (signal === "preview" && !previewClaimed) {
-    previewClaimed = true;
-    clearTimeout(signalTimerId);
-
-    if (hiddenSignal === "live") {
-      signal = "claimed";
-      signalClaimed = true;
-      awardSuccess(index, BLIND_LIVE_POINTS, "BLIND");
-      clearCoreClasses();
-      beatCore.classList.add("is-live", "is-claimed");
-      coreLabel.textContent = "BLIND HIT";
-      renderStatus();
-      signalTimerId = window.setTimeout(() => closeSignal("WAIT"), 300);
-      return;
-    }
-
-    penalize(index, BLIND_DECOY_PENALTY, "TRAP");
-    signal = "decoy";
-    signalStartedAt = performance.now();
-    clearCoreClasses();
-    beatCore.classList.add("is-decoy");
-    coreLabel.textContent = "TRAP";
-    renderStatus();
-    signalTimerId = window.setTimeout(() => closeSignal("SAFE"), DECOY_WINDOW_MS);
-    return;
-  }
-
-  if (signal === "live" && !signalClaimed) {
-    signalClaimed = true;
-    const reaction = Math.max(0, performance.now() - signalStartedAt);
-    const bonus = Math.max(0, Math.round((LIVE_WINDOW_MS - reaction) / 40));
-    const points = 10 + Math.min(10, bonus);
-    awardSuccess(index, points, `${Math.round(reaction)}ms`);
-    beatCore.classList.add("is-claimed");
-    clearTimeout(signalTimerId);
-    signalTimerId = window.setTimeout(() => closeSignal("WAIT"), 260);
-    return;
-  }
-
-  if (signal === "decoy") {
-    penalize(index, 5, "DECOY");
-    return;
-  }
-
-  if (signal === "idle") {
-    penalize(index, 2, "EARLY");
-  }
-}
-
 function resetGame() {
   clearInterval(timerId);
   clearInterval(beatTimerId);
   clearTimeout(signalTimerId);
+  clearClaimArbitration();
   music.stop();
 
   state = "ready";
@@ -281,7 +372,6 @@ function resetGame() {
   beatIndex = 0;
   signal = "idle";
   signalClaimed = false;
-  previewClaimed = false;
   hiddenSignal = "live";
   document.body.classList.remove("is-tension");
   resultOverlay.hidden = true;
@@ -333,6 +423,7 @@ function endGame() {
   clearInterval(timerId);
   clearInterval(beatTimerId);
   clearTimeout(signalTimerId);
+  clearClaimArbitration();
   state = "result";
   signal = "result";
   document.body.classList.remove("is-tension");
@@ -377,7 +468,7 @@ playerCount.addEventListener("change", () => {
 playerPads.forEach((pad, index) => {
   pad.addEventListener("pointerdown", (event) => {
     event.preventDefault();
-    claim(index);
+    queueClaim(index, event);
   });
 });
 
