@@ -19,6 +19,11 @@ import {
   getRoundModifier,
   rollHiddenSignal,
 } from "./round-modifiers.js";
+import {
+  createMatchStats,
+  getPlayerMatchSummary,
+  recordSuccessfulAwards,
+} from "./match-stats.js";
 
 const GAME_TIME = 36;
 const TENSION_TIME = 8;
@@ -63,6 +68,7 @@ let state = "ready";
 let players = 2;
 let scores = [0, 0, 0, 0];
 let streaks = [0, 0, 0, 0];
+let matchStats = createMatchStats(4);
 let rounds = 0;
 let currentModifier = getRoundModifier(1);
 let beatIndex = 0;
@@ -160,7 +166,16 @@ function formatAwardExtras(award) {
   return extras.length ? ` · ${extras.join(" · ")}` : "";
 }
 
-function awardWinners(winnerClaims, basePointsForClaim, label, photoFinish = false) {
+function awardWinners(
+  winnerClaims,
+  basePointsForClaim,
+  label,
+  {
+    photoFinish = false,
+    modifier = currentModifier,
+    blind = false,
+  } = {},
+) {
   const result = calculateSharedSuccessAwards({
     scores,
     streaks,
@@ -173,6 +188,13 @@ function awardWinners(winnerClaims, basePointsForClaim, label, photoFinish = fal
 
   scores = result.nextScores;
   streaks = result.nextStreaks;
+  matchStats = recordSuccessfulAwards(matchStats, {
+    awards: result.awards,
+    modifierId: modifier.id,
+    blind,
+    photoFinish,
+    streaks,
+  });
 
   result.awards.forEach((award) => animatePad(award.index, "is-winner"));
 
@@ -239,7 +261,11 @@ function resolveQueuedClaims() {
         batch.winnerClaims,
         () => applySuccessModifier(BLIND_LIVE_POINTS, context.modifier),
         context.modifier.scoreMultiplier > 1 ? "BLIND ×2" : "BLIND",
-        batch.photoFinish,
+        {
+          photoFinish: batch.photoFinish,
+          modifier: context.modifier,
+          blind: true,
+        },
       );
       renderStatus();
       signalTimerId = window.setTimeout(() => closeSignal("WAIT"), 320);
@@ -279,7 +305,11 @@ function resolveQueuedClaims() {
         return applySuccessModifier(basePoints, context.modifier);
       },
       `${Math.round(firstReaction)}ms`,
-      batch.photoFinish,
+      {
+        photoFinish: batch.photoFinish,
+        modifier: context.modifier,
+        blind: false,
+      },
     );
     signalTimerId = window.setTimeout(() => closeSignal("WAIT"), 280);
   }
@@ -404,6 +434,7 @@ function resetGame() {
   players = Number(playerCount.value);
   scores = [0, 0, 0, 0];
   streaks = [0, 0, 0, 0];
+  matchStats = createMatchStats(4);
   rounds = 0;
   currentModifier = getRoundModifier(1);
   beatIndex = 0;
@@ -482,7 +513,37 @@ function endGame() {
     : "DRAW!";
   resultMessage.textContent = `${rounds}ラウンド。最高得点は${topScore}点でした。`;
   resultScores.innerHTML = activeScores
-    .map((score, index) => `<div class="claim-result-row"><span>P${index + 1}</span><strong>${score}</strong></div>`)
+    .map((score, index) => {
+      const summary = getPlayerMatchSummary(matchStats, index, score);
+      const rulePoints = [
+        ["NORMAL", summary.modifierPoints.normal || 0],
+        ["DOUBLE", summary.modifierPoints.double || 0],
+        ["NO GAMBLE", summary.modifierPoints["no-gamble"] || 0],
+        ["DECOY", summary.modifierPoints["decoy-rush"] || 0],
+        ["SUDDEN", summary.modifierPoints["sudden-death"] || 0],
+      ]
+        .filter(([, points]) => points > 0)
+        .map(([label, points]) => `<span>${label} +${points}</span>`)
+        .join("");
+
+      return `
+        <article class="claim-result-card" data-player="${index + 1}">
+          <div class="claim-result-head">
+            <span>P${index + 1}</span>
+            <strong>${score}</strong>
+          </div>
+          <div class="claim-result-metrics">
+            <span><b>${summary.blindHits}</b> BLIND</span>
+            <span><b>${summary.photoFinishes}</b> PHOTO</span>
+            <span><b>×${summary.maxStreak}</b> MAX STREAK</span>
+            <span><b>${summary.successfulClaims}</b> CLAIMS</span>
+          </div>
+          <div class="claim-result-rules">
+            ${rulePoints || "<span>NO RULE SCORE</span>"}
+          </div>
+        </article>
+      `;
+    })
     .join("");
 
   resultOverlay.hidden = false;
@@ -497,6 +558,7 @@ playerCount.addEventListener("change", () => {
   players = Number(playerCount.value);
   scores = [0, 0, 0, 0];
   streaks = [0, 0, 0, 0];
+  matchStats = createMatchStats(4);
   renderPlayers();
   renderStatus();
   setMessage("ルールが変わる6ラウンド周期", `${players}人対戦。DOUBLE / NO GAMBLE / DECOY RUSH / SUDDEN DEATHを読み切ろう。`);
