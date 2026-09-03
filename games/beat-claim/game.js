@@ -13,6 +13,12 @@ import {
   CLAIM_ARBITRATION_MS,
   resolveClaimBatch,
 } from "./claim-arbiter.js";
+import {
+  applyPenaltyModifier,
+  applySuccessModifier,
+  getRoundModifier,
+  rollHiddenSignal,
+} from "./round-modifiers.js";
 
 const GAME_TIME = 36;
 const TENSION_TIME = 8;
@@ -39,6 +45,8 @@ const playerCount = $("#playerCount");
 const playerCountValue = $("#playerCountValue");
 const roundValue = $("#roundValue");
 const signalValue = $("#signalValue");
+const modifierValue = $("#modifierValue");
+const modifierDescription = $("#modifierDescription");
 const gameMessage = $("#gameMessage");
 const beatCore = $("#beatCore");
 const coreLabel = $("#coreLabel");
@@ -56,6 +64,7 @@ let players = 2;
 let scores = [0, 0, 0, 0];
 let streaks = [0, 0, 0, 0];
 let rounds = 0;
+let currentModifier = getRoundModifier(1);
 let beatIndex = 0;
 let signal = "idle";
 let signalStartedAt = 0;
@@ -120,10 +129,22 @@ function renderPlayers() {
   });
 }
 
+function renderModifier() {
+  modifierValue.textContent = currentModifier.label;
+  modifierDescription.textContent = currentModifier.description;
+  document.body.dataset.roundModifier = currentModifier.id;
+}
+
 function renderStatus() {
   playerCountValue.textContent = String(players);
   roundValue.textContent = String(rounds);
   signalValue.textContent = signal.toUpperCase();
+  renderModifier();
+}
+
+function syncRoundMusic() {
+  const targetState = state === "tension" ? "tension" : currentModifier.musicState;
+  void music.state(targetState, { quantize: "bar", fadeBeats: 1 });
 }
 
 function animatePad(index, className) {
@@ -216,8 +237,8 @@ function resolveQueuedClaims() {
       coreLabel.textContent = batch.photoFinish ? "PHOTO FINISH" : "BLIND HIT";
       awardWinners(
         batch.winnerClaims,
-        () => BLIND_LIVE_POINTS,
-        "BLIND",
+        () => applySuccessModifier(BLIND_LIVE_POINTS, context.modifier),
+        context.modifier.scoreMultiplier > 1 ? "BLIND ×2" : "BLIND",
         batch.photoFinish,
       );
       renderStatus();
@@ -232,7 +253,7 @@ function resolveQueuedClaims() {
     coreLabel.textContent = batch.claims.length > 1 ? "MULTI TRAP" : "TRAP";
     penalizeMany(
       batch.claims.map((claim) => claim.index),
-      BLIND_DECOY_PENALTY,
+      applyPenaltyModifier(BLIND_DECOY_PENALTY, context.modifier),
       "TRAP",
     );
     renderStatus();
@@ -252,8 +273,10 @@ function resolveQueuedClaims() {
       batch.winnerClaims,
       (claim) => {
         const reaction = Math.max(0, claim.at - context.signalStartedAt);
-        const bonus = Math.max(0, Math.round((LIVE_WINDOW_MS - reaction) / 40));
-        return 10 + Math.min(10, bonus);
+        const liveWindowMs = context.modifier.liveWindowMs || LIVE_WINDOW_MS;
+        const bonus = Math.max(0, Math.round((liveWindowMs - reaction) / 40));
+        const basePoints = 10 + Math.min(10, bonus);
+        return applySuccessModifier(basePoints, context.modifier);
       },
       `${Math.round(firstReaction)}ms`,
       batch.photoFinish,
@@ -271,6 +294,7 @@ function queueClaim(index, event) {
         signal,
         hiddenSignal,
         signalStartedAt,
+        modifier: currentModifier,
       };
       clearTimeout(signalTimerId);
       signalTimerId = null;
@@ -292,12 +316,12 @@ function queueClaim(index, event) {
   }
 
   if (signal === "decoy") {
-    penalize(index, 5, "DECOY");
+    penalize(index, applyPenaltyModifier(5, currentModifier), "DECOY");
     return;
   }
 
   if (signal === "idle") {
-    penalize(index, 2, "EARLY");
+    penalize(index, applyPenaltyModifier(2, currentModifier), "EARLY");
   }
 }
 
@@ -326,7 +350,7 @@ function revealSignal() {
 
   signalTimerId = window.setTimeout(
     () => closeSignal(signal === "live" ? "MISS" : "SAFE"),
-    signal === "live" ? LIVE_WINDOW_MS : DECOY_WINDOW_MS,
+    signal === "live" ? currentModifier.liveWindowMs : DECOY_WINDOW_MS,
   );
 }
 
@@ -334,14 +358,26 @@ function openSignal() {
   if (!["playing", "tension"].includes(state) || signal !== "idle") return;
 
   rounds += 1;
+  currentModifier = getRoundModifier(rounds);
   clearClaimArbitration();
   signalClaimed = false;
-  hiddenSignal = Math.random() < 0.72 ? "live" : "decoy";
+  hiddenSignal = rollHiddenSignal(Math.random(), currentModifier);
+  renderStatus();
+  syncRoundMusic();
+
+  if (!currentModifier.allowGamble) {
+    signal = "preview";
+    revealSignal();
+    return;
+  }
+
   signal = "preview";
   clearCoreClasses();
   beatCore.classList.add("is-preview");
   coreLabel.textContent = "GAMBLE?";
-  reactionValue.textContent = "BLIND +28 / TRAP -12";
+  const blindPoints = applySuccessModifier(BLIND_LIVE_POINTS, currentModifier);
+  const trapPenalty = applyPenaltyModifier(BLIND_DECOY_PENALTY, currentModifier);
+  reactionValue.textContent = `BLIND +${blindPoints} / TRAP -${trapPenalty}`;
   renderStatus();
 
   signalTimerId = window.setTimeout(revealSignal, PREVIEW_WINDOW_MS);
@@ -369,6 +405,7 @@ function resetGame() {
   scores = [0, 0, 0, 0];
   streaks = [0, 0, 0, 0];
   rounds = 0;
+  currentModifier = getRoundModifier(1);
   beatIndex = 0;
   signal = "idle";
   signalClaimed = false;
@@ -384,7 +421,7 @@ function resetGame() {
   startButton.textContent = "ゲーム開始";
   renderPlayers();
   renderStatus();
-  setMessage("見るか、賭けるか。", `${players}人対戦。GAMBLE?で先読みするか、安全にLIVEを待とう。`);
+  setMessage("ルールが変わる6ラウンド周期", `${players}人対戦。DOUBLE / NO GAMBLE / DECOY RUSH / SUDDEN DEATHを読み切ろう。`);
 }
 
 async function startGame() {
@@ -396,7 +433,7 @@ async function startGame() {
   playerCount.disabled = true;
   startButton.disabled = true;
   startButton.textContent = "プレイ中";
-  setMessage("先読みか、安全策か", "2拍ごとにGAMBLE? → LIVE / DECOY。先押しはハイリスクです。", "PLAYING");
+  setMessage("ROUND RULEを読め", "各ラウンドで得点倍率・GAMBLE・DECOY確率が変化します。", "PLAYING");
 
   beatTimerId = window.setInterval(tickBeat, BEAT_MS);
   tickBeat();
@@ -462,7 +499,7 @@ playerCount.addEventListener("change", () => {
   streaks = [0, 0, 0, 0];
   renderPlayers();
   renderStatus();
-  setMessage("見るか、賭けるか。", `${players}人対戦。GAMBLE?で先読みするか、安全にLIVEを待とう。`);
+  setMessage("ルールが変わる6ラウンド周期", `${players}人対戦。DOUBLE / NO GAMBLE / DECOY RUSH / SUDDEN DEATHを読み切ろう。`);
 });
 
 playerPads.forEach((pad, index) => {
