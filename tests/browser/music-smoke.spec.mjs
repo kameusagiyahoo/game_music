@@ -140,3 +140,22 @@ test("Beat Claim exposes 2-4 player local multiplayer controls", async ({ page }
 
   expect(errors, errors.join("\n")).toEqual([]);
 });
+
+
+test("Beat Claim rewards a successful blind gamble", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.addInitScript(() => {
+    Math.random = () => 0.1;
+  });
+
+  await page.goto("/games/beat-claim/", { waitUntil: "networkidle" });
+  await page.locator("#startButton").click();
+  await expect(page.locator("#startButton")).toHaveText("プレイ中", { timeout: 30_000 });
+  await expect(page.locator("#coreLabel")).toHaveText("GAMBLE?", { timeout: 12_000 });
+
+  await page.locator('.claim-pad[data-player="0"]').dispatchEvent("pointerdown");
+
+  await expect(page.locator("#scoreP1")).toHaveText("28");
+  await expect(page.locator("#reactionValue")).toContainText("BLIND +28");
+  expect(errors, errors.join("\n")).toEqual([]);
+});
