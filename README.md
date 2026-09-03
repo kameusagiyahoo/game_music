@@ -2,13 +2,13 @@
 
 GitHub Pagesだけでゲーム制作と、再利用可能なAdaptive Music基盤を検証するプロジェクトです。
 
-現在のProduction Music Engineは **WAV Stemのみ**です。4つのReal Audio Packを6ゲームから共通の `MusicFacade` 経由で利用します。
+現在のProduction Music Engineは **WAV Stemのみ**です。4つのReal Audio Packを7ゲームから共通の `MusicFacade` 経由で利用します。
 
 - Music Pack schema: **1.3.0**
 - Music Facade API: **1.5.0**
 - Production engine: **wav-stem**
 - Real Audio Packs: **4**
-- Games: **6**
+- Games: **7**
 - Audio format: **M4A / OGG / WAV**
 - Browser integration CI: **Playwright WebKit / iPhone 15 profile**
 
@@ -22,6 +22,7 @@ GitHub Pagesだけでゲーム制作と、再利用可能なAdaptive Music基盤
 | Rune Relay | 45秒シーケンス記憶 | Fantasy Table WAV | https://kameusagiyahoo.github.io/game_music/games/rune-relay/ |
 | Aether Shift | 4ウェーブ・リアクション | Clockwork Grove WAV | https://kameusagiyahoo.github.io/game_music/games/aether-shift/ |
 | Beat Claim | 2〜4人ローカル駆け引き早押し | Pulse Forge WAV | https://kameusagiyahoo.github.io/game_music/games/beat-claim/ |
+| Sync Circuit | 2〜4人ローカル協力SYNC | Clockwork Grove WAV | https://kameusagiyahoo.github.io/game_music/games/sync-circuit/ |
 
 Music Settings:
 
@@ -216,7 +217,8 @@ games/
 ├── pulse-forge/
 ├── rune-relay/
 ├── aether-shift/
-└── beat-claim/
+├── beat-claim/
+└── sync-circuit/
 settings/music/
 debug/
 ├── mixer/

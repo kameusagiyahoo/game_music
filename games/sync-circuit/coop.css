@@ -1,0 +1,35 @@
+.pulse-core.is-rescue {
+  border-color: rgba(185, 137, 255, .88);
+  box-shadow: 0 0 42px rgba(185, 137, 255, .24), inset 0 0 32px rgba(185, 137, 255, .08);
+}
+
+.pulse-core.is-all-sync {
+  border-color: rgba(255, 255, 255, .92);
+  box-shadow:
+    0 0 0 4px rgba(255,255,255,.08),
+    0 0 48px rgba(143,244,216,.26),
+    inset 0 0 36px rgba(255,255,255,.08);
+}
+
+.sync-pad.is-link {
+  border-style: dashed;
+  border-color: rgba(185, 137, 255, .72);
+}
+
+.sync-pad.is-link small {
+  color: #d8bbff;
+}
+
+.sync-pad.is-rescue {
+  border-color: #d8bbff;
+  box-shadow: inset 4px 0 0 var(--player), 0 0 28px rgba(185, 137, 255, .24);
+}
+
+body.is-overload .pulse-core.is-all-sync {
+  animation: sync-all-pulse 260ms ease-in-out infinite alternate;
+}
+
+@keyframes sync-all-pulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.045); }
+}
