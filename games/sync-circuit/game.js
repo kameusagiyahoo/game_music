@@ -4,9 +4,13 @@ import { GAME_IDS, getMusicSettings } from "../../src/music-registry.js";
 import {
   STABILITY_START,
   applyWrongTap,
-  createPulsePlan,
-  resolvePulseOutcome,
 } from "./sync-engine.js";
+import {
+  RESCUE_WINDOW_MS,
+  canPlayerRescue,
+  createCooperationPlan,
+  resolveCooperativeOutcome,
+} from "./coop-mechanics.js";
 
 const GAME_TIME = 42;
 const OVERLOAD_TIME = 10;
@@ -39,6 +43,9 @@ const resultChords = $("#resultChords");
 const resultCombo = $("#resultCombo");
 const resultMisses = $("#resultMisses");
 const resultWrong = $("#resultWrong");
+const resultRescues = $("#resultRescues");
+const resultAllSyncs = $("#resultAllSyncs");
+const resultLinkRescues = $("#resultLinkRescues");
 const musicState = $("#musicState");
 const bgmToggle = $("#bgmToggle");
 const sfxToggle = $("#sfxToggle");
@@ -54,6 +61,9 @@ let combo = 0;
 let maxCombo = 0;
 let syncs = 0;
 let chords = 0;
+let allSyncs = 0;
+let rescues = 0;
+let linkRescues = 0;
 let misses = 0;
 let wrongTaps = 0;
 let eventIndex = 0;
@@ -111,9 +121,9 @@ function renderTeam() {
 }
 
 function clearPulseVisuals() {
-  pulseCore.classList.remove("is-pulse", "is-chord", "is-fail");
+  pulseCore.classList.remove("is-pulse", "is-chord", "is-fail", "is-rescue", "is-all-sync");
   pads.forEach((pad) => {
-    pad.classList.remove("is-target", "is-hit", "is-wrong");
+    pad.classList.remove("is-target", "is-hit", "is-wrong", "is-link", "is-rescue");
     const status = pad.querySelector("small");
     if (status) status.textContent = "READY";
   });
@@ -138,28 +148,77 @@ function scheduleNextPulse(delay = NEXT_PULSE_MS) {
   nextPulseId = window.setTimeout(openPulse, delay);
 }
 
+function enterRescuePhase() {
+  if (!currentPulse || currentPulse.phase !== "pulse") return false;
+
+  const missing = currentPulse.targets.size - currentPulse.hits.size;
+  if (missing <= 0 || !currentPulse.rescueAllowed) return false;
+
+  currentPulse.phase = "rescue";
+  currentPulse.rescueSlots = missing;
+  pulseCore.classList.remove("is-pulse", "is-chord");
+  pulseCore.classList.add("is-rescue");
+  pulseLabel.textContent = "RESCUE";
+  pulseDetail.textContent = `NEED ${missing} · LINK P${currentPulse.linkIndex + 1}`;
+
+  currentPulse.targets.forEach((targetIndex) => {
+    if (currentPulse.hits.has(targetIndex)) return;
+    const status = pads[targetIndex]?.querySelector("small");
+    if (status) status.textContent = "MISSED";
+  });
+
+  const linkPad = pads[currentPulse.linkIndex];
+  if (linkPad) {
+    linkPad.classList.add("is-link");
+    const status = linkPad.querySelector("small");
+    if (status) status.textContent = "LINK";
+  }
+
+  pulseTimeoutId = window.setTimeout(resolveCurrentPulse, RESCUE_WINDOW_MS);
+  return true;
+}
+
 function resolveCurrentPulse() {
   if (!currentPulse || state === "result") return;
 
   clearTimeout(pulseTimeoutId);
   pulseTimeoutId = null;
 
-  const outcome = resolvePulseOutcome({
+  const unresolved = currentPulse.targets.size - currentPulse.hits.size - currentPulse.rescuers.size;
+  if (unresolved > 0 && currentPulse.phase === "pulse" && enterRescuePhase()) {
+    return;
+  }
+
+  const outcome = resolveCooperativeOutcome({
     stability,
     targetCount: currentPulse.targets.size,
-    hitCount: currentPulse.hits.size,
+    directHitCount: currentPulse.hits.size,
+    rescuedCount: currentPulse.rescuers.size,
+    linkRescueCount: currentPulse.linkRescueCount,
     chord: currentPulse.chord,
+    allSync: currentPulse.allSync,
     combo,
   });
 
   stability = outcome.stability;
   combo = outcome.nextCombo;
   maxCombo = Math.max(maxCombo, combo);
+  rescues += outcome.rescuedCount;
+  linkRescues += outcome.linkRescueCount;
 
   if (outcome.complete) {
     syncs += 1;
-    if (currentPulse.chord) chords += 1;
-    pulseLabel.textContent = currentPulse.chord ? "CHORD SYNC" : "SYNC";
+    if (currentPulse.allSync) allSyncs += 1;
+    else if (currentPulse.chord) chords += 1;
+
+    if (currentPulse.allSync) {
+      pulseLabel.textContent = "ALL SYNC";
+    } else if (outcome.rescuedCount > 0) {
+      pulseLabel.textContent = outcome.linkRescueCount > 0 ? "LINK RESCUE" : "RESCUED";
+    } else {
+      pulseLabel.textContent = currentPulse.chord ? "CHORD SYNC" : "SYNC";
+    }
+
     pulseDetail.textContent = `STABILITY +${outcome.delta}`;
     music.cue("hit");
   } else {
@@ -187,7 +246,7 @@ function openPulse() {
 
   eventIndex += 1;
   const overload = getRemaining() <= OVERLOAD_TIME;
-  const plan = createPulsePlan({
+  const plan = createCooperationPlan({
     players,
     eventIndex,
     randomValue: Math.random(),
@@ -196,29 +255,75 @@ function openPulse() {
 
   currentPulse = {
     chord: plan.chord,
+    allSync: plan.allSync,
+    rescueAllowed: plan.rescueAllowed,
+    linkIndex: plan.linkIndex,
     targets: new Set(plan.targets),
     hits: new Set(),
+    rescuers: new Set(),
+    linkRescueCount: 0,
+    rescueSlots: 0,
+    phase: "pulse",
     openedAt: performance.now(),
   };
 
   clearPulseVisuals();
   pulseCore.classList.add("is-pulse");
   if (plan.chord) pulseCore.classList.add("is-chord");
-  pulseLabel.textContent = plan.chord ? "CHORD" : "PULSE";
-  pulseDetail.textContent = plan.targets.map((index) => `P${index + 1}`).join(" + ");
+  if (plan.allSync) pulseCore.classList.add("is-all-sync");
+
+  pulseLabel.textContent = plan.allSync ? "ALL SYNC" : plan.chord ? "CHORD" : "PULSE";
+  const targetsText = plan.targets.map((index) => `P${index + 1}`).join(" + ");
+  const linkText = plan.linkIndex === null ? "" : ` · LINK P${plan.linkIndex + 1}`;
+  pulseDetail.textContent = `${targetsText}${linkText}`;
 
   plan.targets.forEach((index) => {
     const pad = pads[index];
     pad.classList.add("is-target");
     const status = pad.querySelector("small");
-    if (status) status.textContent = "NOW";
+    if (status) status.textContent = plan.allSync ? "ALL" : "NOW";
   });
+
+  if (plan.linkIndex !== null && !plan.targets.includes(plan.linkIndex)) {
+    pads[plan.linkIndex]?.classList.add("is-link");
+    const status = pads[plan.linkIndex]?.querySelector("small");
+    if (status) status.textContent = "LINK";
+  }
 
   pulseTimeoutId = window.setTimeout(resolveCurrentPulse, plan.windowMs);
 }
 
 function tapPad(index) {
   if (!["playing", "overload"].includes(state) || index >= players) return;
+
+  if (currentPulse?.phase === "rescue") {
+    if (!canPlayerRescue({
+      playerIndex: index,
+      targets: currentPulse.targets,
+      rescuers: currentPulse.rescuers,
+      rescueSlots: currentPulse.rescueSlots,
+    })) {
+      return;
+    }
+
+    currentPulse.rescuers.add(index);
+    if (index === currentPulse.linkIndex) currentPulse.linkRescueCount += 1;
+
+    const pad = pads[index];
+    pad.classList.remove("is-link");
+    pad.classList.add("is-rescue", "is-hit");
+    const status = pad.querySelector("small");
+    if (status) status.textContent = index === currentPulse.linkIndex ? "LINK+" : "RESCUE";
+
+    pulseDetail.textContent =
+      `RESCUE ${currentPulse.rescuers.size}/${currentPulse.rescueSlots}` +
+      (index === currentPulse.linkIndex ? " · LINK +3" : "");
+
+    if (currentPulse.rescuers.size >= currentPulse.rescueSlots) {
+      resolveCurrentPulse();
+    }
+    return;
+  }
 
   if (!currentPulse || !currentPulse.targets.has(index)) {
     stability = applyWrongTap(stability);
@@ -237,7 +342,7 @@ function tapPad(index) {
 
   currentPulse.hits.add(index);
   const pad = pads[index];
-  pad.classList.remove("is-target");
+  pad.classList.remove("is-target", "is-link");
   pad.classList.add("is-hit");
   const status = pad.querySelector("small");
   if (status) status.textContent = "LOCKED";
@@ -258,6 +363,9 @@ function resetGame() {
   maxCombo = 0;
   syncs = 0;
   chords = 0;
+  allSyncs = 0;
+  rescues = 0;
+  linkRescues = 0;
   misses = 0;
   wrongTaps = 0;
   eventIndex = 0;
@@ -270,13 +378,13 @@ function resetGame() {
   startButton.disabled = false;
   startButton.textContent = "ゲーム開始";
   timeValue.textContent = GAME_TIME.toFixed(1);
-  modeText.textContent = "COOPERATIVE · 42秒間、回路を維持する";
+  modeText.textContent = "COOPERATIVE · LINK役は4パルスごとに交代";
   clearPulseVisuals();
   pulseLabel.textContent = "READY";
   pulseDetail.textContent = "WAITING FOR TEAM";
   renderPlayers();
   renderTeam();
-  setMessage("全員で回路を守る", `${players}人協力。光った担当者が時間内にSYNC。`);
+  setMessage("全員で回路を守る", `${players}人協力。見逃しは他プレイヤーがRESCUEできる。`);
 }
 
 async function startGame() {
@@ -288,7 +396,7 @@ async function startGame() {
   playerCount.disabled = true;
   startButton.disabled = true;
   startButton.textContent = "プレイ中";
-  setMessage("担当を見逃すな", "成功でSTABILITY回復。CHORDは2人の協力が必要。", "CIRCUIT ONLINE");
+  setMessage("担当＋LINKを見ろ", "6パルスごとにALL SYNC。見逃し後260msはRESCUE可能。", "CIRCUIT ONLINE");
 
   scheduleNextPulse(450);
 
@@ -299,8 +407,8 @@ async function startGame() {
     if (remaining <= OVERLOAD_TIME && state === "playing") {
       state = "overload";
       document.body.classList.add("is-overload");
-      modeText.textContent = "OVERLOAD · CHORD頻度上昇 / 受付360ms";
-      setMessage("OVERLOAD", "残り10秒。CHORDが増える。声を掛け合え。", "FINAL SECTOR");
+      modeText.textContent = "OVERLOAD · CHORD増加 / ALL SYNC 480ms";
+      setMessage("OVERLOAD", "残り10秒。CHORDとALL SYNCを全員でつなげ。", "FINAL SECTOR");
       void music.state("tension", { quantize: "bar", fadeBeats: 1 });
     }
 
@@ -325,7 +433,7 @@ function endGame(success, reason) {
   resultTitle.textContent = success ? "CIRCUIT STABLE!" : "CIRCUIT LOST";
   resultMessage.textContent = success
     ? `TEAM SUCCESS · 最終STABILITY ${stability}`
-    : `${reason} · 次は役割を声に出して合わせよう。`;
+    : `${reason} · RESCUEとALL SYNCを声に出して合わせよう。`;
 
   resultStability.textContent = String(stability);
   resultSyncs.textContent = String(syncs);
@@ -333,6 +441,9 @@ function endGame(success, reason) {
   resultCombo.textContent = `×${maxCombo}`;
   resultMisses.textContent = String(misses);
   resultWrong.textContent = String(wrongTaps);
+  if (resultRescues) resultRescues.textContent = String(rescues);
+  if (resultAllSyncs) resultAllSyncs.textContent = String(allSyncs);
+  if (resultLinkRescues) resultLinkRescues.textContent = String(linkRescues);
   resultOverlay.hidden = false;
   playerCount.disabled = false;
   startButton.disabled = false;
@@ -345,7 +456,7 @@ playerCount.addEventListener("change", () => {
   if (state !== "ready") return;
   players = Number(playerCount.value);
   renderPlayers();
-  setMessage("全員で回路を守る", `${players}人協力。光った担当者が時間内にSYNC。`);
+  setMessage("全員で回路を守る", `${players}人協力。見逃しは他プレイヤーがRESCUEできる。`);
 });
 
 pads.forEach((pad, index) => {
