@@ -182,3 +182,58 @@ test("Beat Claim applies streak and chase bonuses deterministically", async ({ p
   expect(result.p2BonusLabel).toBe("");
   expect(errors, errors.join("\n")).toEqual([]);
 });
+
+
+test("Beat Claim scoring module applies streak and chase bonuses", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const scoring = await import("/games/beat-claim/scoring.js");
+
+    const streak = scoring.calculateSuccessAward({
+      scores: [20, 20, 0, 0],
+      streaks: [1, 0, 0, 0],
+      index: 0,
+      players: 2,
+      basePoints: 20,
+    });
+
+    const chase = scoring.calculateSuccessAward({
+      scores: [0, 35, 0, 0],
+      streaks: [0, 0, 0, 0],
+      index: 0,
+      players: 2,
+      basePoints: 20,
+    });
+
+    const combo = scoring.calculateSuccessAward({
+      scores: [0, 35, 0, 0],
+      streaks: [2, 0, 0, 0],
+      index: 0,
+      players: 2,
+      basePoints: 28,
+    });
+
+    const penalty = scoring.calculatePenalty({
+      scores: [5, 0, 0, 0],
+      streaks: [4, 0, 0, 0],
+      index: 0,
+      amount: 12,
+    });
+
+    return { streak, chase, combo, penalty };
+  });
+
+  expect(result.streak.streakBonus).toBe(4);
+  expect(result.streak.total).toBe(24);
+  expect(result.chase.comebackBonus).toBe(10);
+  expect(result.chase.total).toBe(30);
+  expect(result.combo.streakBonus).toBe(8);
+  expect(result.combo.comebackBonus).toBe(10);
+  expect(result.combo.total).toBe(46);
+  expect(result.penalty.nextScores[0]).toBe(0);
+  expect(result.penalty.nextStreaks[0]).toBe(0);
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
