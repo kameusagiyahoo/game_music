@@ -21,7 +21,7 @@ GitHub Pagesだけでゲーム制作と、再利用可能なAdaptive Music基盤
 | Pulse Forge | 40秒リズム / リアクション | Pulse Forge WAV | https://kameusagiyahoo.github.io/game_music/games/pulse-forge/ |
 | Rune Relay | 45秒シーケンス記憶 | Fantasy Table WAV | https://kameusagiyahoo.github.io/game_music/games/rune-relay/ |
 | Aether Shift | 4ウェーブ・リアクション | Clockwork Grove WAV | https://kameusagiyahoo.github.io/game_music/games/aether-shift/ |
-| Beat Claim | 2〜4人ローカル早押し | Pulse Forge WAV | https://kameusagiyahoo.github.io/game_music/games/beat-claim/ |
+| Beat Claim | 2〜4人ローカル駆け引き早押し | Pulse Forge WAV | https://kameusagiyahoo.github.io/game_music/games/beat-claim/ |
 
 Music Settings:
 
