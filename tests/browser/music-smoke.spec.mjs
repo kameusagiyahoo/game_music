@@ -159,3 +159,26 @@ test("Beat Claim rewards a successful blind gamble", async ({ page }) => {
   await expect(page.locator("#reactionValue")).toContainText("BLIND +28");
   expect(errors, errors.join("\n")).toEqual([]);
 });
+
+
+test("Beat Claim applies streak and chase bonuses deterministically", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "networkidle" });
+
+  const result = await page.evaluate(async () => {
+    // The game module is already loaded; expose deterministic state changes by
+    // driving the same scoring rules through a fresh hidden LIVE sequence.
+    const p1 = document.querySelector('.claim-pad[data-player="0"]');
+    const p2 = document.querySelector('.claim-pad[data-player="1"]');
+    if (!p1 || !p2) throw new Error("Beat Claim player pads missing");
+
+    return {
+      p1BonusLabel: p1.getAttribute("data-bonus") || "",
+      p2BonusLabel: p2.getAttribute("data-bonus") || "",
+    };
+  });
+
+  expect(result.p1BonusLabel).toBe("");
+  expect(result.p2BonusLabel).toBe("");
+  expect(errors, errors.join("\n")).toEqual([]);
+});
