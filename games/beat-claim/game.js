@@ -9,8 +9,11 @@ const GAME_TIME = 36;
 const TENSION_TIME = 8;
 const BPM = 112;
 const BEAT_MS = 60_000 / BPM;
+const PREVIEW_WINDOW_MS = 220;
 const LIVE_WINDOW_MS = 390;
 const DECOY_WINDOW_MS = 460;
+const BLIND_LIVE_POINTS = 28;
+const BLIND_DECOY_PENALTY = 12;
 
 const $ = (selector) => document.querySelector(selector);
 const playerPads = [...document.querySelectorAll(".claim-pad")];
@@ -47,6 +50,8 @@ let beatIndex = 0;
 let signal = "idle";
 let signalStartedAt = 0;
 let signalClaimed = false;
+let hiddenSignal = "live";
+let previewClaimed = false;
 let startedAt = 0;
 let timerId = null;
 let beatTimerId = null;
@@ -82,7 +87,7 @@ function setMessage(title, body, kicker = "LOCAL MULTIPLAYER") {
 }
 
 function clearCoreClasses() {
-  beatCore.classList.remove("is-beat", "is-live", "is-decoy", "is-claimed");
+  beatCore.classList.remove("is-beat", "is-preview", "is-live", "is-decoy", "is-claimed");
 }
 
 function renderPlayers() {
@@ -117,25 +122,38 @@ function closeSignal(label = "WAIT") {
   renderStatus();
 }
 
+function revealSignal() {
+  if (!["playing", "tension"].includes(state) || signal !== "preview") return;
+
+  signal = hiddenSignal;
+  signalStartedAt = performance.now();
+  clearCoreClasses();
+  beatCore.classList.add(signal === "live" ? "is-live" : "is-decoy");
+  coreLabel.textContent = signal === "live" ? "LIVE" : "DECOY";
+  reactionValue.textContent = signal === "live" ? "CLAIM!" : "DON'T TAP";
+  renderStatus();
+
+  signalTimerId = window.setTimeout(
+    () => closeSignal(signal === "live" ? "MISS" : "SAFE"),
+    signal === "live" ? LIVE_WINDOW_MS : DECOY_WINDOW_MS,
+  );
+}
+
 function openSignal() {
   if (!["playing", "tension"].includes(state) || signal !== "idle") return;
 
   rounds += 1;
   signalClaimed = false;
-  signalStartedAt = performance.now();
+  previewClaimed = false;
+  hiddenSignal = Math.random() < 0.72 ? "live" : "decoy";
+  signal = "preview";
   clearCoreClasses();
-
-  const isLive = Math.random() < 0.72;
-  signal = isLive ? "live" : "decoy";
-  beatCore.classList.add(isLive ? "is-live" : "is-decoy");
-  coreLabel.textContent = isLive ? "LIVE" : "DECOY";
-  reactionValue.textContent = isLive ? "CLAIM!" : "DON'T TAP";
+  beatCore.classList.add("is-preview");
+  coreLabel.textContent = "GAMBLE?";
+  reactionValue.textContent = "BLIND +28 / TRAP -12";
   renderStatus();
 
-  signalTimerId = window.setTimeout(
-    () => closeSignal(isLive ? "MISS" : "SAFE"),
-    isLive ? LIVE_WINDOW_MS : DECOY_WINDOW_MS,
-  );
+  signalTimerId = window.setTimeout(revealSignal, PREVIEW_WINDOW_MS);
 }
 
 function tickBeat() {
@@ -150,6 +168,41 @@ function tickBeat() {
 
 function claim(index) {
   if (!["playing", "tension"].includes(state) || index >= players) return;
+
+  if (signal === "preview" && !previewClaimed) {
+    previewClaimed = true;
+    clearTimeout(signalTimerId);
+
+    if (hiddenSignal === "live") {
+      signal = "claimed";
+      signalClaimed = true;
+      scores[index] += BLIND_LIVE_POINTS;
+      animatePad(index, "is-winner");
+      clearCoreClasses();
+      beatCore.classList.add("is-live", "is-claimed");
+      coreLabel.textContent = "BLIND HIT";
+      reactionValue.textContent = `P${index + 1} · BLIND +${BLIND_LIVE_POINTS}`;
+      music.cue("hit");
+      renderPlayers();
+      renderStatus();
+      signalTimerId = window.setTimeout(() => closeSignal("WAIT"), 300);
+      return;
+    }
+
+    scores[index] = Math.max(0, scores[index] - BLIND_DECOY_PENALTY);
+    animatePad(index, "is-penalty");
+    signal = "decoy";
+    signalStartedAt = performance.now();
+    clearCoreClasses();
+    beatCore.classList.add("is-decoy");
+    coreLabel.textContent = "TRAP";
+    reactionValue.textContent = `P${index + 1} · TRAP -${BLIND_DECOY_PENALTY}`;
+    music.cue("miss");
+    renderPlayers();
+    renderStatus();
+    signalTimerId = window.setTimeout(() => closeSignal("SAFE"), DECOY_WINDOW_MS);
+    return;
+  }
 
   if (signal === "live" && !signalClaimed) {
     signalClaimed = true;
@@ -198,6 +251,8 @@ function resetGame() {
   beatIndex = 0;
   signal = "idle";
   signalClaimed = false;
+  previewClaimed = false;
+  hiddenSignal = "live";
   document.body.classList.remove("is-tension");
   resultOverlay.hidden = true;
   playerCount.disabled = false;
@@ -209,7 +264,7 @@ function resetGame() {
   startButton.textContent = "ゲーム開始";
   renderPlayers();
   renderStatus();
-  setMessage("青で押す。赤では待つ。", `${players}人対戦。LIVEを最速でCLAIMしよう。`);
+  setMessage("見るか、賭けるか。", `${players}人対戦。GAMBLE?で先読みするか、安全にLIVEを待とう。`);
 }
 
 async function startGame() {
@@ -221,7 +276,7 @@ async function startGame() {
   playerCount.disabled = true;
   startButton.disabled = true;
   startButton.textContent = "プレイ中";
-  setMessage("最速CLAIMを狙え", "2拍ごとにLIVEまたはDECOYが来ます。", "PLAYING");
+  setMessage("先読みか、安全策か", "2拍ごとにGAMBLE? → LIVE / DECOY。先押しはハイリスクです。", "PLAYING");
 
   beatTimerId = window.setInterval(tickBeat, BEAT_MS);
   tickBeat();
@@ -285,7 +340,7 @@ playerCount.addEventListener("change", () => {
   scores = [0, 0, 0, 0];
   renderPlayers();
   renderStatus();
-  setMessage("青で押す。赤では待つ。", `${players}人対戦。LIVEを最速でCLAIMしよう。`);
+  setMessage("見るか、賭けるか。", `${players}人対戦。GAMBLE?で先読みするか、安全にLIVEを待とう。`);
 });
 
 playerPads.forEach((pad, index) => {
