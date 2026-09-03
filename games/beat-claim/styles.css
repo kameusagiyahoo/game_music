@@ -152,6 +152,7 @@ body {
 }
 
 .claim-pad {
+  position: relative;
   min-height: 92px;
   border-radius: 20px;
   border: 1px solid var(--line);
@@ -184,6 +185,23 @@ body {
   font-size: 22px;
   font-weight: 900;
   text-align: right;
+}
+
+.claim-pad::after {
+  content: attr(data-bonus);
+  position: absolute;
+  right: 12px;
+  bottom: 7px;
+  min-height: 13px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  color: var(--gold);
+  opacity: .92;
+}
+
+.claim-pad.is-chasing::after {
+  color: var(--live);
 }
 
 .claim-pad:active { transform: scale(.965); }
