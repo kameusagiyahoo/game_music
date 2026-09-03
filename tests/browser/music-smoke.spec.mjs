@@ -360,3 +360,53 @@ test("Beat Claim shared scoring preserves both photo-finish streaks", async ({ p
 
   expect(errors, errors.join("\n")).toEqual([]);
 });
+
+
+test("Beat Claim round modifiers follow the six-round ruleset", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const rules = await import("/games/beat-claim/round-modifiers.js");
+    return {
+      sequence: Array.from({ length: 7 }, (_, index) =>
+        rules.getRoundModifier(index + 1).id
+      ),
+      double20: rules.applySuccessModifier(20, rules.ROUND_MODIFIERS.double),
+      sudden20: rules.applySuccessModifier(20, rules.ROUND_MODIFIERS.suddenDeath),
+      noGamble: rules.ROUND_MODIFIERS.noGamble.allowGamble,
+      decoyLiveProbability: rules.ROUND_MODIFIERS.decoyRush.liveProbability,
+      suddenWindow: rules.ROUND_MODIFIERS.suddenDeath.liveWindowMs,
+      rollDecoyRushLow: rules.rollHiddenSignal(0.39, rules.ROUND_MODIFIERS.decoyRush),
+      rollDecoyRushHigh: rules.rollHiddenSignal(0.40, rules.ROUND_MODIFIERS.decoyRush),
+    };
+  });
+
+  expect(result.sequence).toEqual([
+    "normal",
+    "double",
+    "no-gamble",
+    "decoy-rush",
+    "normal",
+    "sudden-death",
+    "normal",
+  ]);
+  expect(result.double20).toBe(40);
+  expect(result.sudden20).toBe(60);
+  expect(result.noGamble).toBe(false);
+  expect(result.decoyLiveProbability).toBe(0.4);
+  expect(result.suddenWindow).toBe(260);
+  expect(result.rollDecoyRushLow).toBe("live");
+  expect(result.rollDecoyRushHigh).toBe("decoy");
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+test("Beat Claim exposes the current round rule in the UI", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "networkidle" });
+
+  await expect(page.locator("#modifierValue")).toHaveText("NORMAL");
+  await expect(page.locator("#modifierDescription")).toHaveText("Standard rules");
+  expect(errors, errors.join("\n")).toEqual([]);
+});
