@@ -45,7 +45,7 @@
       <div class="stability-track" aria-hidden="true">
         <div id="stabilityBar" class="stability-bar" style="width:72%"></div>
       </div>
-      <p id="modeText">COOPERATIVE · 42秒間、回路を維持する</p>
+      <p id="modeText">COOPERATIVE · LINK役は4パルスごとに交代</p>
     </section>
 
     <section class="audio-panel" aria-label="音楽設定">
@@ -69,14 +69,14 @@
         <option value="3">3 Players</option>
         <option value="4">4 Players</option>
       </select>
-      <p>光った自分のパッドだけを押す協力ゲーム。CHORDでは2人が同じパルス内で成功する必要があります。</p>
+      <p>6パルスごとにALL SYNC。見逃した担当者は260msのRESCUE中に別プレイヤーが救援できます。LINK役の救援はさらに+3。</p>
     </section>
 
     <section class="game-area sync-arena">
       <div id="gameMessage" class="game-message" role="status">
         <span class="message-kicker">COOPERATIVE CIRCUIT</span>
         <strong>全員で回路を守る</strong>
-        <span>担当パッドが光ったら時間内にタップ。誤タップはSTABILITY -6。</span>
+        <span>担当・LINK・ALL SYNCを声に出してつなぐ協力ゲーム。</span>
       </div>
 
       <div id="pulseCore" class="pulse-core" aria-live="polite">
@@ -104,7 +104,7 @@
 
     <footer class="controls">
       <button id="startButton" class="primary-button" type="button">ゲーム開始</button>
-      <p class="hint">成功 +5 / CHORD +8 · MISS -12/人 · 誤タップ -6 · 後半10秒 OVERLOAD</p>
+      <p class="hint">ALL SYNC 6パルスごと · RESCUE 260ms · LINK RESCUE +3 · MISS -12 · WRONG -6</p>
     </footer>
   </main>
 
@@ -117,6 +117,9 @@
         <div><span>STABILITY</span><strong id="resultStability">0</strong></div>
         <div><span>SYNC</span><strong id="resultSyncs">0</strong></div>
         <div><span>CHORD</span><strong id="resultChords">0</strong></div>
+        <div><span>ALL SYNC</span><strong id="resultAllSyncs">0</strong></div>
+        <div><span>RESCUE</span><strong id="resultRescues">0</strong></div>
+        <div><span>LINK RESCUE</span><strong id="resultLinkRescues">0</strong></div>
         <div><span>MAX COMBO</span><strong id="resultCombo">×0</strong></div>
         <div><span>MISSES</span><strong id="resultMisses">0</strong></div>
         <div><span>WRONG</span><strong id="resultWrong">0</strong></div>
