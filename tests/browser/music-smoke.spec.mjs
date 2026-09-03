@@ -254,3 +254,109 @@ test("Beat Claim scoring module applies streak and chase bonuses", async ({ page
 
   expect(errors, errors.join("\n")).toEqual([]);
 });
+
+
+test("Beat Claim claim arbiter resolves photo finishes by timestamp", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const arbiter = await import("/games/beat-claim/claim-arbiter.js");
+
+    const tieAt8 = arbiter.resolveClaimBatch([
+      { index: 0, at: 100 },
+      { index: 1, at: 108 },
+    ]);
+
+    const separatedAt9 = arbiter.resolveClaimBatch([
+      { index: 0, at: 100 },
+      { index: 1, at: 109 },
+    ]);
+
+    const duplicatePlayer = arbiter.resolveClaimBatch([
+      { index: 0, at: 105 },
+      { index: 0, at: 101 },
+      { index: 1, at: 120 },
+    ]);
+
+    return { tieAt8, separatedAt9, duplicatePlayer };
+  });
+
+  expect(result.tieAt8.photoFinish).toBe(true);
+  expect(result.tieAt8.winnerIndexes).toEqual([0, 1]);
+  expect(result.tieAt8.spreadMs).toBe(8);
+
+  expect(result.separatedAt9.photoFinish).toBe(false);
+  expect(result.separatedAt9.winnerIndexes).toEqual([0]);
+
+  expect(result.duplicatePlayer.claims).toEqual([
+    { index: 0, at: 101 },
+    { index: 1, at: 120 },
+  ]);
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+test("Beat Claim gives both players points on a real photo finish", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.addInitScript(() => {
+    Math.random = () => 0.1;
+  });
+
+  await page.goto("/games/beat-claim/", { waitUntil: "networkidle" });
+
+  await page.evaluate(() => {
+    const core = document.querySelector("#coreLabel");
+    const p1 = document.querySelector('.claim-pad[data-player="0"]');
+    const p2 = document.querySelector('.claim-pad[data-player="1"]');
+    if (!core || !p1 || !p2) throw new Error("Beat Claim photo finish controls missing");
+
+    window.__beatClaimPhotoPressed = new Promise((resolve) => {
+      const press = () => {
+        if (core.textContent !== "GAMBLE?") return;
+        p1.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        p2.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        observer.disconnect();
+        resolve(true);
+      };
+      const observer = new MutationObserver(press);
+      observer.observe(core, { childList: true, subtree: true, characterData: true });
+      press();
+    });
+  });
+
+  await page.locator("#startButton").click();
+  await page.evaluate(() => window.__beatClaimPhotoPressed);
+
+  await expect(page.locator("#scoreP1")).toHaveText("28");
+  await expect(page.locator("#scoreP2")).toHaveText("28");
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+test("Beat Claim shared scoring preserves both photo-finish streaks", async ({ page }) => {
+  const errors = watchRuntimeErrors(page);
+  await page.goto("/games/beat-claim/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const scoring = await import("/games/beat-claim/scoring.js");
+    return scoring.calculateSharedSuccessAwards({
+      scores: [10, 10, 40, 0],
+      streaks: [1, 2, 4, 0],
+      winners: [
+        { index: 0, basePoints: 20 },
+        { index: 1, basePoints: 20 },
+      ],
+      players: 3,
+    });
+  });
+
+  expect(result.nextStreaks).toEqual([2, 3, 0, 0]);
+  expect(result.awards[0].streakBonus).toBe(4);
+  expect(result.awards[1].streakBonus).toBe(8);
+  expect(result.awards[0].comebackBonus).toBe(10);
+  expect(result.awards[1].comebackBonus).toBe(10);
+  expect(result.nextScores[0]).toBe(44);
+  expect(result.nextScores[1]).toBe(48);
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
