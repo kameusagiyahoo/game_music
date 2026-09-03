@@ -101,6 +101,23 @@ body {
   transform: scale(1.035);
 }
 
+.beat-core.is-preview {
+  color: #160b2a;
+  border-color: rgba(185,137,255,.88);
+  background:
+    radial-gradient(circle, #f8f0ff 0 23%, #b989ff 24% 49%, #342052 50% 100%);
+  box-shadow: 0 0 46px rgba(185,137,255,.36), inset 0 0 28px rgba(255,255,255,.24);
+  animation: preview-pulse 220ms ease-in-out infinite alternate;
+}
+
+.beat-core.is-preview .core-kicker,
+.beat-core.is-preview small { color: rgba(22,11,42,.66); }
+
+@keyframes preview-pulse {
+  from { transform: scale(1); filter: brightness(.96); }
+  to { transform: scale(1.045); filter: brightness(1.12); }
+}
+
 .beat-core.is-live {
   color: #071117;
   border-color: rgba(102,231,255,.9);
