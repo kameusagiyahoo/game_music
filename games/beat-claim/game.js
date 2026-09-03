@@ -4,6 +4,12 @@ import {
   GAME_IDS,
   getMusicSettings,
 } from "../../src/music-registry.js";
+import {
+  calculatePenalty,
+  calculateSuccessAward,
+  getComebackBonus,
+  getScoreGap,
+} from "./scoring.js";
 
 const GAME_TIME = 36;
 const TENSION_TIME = 8;
@@ -14,7 +20,6 @@ const LIVE_WINDOW_MS = 390;
 const DECOY_WINDOW_MS = 460;
 const BLIND_LIVE_POINTS = 28;
 const BLIND_DECOY_PENALTY = 12;
-const STREAK_BONUSES = Object.freeze([0, 0, 4, 8, 12]);
 
 const $ = (selector) => document.querySelector(selector);
 const playerPads = [...document.querySelectorAll(".claim-pad")];
@@ -92,31 +97,14 @@ function clearCoreClasses() {
   beatCore.classList.remove("is-beat", "is-preview", "is-live", "is-decoy", "is-claimed");
 }
 
-function getLeaderScore() {
-  return Math.max(...scores.slice(0, players));
-}
-
-function getComebackBonus(index) {
-  const gap = getLeaderScore() - scores[index];
-  if (gap >= 30) return 10;
-  if (gap >= 15) return 5;
-  return 0;
-}
-
-function getStreakBonus(streak) {
-  return STREAK_BONUSES[Math.min(streak, STREAK_BONUSES.length - 1)] || 0;
-}
-
 function renderPlayers() {
   playerCountValue.textContent = String(players);
-  const leaderScore = getLeaderScore();
-
   playerPads.forEach((pad, index) => {
     pad.hidden = index >= players;
     const score = pad.querySelector("small");
     if (score) score.textContent = String(scores[index]);
 
-    const gap = leaderScore - scores[index];
+    const gap = index < players ? getScoreGap(scores, index, players) : 0;
     const chase = index < players && gap >= 15;
     pad.classList.toggle("is-chasing", chase);
 
@@ -139,33 +127,33 @@ function animatePad(index, className) {
   window.setTimeout(() => pad.classList.remove(className), 180);
 }
 
-function resetOtherStreaks(winnerIndex) {
-  streaks = streaks.map((streak, index) => index === winnerIndex ? streak : 0);
-}
-
 function awardSuccess(index, basePoints, label) {
-  const comebackBonus = getComebackBonus(index);
-  resetOtherStreaks(index);
-  streaks[index] += 1;
-  const streakBonus = getStreakBonus(streaks[index]);
-  const total = basePoints + comebackBonus + streakBonus;
-  scores[index] += total;
+  const award = calculateSuccessAward({
+    scores,
+    streaks,
+    index,
+    players,
+    basePoints,
+  });
+  scores = award.nextScores;
+  streaks = award.nextStreaks;
 
   const extras = [];
-  if (streakBonus) extras.push(`STREAK +${streakBonus}`);
-  if (comebackBonus) extras.push(`CHASE +${comebackBonus}`);
+  if (award.streakBonus) extras.push(`STREAK +${award.streakBonus}`);
+  if (award.comebackBonus) extras.push(`CHASE +${award.comebackBonus}`);
   const suffix = extras.length ? ` · ${extras.join(" · ")}` : "";
 
   animatePad(index, "is-winner");
-  reactionValue.textContent = `P${index + 1} · ${label} +${total}${suffix}`;
+  reactionValue.textContent = `P${index + 1} · ${label} +${award.total}${suffix}`;
   music.cue("hit");
   renderPlayers();
-  return total;
+  return award.total;
 }
 
 function penalize(index, amount, label) {
-  streaks[index] = 0;
-  scores[index] = Math.max(0, scores[index] - amount);
+  const penalty = calculatePenalty({ scores, streaks, index, amount });
+  scores = penalty.nextScores;
+  streaks = penalty.nextStreaks;
   animatePad(index, "is-penalty");
   reactionValue.textContent = `P${index + 1} · ${label} -${amount}`;
   music.cue("miss");
