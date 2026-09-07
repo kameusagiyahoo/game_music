@@ -23,7 +23,7 @@ GitHubをSource of Truthとして扱います。過去チャットの記憶だ�
 - Music Facade API: `1.5.0`
 - Music Pack schema: `1.3.0`
 - Real Audio Packs: 4
-- Current game count: 7
+- Current production game count: 7
 
 ## Development cadence
 
@@ -39,52 +39,30 @@ GitHubをSource of Truthとして扱います。過去チャットの記憶だ�
 6. PR説明を最新状態へ更新
 7. mainへは明示または文脈上の承認があるまでマージしない
 
-## Current open work
+## Current production baseline
 
-### PR #13 — Add Game 07 Sync Circuit
+### Game 07: Sync Circuit — MERGED
 
-- URL: https://github.com/kameusagiyahoo/game_music/pull/13
-- Branch: `feature/game-07-sync-circuit`
-- Base: `main`
-- Status: OPEN
-- Merge policy: CI greenを確認後も、ユーザーの明示/文脈上の承認までmergeしない
+PR #13 `Add Game 07 Sync Circuit` は `main` へsquash merge済みです。
 
-### Game 07: Sync Circuit
+- Merge commit: `f0da189db631a39cb004bb02469c1b28330d9e00`
+- Production URL: https://kameusagiyahoo.github.io/game_music/games/sync-circuit/
+- Main Music Architecture Check: SUCCESS
+- Main Browser Smoke WebKit: SUCCESS
+- GitHub Pages build and deployment: SUCCESS
 
-2〜4人・同一端末で遊ぶ協力型ゲーム。
+Game 07は2〜4人・同一端末で遊ぶ協力型ゲームです。
 
-基本ルール:
+主要要素:
 
-- 42秒
-- TEAM STABILITYは72から開始
-- 0になると即敗北
-- 42秒耐えると全員勝利
-- 通常SYNC成功: +5 + combo bonus
-- CHORD成功: +8 + combo bonus
-- MISS: unresolved target 1人につき -12
-- WRONG TAP: -6 + combo reset
-- 最後10秒はOVERLOAD
-
-協力要素:
-
-- `RESCUE`: 見逃し後260ms、別プレイヤーが救援可能
-- `LINK ROLE`: 4パルスごとに交代。LINK RESCUEは追加 +3 STABILITY
-- `ALL SYNC`: 6パルスごと。参加中全プレイヤー必須。base gain +12
-
-Adaptive Difficulty:
-
-- `ASSIST`: timing window ×1.18
-- `BALANCED`: ×1.00
-- `INTENSE`: ×0.84
-- 直近6パルス、STABILITY、成功率、RESCUE依存を使って判定
-- 新規試合のevent 1でAdaptive履歴をreset
-
-Adaptive UI:
-
-- 画面上に現在の `ASSIST / BALANCED / INTENSE` を常時表示
-- window scaleも表示
-- profile切替時に `DIFFICULTY SHIFT` フラッシュを表示
-- `body[data-adaptive-difficulty]` で状態別スタイル
+- 42秒 / TEAM STABILITY 72開始
+- 通常SYNC / CHORD
+- `RESCUE`: 見逃し後260msに別プレイヤーが救援
+- `LINK ROLE`: 4パルスごとに交代、LINK RESCUEは+3
+- `ALL SYNC`: 6パルスごと、全員参加
+- 最後10秒 `OVERLOAD`
+- Adaptive Difficulty: `ASSIST / BALANCED / INTENSE`
+- Adaptive UI: 現在profile・window scale・DIFFICULTY SHIFT表示
 
 主要ファイル:
 
@@ -99,26 +77,15 @@ Adaptive UI:
 - `tests/browser/sync-circuit-adaptive.spec.mjs`
 - `tests/browser/sync-circuit-adaptive-ui.spec.mjs`
 
-## Current validation state
+## Existing production games
 
-Adaptive UI追加前の最新安定状態では:
-
-- Music Architecture Check: SUCCESS
-- Browser Smoke WebKit: SUCCESS
-
-Adaptive UI追加後の最新headでは、ArchitectureはSUCCESS済み。WebKitは最新runの完了状態を必ずGitHub Actionsで再確認してください。
-
-最新headはこのファイルを書いた後に変わる可能性があるため、SHAを固定値として信用せずPR #13から取得してください。
-
-## Existing games
-
-1. Mystic Match — root `/`
+1. Mystic Match — `/`
 2. Orbit Rush — `/games/orbit-rush/`
 3. Pulse Forge — `/games/pulse-forge/`
 4. Rune Relay — `/games/rune-relay/`
 5. Aether Shift — `/games/aether-shift/`
 6. Beat Claim — `/games/beat-claim/`
-7. Sync Circuit — `/games/sync-circuit/` (PR #13, not yet on main)
+7. Sync Circuit — `/games/sync-circuit/`
 
 Default Pack mapping:
 
@@ -170,33 +137,46 @@ Web Audio API
 
 WebKitはPlaywrightのiPhone 15 profileを使用します。
 
-## Current next task
+## Current next task — Game 08
 
-直前の作業はSync CircuitのAdaptive Difficulty UI追加です。
+Game 07はproductionへ到達したため、次はGame 08を新規開発します。
 
-次に行うこと:
+Game 08の方針:
 
-1. PR #13の最新headを取得
-2. Music Architecture CheckがSUCCESSか確認
-3. Browser Smoke WebKitの最新runを確認
-4. Adaptive UI専用テスト `sync-circuit-adaptive-ui.spec.mjs` が通っていることを確認
-5. PR #13 bodyへAdaptive UIのValidationを追記
-6. CI greenならユーザーへ報告
+- Game 06の競争型、Game 07の協力型と被らない
+- 2〜4人で遊べる
+- ルールは短時間で理解できる
+- shared-device / iPhoneで操作しやすい
+- MusicFacadeの別の使い方を実践できる
+- 単純な早押しゲームにはしない
 
-その次の候補:
+初期コンセプト: **Vector Pact**
 
-- Adaptive profile変更にMusicFacadeのlayer/state変化を連動
-- Sync Circuitの結果画面に難易度推移統計を追加
-- PR #13をmainへmergeしてPages公開確認
+- 2〜4人の同時選択・読み合いゲーム
+- 各ラウンドで全員が `LEFT / CENTER / RIGHT` の3方向から選ぶ
+- 同じ方向に集中するとCLASH、少数派または単独選択にボーナス
+- 特殊ラウンドで `MATCH`（誰かと合わせる）と `SPLIT`（被らない）が切り替わる
+- 反射神経より読み合い・相談・裏切りの軽いパーティー性を重視
+- Music state / transition cueをラウンドルール切替と同期させる
 
-ユーザーが「次お願いします」と言った場合は、上記のCurrent next taskから再開してください。
+最初の実装タスク:
+
+1. `feature/game-08-vector-pact` を最新mainから作成
+2. 基本ルールエンジンを純粋関数で実装
+3. 2〜4人shared-device UIを追加
+4. Music RegistryへGame 08を登録
+5. 8ゲームnavigation / README更新
+6. WebKitテスト追加
+7. PRを作成
+8. CI greenまで確認
+
+ユーザーが「次お願いします」「お願いします」と言った場合は、上記Game 08の実装から継続してください。
 
 ## New-chat prompt
 
-新しいチャットでユーザーが最短で継続したい場合は、以下だけでも開始できます。
-
 ```text
 GitHubの `kameusagiyahoo/game_music` を確認してください。
-まず `docs/DEVELOPMENT_HANDOFF.md` を読んで、現在openなPRとCI状態をGitHubから再確認し、Current next taskをそのまま実行してください。
+まず `docs/DEVELOPMENT_HANDOFF.md` を読んでください。
+その後、現在openなPRと最新CI状態をGitHubから再確認し、Current next taskをそのまま実行してください。
 mainへのmergeは私が指示するまでしないでください。
 ```
