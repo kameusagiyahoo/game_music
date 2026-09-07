@@ -2,6 +2,8 @@
 
 GitHub Pagesだけでゲーム制作と、再利用可能なAdaptive Music基盤を検証するプロジェクトです。
 
+> 別のChatGPT/Codexチャットから開発を継続する場合は、最初に [docs/DEVELOPMENT_HANDOFF.md](docs/DEVELOPMENT_HANDOFF.md) を読んでください。
+
 現在のProduction Music Engineは **WAV Stemのみ**です。4つのReal Audio Packを7ゲームから共通の `MusicFacade` 経由で利用します。
 
 - Music Pack schema: **1.3.0**
@@ -232,6 +234,7 @@ qa/baselines/
 tests/browser/
 tools/
 docs/
+├── DEVELOPMENT_HANDOFF.md
 ├── architecture.md
 ├── music-pack-spec.md
 ├── qa.md
@@ -243,6 +246,7 @@ Legacy Procedural MusicManagerはProductionの `src/` には存在しません�
 
 ## Documentation
 
+- [Development handoff](docs/DEVELOPMENT_HANDOFF.md)
 - [Architecture](docs/architecture.md)
 - [Music Pack specification](docs/music-pack-spec.md)
 - [QA / CI](docs/qa.md)
