@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="coop.css" />
 </head>
-<body>
+<body data-adaptive-difficulty="balanced">
   <main class="app-shell">
     <header class="topbar">
       <div>
@@ -36,6 +36,15 @@
       <div class="status-item"><span class="status-label">PLAYERS</span><strong id="playerCountValue">2</strong></div>
       <div class="status-item"><span class="status-label">SYNC</span><strong id="syncValue">0</strong></div>
       <div class="status-item"><span class="status-label">COMBO</span><strong id="comboValue">×0</strong></div>
+    </section>
+
+    <section class="adaptive-card" aria-label="自動難易度">
+      <div>
+        <span class="adaptive-kicker">ADAPTIVE DIFFICULTY</span>
+        <strong id="difficultyValue">BALANCED</strong>
+      </div>
+      <p id="difficultyDescription">標準タイミングでチームの状態を計測中</p>
+      <span id="difficultyWindow" class="adaptive-window">WINDOW ×1.00</span>
     </section>
 
     <section class="stability-card" aria-label="共有スタビリティ">
@@ -80,6 +89,11 @@
         <span>担当・LINK・ALL SYNCを声に出してつなぐ協力ゲーム。</span>
       </div>
 
+      <div id="difficultyFlash" class="difficulty-flash" role="status" aria-live="polite" hidden>
+        <span>DIFFICULTY SHIFT</span>
+        <strong id="difficultyFlashValue">BALANCED</strong>
+      </div>
+
       <div id="pulseCore" class="pulse-core" aria-live="polite">
         <span class="pulse-ring"></span>
         <span class="pulse-kicker">CIRCUIT CORE</span>
@@ -88,18 +102,10 @@
       </div>
 
       <div id="playerGrid" class="sync-grid" aria-label="プレイヤーパッド">
-        <button class="sync-pad player-1" type="button" data-player="0">
-          <span>P1</span><strong>SYNC</strong><small>READY</small>
-        </button>
-        <button class="sync-pad player-2" type="button" data-player="1">
-          <span>P2</span><strong>SYNC</strong><small>READY</small>
-        </button>
-        <button class="sync-pad player-3" type="button" data-player="2" hidden>
-          <span>P3</span><strong>SYNC</strong><small>READY</small>
-        </button>
-        <button class="sync-pad player-4" type="button" data-player="3" hidden>
-          <span>P4</span><strong>SYNC</strong><small>READY</small>
-        </button>
+        <button class="sync-pad player-1" type="button" data-player="0"><span>P1</span><strong>SYNC</strong><small>READY</small></button>
+        <button class="sync-pad player-2" type="button" data-player="1"><span>P2</span><strong>SYNC</strong><small>READY</small></button>
+        <button class="sync-pad player-3" type="button" data-player="2" hidden><span>P3</span><strong>SYNC</strong><small>READY</small></button>
+        <button class="sync-pad player-4" type="button" data-player="3" hidden><span>P4</span><strong>SYNC</strong><small>READY</small></button>
       </div>
     </section>
 
