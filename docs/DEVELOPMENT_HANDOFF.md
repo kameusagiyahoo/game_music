@@ -4,15 +4,13 @@
 
 ## 最初に読むもの
 
-新しいチャットでは、まず以下を確認してください。
-
 1. `docs/DEVELOPMENT_HANDOFF.md`
 2. `README.md`
 3. `docs/architecture.md`
 4. `docs/qa.md`
 5. 現在openなPull Request
 
-GitHubをSource of Truthとして扱います。過去チャットの記憶だけで実装状況を推測しないでください。
+GitHubをSource of Truthとして扱い、過去チャットの記憶だけで状態を推測しないでください。
 
 ## Repository
 
@@ -23,61 +21,30 @@ GitHubをSource of Truthとして扱います。過去チャットの記憶だ�
 - Music Facade API: `1.5.0`
 - Music Pack schema: `1.3.0`
 - Real Audio Packs: 4
-- Current production game count: 7
+- Production game count: 7
+- Development game count: 8 (`Vector Pact` is on PR #14)
 
 ## Development cadence
 
 ユーザーが「次お願いします」「お願いします」「続けて」と言った場合は、原則として1つの実装・安定化タスクを完了してください。
 
-各タスクでは以下を行います。
-
-1. 現在のbranch/PR/head SHAを確認
+1. branch / PR / head SHAをGitHubから確認
 2. 実装
 3. 必要な自動テスト追加
 4. Music Architecture Check確認
 5. Browser Smoke WebKit確認
-6. PR説明を最新状態へ更新
-7. mainへは明示または文脈上の承認があるまでマージしない
+6. PR説明とこのhandoffを更新
+7. mainへはユーザーの明示または文脈上の承認までmergeしない
 
-## Current production baseline
+## Production baseline
 
-### Game 07: Sync Circuit — MERGED
-
-PR #13 `Add Game 07 Sync Circuit` は `main` へsquash merge済みです。
+Game 07 `Sync Circuit` はPR #13からmainへmerge済みです。
 
 - Merge commit: `f0da189db631a39cb004bb02469c1b28330d9e00`
-- Production URL: https://kameusagiyahoo.github.io/game_music/games/sync-circuit/
-- Main Music Architecture Check: SUCCESS
-- Main Browser Smoke WebKit: SUCCESS
-- GitHub Pages build and deployment: SUCCESS
+- URL: https://kameusagiyahoo.github.io/game_music/games/sync-circuit/
+- Main Architecture / WebKit / Pages: SUCCESS
 
-Game 07は2〜4人・同一端末で遊ぶ協力型ゲームです。
-
-主要要素:
-
-- 42秒 / TEAM STABILITY 72開始
-- 通常SYNC / CHORD
-- `RESCUE`: 見逃し後260msに別プレイヤーが救援
-- `LINK ROLE`: 4パルスごとに交代、LINK RESCUEは+3
-- `ALL SYNC`: 6パルスごと、全員参加
-- 最後10秒 `OVERLOAD`
-- Adaptive Difficulty: `ASSIST / BALANCED / INTENSE`
-- Adaptive UI: 現在profile・window scale・DIFFICULTY SHIFT表示
-
-主要ファイル:
-
-- `games/sync-circuit/index.html`
-- `games/sync-circuit/styles.css`
-- `games/sync-circuit/game.js`
-- `games/sync-circuit/sync-engine.js`
-- `games/sync-circuit/coop-mechanics.js`
-- `games/sync-circuit/coop.css`
-- `games/sync-circuit/adaptive-ui.js`
-- `tests/browser/sync-circuit-coop.spec.mjs`
-- `tests/browser/sync-circuit-adaptive.spec.mjs`
-- `tests/browser/sync-circuit-adaptive-ui.spec.mjs`
-
-## Existing production games
+Production games:
 
 1. Mystic Match — `/`
 2. Orbit Rush — `/games/orbit-rush/`
@@ -87,7 +54,7 @@ Game 07は2〜4人・同一端末で遊ぶ協力型ゲームです。
 6. Beat Claim — `/games/beat-claim/`
 7. Sync Circuit — `/games/sync-circuit/`
 
-Default Pack mapping:
+Default Packs:
 
 - Mystic Match -> fantasy
 - Orbit Rush -> neon
@@ -96,6 +63,77 @@ Default Pack mapping:
 - Aether Shift -> clockwork
 - Beat Claim -> pulse
 - Sync Circuit -> clockwork
+
+## Current open work — PR #14
+
+### Game 08: Vector Pact
+
+- PR: https://github.com/kameusagiyahoo/game_music/pull/14
+- Branch: `feature/game-08-vector-pact`
+- Base: `main`
+- Status: OPEN / mergeable
+- Do not merge until user authorizes it.
+
+Core playable loop is implemented.
+
+Rules:
+
+- 2–4 local players on one shared device
+- 8 rounds
+- each player secretly chooses `LEFT / CENTER / RIGHT`
+- choices remain `LOCKED` until every active player selected
+- odd rounds: `MATCH` — any direction shared by at least two players scores +2 for those players
+- even rounds: `SPLIT` — a player alone on a direction scores +3
+- highest total after round 8 wins; draws supported
+
+Music integration:
+
+- default Pack: Neon Orbit WAV
+- MATCH -> `build` + `fill`
+- SPLIT -> `tension` + `whoosh`
+- end -> `result` + outcome stinger
+- all access through `MusicFacade`
+- shared audio controls through `bindGameAudioControls`
+
+Main files:
+
+- `games/vector-pact/index.html`
+- `games/vector-pact/styles.css`
+- `games/vector-pact/game.js`
+- `games/vector-pact/vector-engine.js`
+- `tests/browser/vector-pact.spec.mjs`
+
+Registry/test integration:
+
+- `GAME_IDS.VECTOR_PACT = "vector-pact"`
+- default Pack -> `neon`
+- global WebKit smoke suite updated from 7 to 8 registered games
+- shared audio-controls check includes Vector Pact
+
+Validation on the core implementation head before this handoff update:
+
+- Music Architecture Check: SUCCESS
+- Browser Smoke WebKit: SUCCESS
+- PR #14: mergeable
+
+Because this handoff edit changes the PR head, re-check the latest PR-head CI before reporting final green status.
+
+## Current next task
+
+**Vector Pact integration / discoverability.**
+
+Do this next:
+
+1. confirm PR #14 latest head and CI
+2. add `08 Pact` navigation from the existing seven game pages/root
+3. update README from 7 games to 8 games and add Vector Pact row/URL
+4. update `docs/architecture.md` default Pack mapping with Vector Pact -> neon if not already present
+5. ensure navigation remains usable on iPhone width
+6. update WebKit coverage if navigation assertions are appropriate
+7. run Architecture + WebKit to green
+8. update PR #14 body and this handoff
+
+After that, the next likely step is user-authorized merge of PR #14 and GitHub Pages verification.
 
 ## Production architecture
 
@@ -115,62 +153,16 @@ WavStemMusicManager
 Web Audio API
 ```
 
-ゲームコードからMusic Managerを直接操作しないでください。`MusicFacade` を境界にします。
+Important constraints:
 
-## Important constraints
-
-- iPhone Safari/WebKitを主要ターゲットとして扱う
-- shared-device multiplayerではmulti-touch公平性を考慮する
-- volume 0を正しく許可する
-- persistent audio cache ownershipはapp側
-- Service Workerはpass-through compatibility用途
-- procedural music engineをproduction runtimeへ戻さない
-- audio workflowをPack別に重複させない
-- static GitHub Pages前提。通常build不要
-
-## Main CI
-
-- `.github/workflows/music-architecture-check.yml`
-- `.github/workflows/browser-smoke-webkit.yml`
-- `.github/workflows/audio-format-parity.yml`
-- GitHub Pages deployment
-
-WebKitはPlaywrightのiPhone 15 profileを使用します。
-
-## Current next task — Game 08
-
-Game 07はproductionへ到達したため、次はGame 08を新規開発します。
-
-Game 08の方針:
-
-- Game 06の競争型、Game 07の協力型と被らない
-- 2〜4人で遊べる
-- ルールは短時間で理解できる
-- shared-device / iPhoneで操作しやすい
-- MusicFacadeの別の使い方を実践できる
-- 単純な早押しゲームにはしない
-
-初期コンセプト: **Vector Pact**
-
-- 2〜4人の同時選択・読み合いゲーム
-- 各ラウンドで全員が `LEFT / CENTER / RIGHT` の3方向から選ぶ
-- 同じ方向に集中するとCLASH、少数派または単独選択にボーナス
-- 特殊ラウンドで `MATCH`（誰かと合わせる）と `SPLIT`（被らない）が切り替わる
-- 反射神経より読み合い・相談・裏切りの軽いパーティー性を重視
-- Music state / transition cueをラウンドルール切替と同期させる
-
-最初の実装タスク:
-
-1. `feature/game-08-vector-pact` を最新mainから作成
-2. 基本ルールエンジンを純粋関数で実装
-3. 2〜4人shared-device UIを追加
-4. Music RegistryへGame 08を登録
-5. 8ゲームnavigation / README更新
-6. WebKitテスト追加
-7. PRを作成
-8. CI greenまで確認
-
-ユーザーが「次お願いします」「お願いします」と言った場合は、上記Game 08の実装から継続してください。
+- iPhone Safari/WebKit is a primary target
+- shared-device multiplayer must remain touch-friendly
+- volume 0 must work
+- persistent audio cache ownership stays app-side
+- Service Worker remains pass-through compatibility only
+- do not restore procedural music engine to production
+- avoid duplicate Pack-specific audio workflows
+- static GitHub Pages; normal build step is unnecessary
 
 ## New-chat prompt
 
