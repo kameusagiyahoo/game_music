@@ -54,16 +54,6 @@ Production games:
 6. Beat Claim — `/games/beat-claim/`
 7. Sync Circuit — `/games/sync-circuit/`
 
-Default Packs:
-
-- Mystic Match -> fantasy
-- Orbit Rush -> neon
-- Pulse Forge -> pulse
-- Rune Relay -> fantasy
-- Aether Shift -> clockwork
-- Beat Claim -> pulse
-- Sync Circuit -> clockwork
-
 ## Current open work — PR #14
 
 ### Game 08: Vector Pact
@@ -74,16 +64,14 @@ Default Packs:
 - Status: OPEN / mergeable
 - Do not merge until user authorizes it.
 
-Core playable loop is implemented.
-
 Rules:
 
 - 2–4 local players on one shared device
 - 8 rounds
 - each player secretly chooses `LEFT / CENTER / RIGHT`
 - choices remain `LOCKED` until every active player selected
-- odd rounds: `MATCH` — any direction shared by at least two players scores +2 for those players
-- even rounds: `SPLIT` — a player alone on a direction scores +3
+- odd rounds: `MATCH` — any direction shared by at least two players scores +2
+- even rounds: `SPLIT` — a unique direction scores +3
 - highest total after round 8 wins; draws supported
 
 Music integration:
@@ -91,9 +79,18 @@ Music integration:
 - default Pack: Neon Orbit WAV
 - MATCH -> `build` + `fill`
 - SPLIT -> `tension` + `whoosh`
-- end -> `result` + outcome stinger
+- result -> `result` + outcome stinger
 - all access through `MusicFacade`
-- shared audio controls through `bindGameAudioControls`
+- shared controls through `bindGameAudioControls`
+
+Integration/discoverability is complete on the feature branch:
+
+- all seven existing game pages/root link to `08 Pact`
+- Vector Pact has current `08 Vector` navigation state
+- README documents 8 games and Vector Pact URL
+- `docs/architecture.md` maps Vector Pact -> neon and documents its MATCH/SPLIT audio intent
+- shared `.game-nav` now wraps on narrow screens instead of overflowing horizontally
+- WebKit test checks all eight pages at the iPhone profile, verifies the Pact entry is visible, and asserts nav/document width does not exceed the viewport
 
 Main files:
 
@@ -103,37 +100,27 @@ Main files:
 - `games/vector-pact/vector-engine.js`
 - `tests/browser/vector-pact.spec.mjs`
 
-Registry/test integration:
+## Current validation state
 
-- `GAME_IDS.VECTOR_PACT = "vector-pact"`
-- default Pack -> `neon`
-- global WebKit smoke suite updated from 7 to 8 registered games
-- shared audio-controls check includes Vector Pact
-
-Validation on the core implementation head before this handoff update:
+The core Game 08 implementation was previously green on both:
 
 - Music Architecture Check: SUCCESS
 - Browser Smoke WebKit: SUCCESS
-- PR #14: mergeable
 
-Because this handoff edit changes the PR head, re-check the latest PR-head CI before reporting final green status.
+The integration/navigation task changes the branch head, so always re-check the latest PR-head Architecture and WebKit runs before reporting final merge readiness.
 
 ## Current next task
 
-**Vector Pact integration / discoverability.**
+1. fetch PR #14 latest head
+2. confirm latest Music Architecture Check SUCCESS
+3. confirm latest Browser Smoke WebKit SUCCESS, including the new iPhone navigation-width assertion
+4. update PR #14 body with integration/navigation validation
+5. report merge readiness
+6. do not merge until the user authorizes it
 
-Do this next:
+After user authorization, squash-merge PR #14, then verify `main` Architecture / WebKit / GitHub Pages and the production URL:
 
-1. confirm PR #14 latest head and CI
-2. add `08 Pact` navigation from the existing seven game pages/root
-3. update README from 7 games to 8 games and add Vector Pact row/URL
-4. update `docs/architecture.md` default Pack mapping with Vector Pact -> neon if not already present
-5. ensure navigation remains usable on iPhone width
-6. update WebKit coverage if navigation assertions are appropriate
-7. run Architecture + WebKit to green
-8. update PR #14 body and this handoff
-
-After that, the next likely step is user-authorized merge of PR #14 and GitHub Pages verification.
+`https://kameusagiyahoo.github.io/game_music/games/vector-pact/`
 
 ## Production architecture
 
