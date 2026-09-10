@@ -27,6 +27,7 @@
       <a href="../aether-shift/">05 Aether</a>
       <a href="../beat-claim/">06 Claim</a>
       <a href="../sync-circuit/">07 Sync</a>
+      <a href="../vector-pact/">08 Pact</a>
       <a href="../../debug/mixer/">Mixer</a>
       <a href="../../settings/music/">⚙ Settings</a>
     </nav>
@@ -39,25 +40,13 @@
     </section>
 
     <section class="sync-panel" aria-label="Adaptive Music同期状況">
-      <div>
-        <span class="sync-label">MUSIC</span>
-        <strong id="musicState">READY · music stopped</strong>
-      </div>
-      <div>
-        <span class="sync-label">SYNC</span>
-        <strong id="syncState">BAR — / BEAT —</strong>
-      </div>
-      <div>
-        <span class="sync-label">NEXT BAR MIX</span>
-        <strong id="pendingState">—</strong>
-      </div>
+      <div><span class="sync-label">MUSIC</span><strong id="musicState">READY · music stopped</strong></div>
+      <div><span class="sync-label">SYNC</span><strong id="syncState">BAR — / BEAT —</strong></div>
+      <div><span class="sync-label">NEXT BAR MIX</span><strong id="pendingState">—</strong></div>
     </section>
 
     <section class="stem-panel" aria-label="同期ステムミキサー">
-      <div class="stem-heading">
-        <span>LIVE STEM MIX</span>
-        <strong id="stemPreset">FOCUS</strong>
-      </div>
+      <div class="stem-heading"><span>LIVE STEM MIX</span><strong id="stemPreset">FOCUS</strong></div>
       <div class="stem-row" data-stem="drums"><span>DRUMS</span><div class="stem-track"><i id="stemDrums"></i></div><output id="stemDrumsValue">22</output></div>
       <div class="stem-row" data-stem="bass"><span>BASS</span><div class="stem-track"><i id="stemBass"></i></div><output id="stemBassValue">42</output></div>
       <div class="stem-row" data-stem="chords"><span>CHORDS</span><div class="stem-track"><i id="stemChords"></i></div><output id="stemChordsValue">68</output></div>
@@ -66,58 +55,26 @@
     </section>
 
     <section class="audio-panel" aria-label="音楽設定">
-      <div class="audio-row">
-        <label><input id="bgmToggle" type="checkbox" checked /> BGM</label>
-        <input id="bgmVolume" type="range" min="0" max="100" value="80" aria-label="BGM音量" />
-        <output id="bgmVolumeValue">80</output>
-      </div>
-      <div class="audio-row">
-        <label><input id="sfxToggle" type="checkbox" checked /> SE</label>
-        <input id="sfxVolume" type="range" min="0" max="100" value="76" aria-label="SE音量" />
-        <output id="sfxVolumeValue">76</output>
-      </div>
+      <div class="audio-row"><label><input id="bgmToggle" type="checkbox" checked /> BGM</label><input id="bgmVolume" type="range" min="0" max="100" value="80" aria-label="BGM音量" /><output id="bgmVolumeValue">80</output></div>
+      <div class="audio-row"><label><input id="sfxToggle" type="checkbox" checked /> SE</label><input id="sfxVolume" type="range" min="0" max="100" value="76" aria-label="SE音量" /><output id="sfxVolumeValue">76</output></div>
     </section>
 
     <section class="game-area forge-area">
-      <div id="gameMessage" class="game-message" role="status">
-        <span class="message-kicker">RHYTHM / STEM MIXER</span>
-        <strong>光った炉心をビートに合わせて叩く</strong>
-        <span>演奏位置を維持したまま、精度に応じて音の層が増えます。</span>
-      </div>
-
+      <div id="gameMessage" class="game-message" role="status"><span class="message-kicker">RHYTHM / STEM MIXER</span><strong>光った炉心をビートに合わせて叩く</strong><span>演奏位置を維持したまま、精度に応じて音の層が増えます。</span></div>
       <div class="forge-stage" aria-label="4方向リズムパッド">
         <div id="beatRing" class="beat-ring" aria-hidden="true"></div>
         <button class="forge-pad pad-north" data-pad="0" type="button" aria-label="上の炉心"><span>▲</span></button>
         <button class="forge-pad pad-east" data-pad="1" type="button" aria-label="右の炉心"><span>◆</span></button>
         <button class="forge-pad pad-south" data-pad="2" type="button" aria-label="下の炉心"><span>▼</span></button>
         <button class="forge-pad pad-west" data-pad="3" type="button" aria-label="左の炉心"><span>●</span></button>
-        <div class="forge-core">
-          <span>ENERGY</span>
-          <strong id="coreEnergy">20</strong>
-          <small id="judgement">READY</small>
-        </div>
+        <div class="forge-core"><span>ENERGY</span><strong id="coreEnergy">20</strong><small id="judgement">READY</small></div>
       </div>
     </section>
 
-    <footer class="controls">
-      <button id="startButton" class="primary-button" type="button">ゲーム開始</button>
-      <p class="hint">40%でBUILD MIX、75%でOVERDRIVE MIXを予約。次の小節頭でDrums / Bass / Chords / Melody / Sparkleの音量だけが変化します。</p>
-    </footer>
+    <footer class="controls"><button id="startButton" class="primary-button" type="button">ゲーム開始</button><p class="hint">40%でBUILD MIX、75%でOVERDRIVE MIXを予約。次の小節頭でDrums / Bass / Chords / Melody / Sparkleの音量だけが変化します。</p></footer>
   </main>
 
-  <div id="resultOverlay" class="overlay" hidden>
-    <section class="result-card" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
-      <p class="eyebrow">RESULT</p>
-      <h2 id="resultTitle">FORGED!</h2>
-      <p id="resultMessage" class="result-message"></p>
-      <div class="result-score"><span>SCORE</span><strong id="finalScore">0</strong></div>
-      <div class="result-stats">
-        <div><span>PERFECT</span><strong id="perfectValue">0</strong></div>
-        <div><span>MAX COMBO</span><strong id="maxComboValue">0</strong></div>
-      </div>
-      <button id="retryButton" class="primary-button" type="button">もう一度</button>
-    </section>
-  </div>
+  <div id="resultOverlay" class="overlay" hidden><section class="result-card" role="dialog" aria-modal="true" aria-labelledby="resultTitle"><p class="eyebrow">RESULT</p><h2 id="resultTitle">FORGED!</h2><p id="resultMessage" class="result-message"></p><div class="result-score"><span>SCORE</span><strong id="finalScore">0</strong></div><div class="result-stats"><div><span>PERFECT</span><strong id="perfectValue">0</strong></div><div><span>MAX COMBO</span><strong id="maxComboValue">0</strong></div></div><button id="retryButton" class="primary-button" type="button">もう一度</button></section></div>
 
   <script type="module" src="game.js"></script>
 </body>
