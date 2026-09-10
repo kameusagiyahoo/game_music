@@ -48,3 +48,37 @@ test("Vector Pact keeps choices hidden until all players lock, then reveals them
   await expect(page.locator("#scoreP1")).toHaveText("2");
   await expect(page.locator("#scoreP2")).toHaveText("2");
 });
+
+test("Game 08 navigation remains usable at the iPhone viewport", async ({ page }) => {
+  const paths = [
+    "/",
+    "/games/orbit-rush/",
+    "/games/pulse-forge/",
+    "/games/rune-relay/",
+    "/games/aether-shift/",
+    "/games/beat-claim/",
+    "/games/sync-circuit/",
+    "/games/vector-pact/",
+  ];
+
+  for (const path of paths) {
+    await page.goto(path, { waitUntil: "domcontentloaded" });
+    const nav = page.locator(".game-nav");
+    await expect(nav).toBeVisible();
+
+    const pactEntry = path === "/games/vector-pact/"
+      ? nav.locator(".game-nav-current")
+      : nav.getByRole("link", { name: "08 Pact" });
+    await expect(pactEntry).toBeVisible();
+
+    const metrics = await nav.evaluate((element) => ({
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+      viewportWidth: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+    }));
+
+    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+    expect(metrics.documentWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+  }
+});
