@@ -115,8 +115,11 @@ Default Pack mapping:
 | Aether Shift | clockwork |
 | Beat Claim | pulse |
 | Sync Circuit | clockwork |
+| Vector Pact | neon |
 
 Global Settings can override the default Pack. Rune Relay and Aether Shift additionally support game-local Pack selection. Local selection takes priority for that game without mutating the Global Pack preference.
+
+Vector Pact alternates game intent by round: `MATCH` uses `build` plus a `fill` transition cue, while `SPLIT` uses `tension` plus a `whoosh` transition cue. This keeps its hidden simultaneous-choice loop synchronized with the shared MusicFacade instead of introducing game-specific audio control paths.
 
 ## Pack Hot Swap
 
