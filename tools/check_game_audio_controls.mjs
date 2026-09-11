@@ -112,6 +112,7 @@ const gameFiles = [
   "games/aether-shift/game.js",
   "games/beat-claim/game.js",
   "games/sync-circuit/game.js",
+  "games/vector-pact/game.js",
 ];
 
 for (const path of gameFiles) {

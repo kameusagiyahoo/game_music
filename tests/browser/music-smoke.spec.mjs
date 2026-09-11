@@ -8,6 +8,7 @@ const games = [
   { name: "Aether Shift", path: "/games/aether-shift/", title: "Aether Shift" },
   { name: "Beat Claim", path: "/games/beat-claim/", title: "Beat Claim" },
   { name: "Sync Circuit", path: "/games/sync-circuit/", title: "Sync Circuit" },
+  { name: "Vector Pact", path: "/games/vector-pact/", title: "Vector Pact" },
 ];
 
 function watchRuntimeErrors(page) {
@@ -67,7 +68,7 @@ test("MusicFacade resolves every game to the production WAV-stem engine in WebKi
     });
   });
 
-  expect(descriptors).toHaveLength(7);
+  expect(descriptors).toHaveLength(8);
   for (const descriptor of descriptors) {
     expect(descriptor.engine).toBe("wav-stem");
     expect(descriptor.packId).toBeTruthy();

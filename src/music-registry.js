@@ -22,6 +22,7 @@ export const GAME_IDS = Object.freeze({
   AETHER_SHIFT: "aether-shift",
   BEAT_CLAIM: "beat-claim",
   SYNC_CIRCUIT: "sync-circuit",
+  VECTOR_PACT: "vector-pact",
 });
 
 const entries = [
@@ -41,6 +42,7 @@ export const GAME_DEFAULT_PACKS = Object.freeze({
   [GAME_IDS.AETHER_SHIFT]: "clockwork",
   [GAME_IDS.BEAT_CLAIM]: "pulse",
   [GAME_IDS.SYNC_CIRCUIT]: "clockwork",
+  [GAME_IDS.VECTOR_PACT]: "neon",
 });
 
 const WAV_STEM_SELECTION_VERSION = 4;
